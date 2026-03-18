@@ -1,0 +1,90 @@
+import { redirect } from 'next/navigation';
+import { NextResponse } from 'next/server';
+
+export async function GET(request: Request, { params }: { params: Promise<{ auth0: string }> }) {
+  const { auth0: route } = await params;
+  const url = new URL(request.url);
+  
+  if (route === 'login') {
+    // Redirect to Auth0 login
+    const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
+      `response_type=code&` +
+      `client_id=${process.env.AUTH0_CLIENT_ID}&` +
+      `redirect_uri=${encodeURIComponent(process.env.AUTH0_BASE_URL + '/api/auth/callback')}&` +
+      `scope=openid profile email`;
+    
+    return redirect(loginUrl);
+  }
+  
+  if (route === 'logout') {
+    // Handle logout by clearing session and redirecting to Auth0 logout
+    const response = NextResponse.redirect(`${process.env.AUTH0_ISSUER_BASE_URL}/logout?` +
+      `returnTo=${encodeURIComponent(process.env.AUTH0_BASE_URL)}&` +
+      `client_id=${process.env.AUTH0_CLIENT_ID}`);
+    
+    // Clear the session cookie
+    response.cookies.delete('appSession');
+    return response;
+  }
+  
+  if (route === 'callback') {
+    // Handle the callback by exchanging code for tokens
+    const code = url.searchParams.get('code');
+    if (!code) {
+      return redirect('/');
+    }
+    
+    try {
+      // Exchange code for tokens
+      const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          client_id: process.env.AUTH0_CLIENT_ID,
+          client_secret: process.env.AUTH0_CLIENT_SECRET,
+          code: code,
+          redirect_uri: `${process.env.AUTH0_BASE_URL}/api/auth/callback`
+        })
+      });
+      
+      if (!tokenResponse.ok) {
+        throw new Error('Token exchange failed');
+      }
+      
+      const tokens = await tokenResponse.json();
+      
+      // Create session with user info
+      const userResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/userinfo`, {
+        headers: { 'Authorization': `Bearer ${tokens.access_token}` }
+      });
+      
+      if (userResponse.ok) {
+        const user = await userResponse.json();
+        
+        // Create response with session cookie
+        const response = NextResponse.redirect(process.env.AUTH0_BASE_URL + '/');
+        response.cookies.set('appSession', JSON.stringify({ user, tokens }), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24 * 7 // 7 days
+        });
+        
+        return response;
+      }
+      
+      throw new Error('Failed to get user info');
+      
+    } catch (error) {
+      console.error('Auth callback error:', error);
+      return redirect('/?error=callback_failed');
+    }
+  }
+  
+  // Default fallback
+  return new Response('Not found', { status: 404 });
+}
+
+export const dynamic = 'force-dynamic';
+
