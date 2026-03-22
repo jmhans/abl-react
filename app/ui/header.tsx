@@ -3,8 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+interface User {
+  name?: string;
+  email?: string;
+  [key: string]: any;
+}
+
 export default function Header() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     // Check for user session by making a request to a session endpoint  
