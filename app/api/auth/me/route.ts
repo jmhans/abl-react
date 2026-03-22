@@ -1,17 +1,13 @@
-import { NextRequest } from 'next/server';
+import { getSession } from '@auth0/nextjs-auth0';
 import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Read the session cookie
-    const sessionCookie = request.cookies.get('appSession');
+    const session = await getSession();
     
-    if (!sessionCookie?.value) {
+    if (!session) {
       return NextResponse.json({ user: null }, { status: 200 });
     }
-    
-    // Parse the session data
-    const session = JSON.parse(sessionCookie.value);
     
     return NextResponse.json({ user: session.user }, { status: 200 });
   } catch (error) {
