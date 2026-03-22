@@ -6,6 +6,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
   const url = new URL(request.url);
   const baseUrl = process.env.AUTH0_BASE_URL || '';
   
+  // Debug logging
+  if (!process.env.AUTH0_BASE_URL) {
+    console.error('AUTH0_BASE_URL is not set!');
+  }
+  
   if (route === 'login') {
     // Redirect to Auth0 login
     const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
@@ -43,6 +48,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
     
     try {
       // Exchange code for tokens
+      const redirectUri = `${baseUrl}/api/auth/callback`;
+      console.log('Token exchange - redirect_uri:', redirectUri);
+      
       const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,12 +59,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
           client_id: process.env.AUTH0_CLIENT_ID,
           client_secret: process.env.AUTH0_CLIENT_SECRET,
           code: code,
-          redirect_uri: `${baseUrl}/api/auth/callback`
+          redirect_uri: redirectUri
         })
       });
       
       if (!tokenResponse.ok) {
-        throw new Error('Token exchange failed');
+        const errorText = await tokenResponse.text();
+        console.error('Token exchange failed:', tokenResponse.status, errorText);
+        throw new Error(`Token exchange failed: ${tokenResponse.status} - ${errorText}`);
       }
       
       const tokens = await tokenResponse.json();
@@ -82,7 +92,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
         return response;
       }
       
-      throw new Error('Failed to get user info');
+      const errorText = await userResponse.text();
+      console.error('Failed to get user info:', userResponse.status, errorText);
+      throw new Error(`Failed to get user info: ${userResponse.status}`);
       
     } catch (error) {
       console.error('Auth callback error:', error);
