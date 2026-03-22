@@ -56,16 +56,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
       console.log('  client_secret length:', process.env.AUTH0_CLIENT_SECRET?.length);
       console.log('  issuer:', process.env.AUTH0_ISSUER_BASE_URL);
       
+      // Create Basic Auth header
+      const credentials = Buffer.from(`${process.env.AUTH0_CLIENT_ID}:${process.env.AUTH0_CLIENT_SECRET}`).toString('base64');
+      
       const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        headers: { 
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${credentials}`
+        },
+        body: new URLSearchParams({
           grant_type: 'authorization_code',
-          client_id: process.env.AUTH0_CLIENT_ID,
-          client_secret: process.env.AUTH0_CLIENT_SECRET,
           code: code,
           redirect_uri: redirectUri
-        })
+        }).toString()
       });
       
       if (!tokenResponse.ok) {
