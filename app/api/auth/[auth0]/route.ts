@@ -49,7 +49,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
     try {
       // Exchange code for tokens
       const redirectUri = `${baseUrl}/api/auth/callback`;
-      console.log('Token exchange - redirect_uri:', redirectUri);
+      console.log('Token exchange attempt:');
+      console.log('  redirect_uri:', redirectUri);
+      console.log('  client_id:', process.env.AUTH0_CLIENT_ID);
+      console.log('  client_secret exists:', !!process.env.AUTH0_CLIENT_SECRET);
+      console.log('  client_secret length:', process.env.AUTH0_CLIENT_SECRET?.length);
+      console.log('  issuer:', process.env.AUTH0_ISSUER_BASE_URL);
       
       const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
         method: 'POST',
