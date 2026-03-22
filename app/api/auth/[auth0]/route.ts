@@ -24,7 +24,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
       `client_id=${process.env.AUTH0_CLIENT_ID}`);
     
     // Clear the session cookie
-    response.cookies.delete('appSession');
+    response.cookies.set('appSession', '', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0
+    });
     return response;
   }
   
@@ -67,8 +73,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
         const response = NextResponse.redirect(baseUrl + '/');
         response.cookies.set('appSession', JSON.stringify({ user, tokens }), {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: true,
           sameSite: 'lax',
+          path: '/',
           maxAge: 60 * 60 * 24 * 7 // 7 days
         });
         
