@@ -4,13 +4,14 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request, { params }: { params: Promise<{ auth0: string }> }) {
   const { auth0: route } = await params;
   const url = new URL(request.url);
+  const baseUrl = process.env.AUTH0_BASE_URL || '';
   
   if (route === 'login') {
     // Redirect to Auth0 login
     const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
       `response_type=code&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(process.env.AUTH0_BASE_URL + '/api/auth/callback')}&` +
+      `redirect_uri=${encodeURIComponent(baseUrl + '/api/auth/callback')}&` +
       `scope=openid profile email`;
     
     return redirect(loginUrl);
@@ -19,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
   if (route === 'logout') {
     // Handle logout by clearing session and redirecting to Auth0 logout
     const response = NextResponse.redirect(`${process.env.AUTH0_ISSUER_BASE_URL}/logout?` +
-      `returnTo=${encodeURIComponent(process.env.AUTH0_BASE_URL)}&` +
+      `returnTo=${encodeURIComponent(baseUrl)}&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}`);
     
     // Clear the session cookie
@@ -44,7 +45,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
           client_id: process.env.AUTH0_CLIENT_ID,
           client_secret: process.env.AUTH0_CLIENT_SECRET,
           code: code,
-          redirect_uri: `${process.env.AUTH0_BASE_URL}/api/auth/callback`
+          redirect_uri: `${baseUrl}/api/auth/callback`
         })
       });
       
@@ -63,7 +64,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ auth
         const user = await userResponse.json();
         
         // Create response with session cookie
-        const response = NextResponse.redirect(process.env.AUTH0_BASE_URL + '/');
+        const response = NextResponse.redirect(baseUrl + '/');
         response.cookies.set('appSession', JSON.stringify({ user, tokens }), {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
