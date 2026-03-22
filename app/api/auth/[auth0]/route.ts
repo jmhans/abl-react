@@ -34,22 +34,37 @@ export async function GET(
     }
 
     try {
+      const redirectUri = `${process.env.AUTH0_BASE_URL}/api/auth/callback`;
+      
+      console.log('Token exchange params:');
+      console.log('  issuer:', process.env.AUTH0_ISSUER_BASE_URL);
+      console.log('  client_id:', process.env.AUTH0_CLIENT_ID);
+      console.log('  client_secret exists:', !!process.env.AUTH0_CLIENT_SECRET);
+      console.log('  client_secret length:', process.env.AUTH0_CLIENT_SECRET?.length);
+      console.log('  redirect_uri:', redirectUri);
+      console.log('  code length:', code?.length);
+      
       // Exchange code for tokens using form-urlencoded
+      const params = new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: process.env.AUTH0_CLIENT_ID!,
+        client_secret: process.env.AUTH0_CLIENT_SECRET!,
+        code: code,
+        redirect_uri: redirectUri,
+      });
+      
+      console.log('Request body:', params.toString());
+      
       const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          client_id: process.env.AUTH0_CLIENT_ID!,
-          client_secret: process.env.AUTH0_CLIENT_SECRET!,
-          code: code,
-          redirect_uri: `${process.env.AUTH0_BASE_URL}/api/auth/callback`,
-        }),
+        body: params,
       });
 
       if (!tokenResponse.ok) {
         const error = await tokenResponse.text();
         console.error('Token exchange failed:', error);
+        console.error('Response status:', tokenResponse.status);
         return redirect('/?error=token_failed');
       }
 
