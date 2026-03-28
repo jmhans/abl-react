@@ -102,42 +102,75 @@ function emptyStats(): any {
   return { g: 0, ab: 0, h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, ibb: 0, hbp: 0, sb: 0, cs: 0, sac: 0, sf: 0, po: 0, e: 0, pb: 0, abl_points: 0 };
 }
 
+const STAT_FIELDS = ['g', 'ab', 'h', '2b', '3b', 'hr', 'bb', 'ibb', 'hbp', 'sb', 'cs', 'sac', 'sf', 'po', 'e', 'pb'] as const;
+
+/**
+ * Parse a compact statline entry from the new date-keyed format.
+ * entry = { b: { ab, h, ... }, pos, t }
+ */
+function parseFlatEntry(entry: any, mlbId: string, gamePk: string): any {
+  if (!entry?.b) return null;
+  const b = entry.b;
+  const stats: any = {
+    mlbId, gamePk,
+    g: b.g || 0, ab: b.ab || 0, h: b.h || 0,
+    '2b': b['2b'] || 0, '3b': b['3b'] || 0, hr: b.hr || 0,
+    bb: b.bb || 0, ibb: b.ibb || 0, hbp: b.hbp || 0,
+    sb: b.sb || 0, cs: b.cs || 0, sac: b.sac || 0,
+    sf: b.sf || 0, po: b.po || 0, e: b.e || 0, pb: b.pb || 0,
+  };
+  stats.abl_points = calculateAblPoints(stats);
+  return stats;
+}
+
 // === STAT FETCHING ===
 
 /**
  * Fetch from the `statlines` collection and attach dailyStats to each roster player.
+ * Supports both the new compact date-keyed format and the legacy per-game-doc format.
  * Multiple statlines on the same day (doubleheaders) are summed.
  */
 export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): Promise<any[]> {
   const ablDate = deriveAblDate(gameDate);
 
+  // New compact format: single doc per date keyed by _id = ablDate
+  const dateDoc = await db.collection('statlines').findOne({ _id: ablDate as any });
+
+  if (dateDoc?.p) {
+    const entries = dateDoc.p as Record<string, any>;
+    return roster.map(player => {
+      const mlbID = String(player.player?.mlbID || player.mlbID || '');
+      const prefix = mlbID + '_';
+      const playerStats = Object.entries(entries)
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, entry]) => parseFlatEntry(entry, mlbID, key.slice(prefix.length)))
+        .filter(Boolean)
+        .reduce((total: any, rec: any) => {
+          for (const f of STAT_FIELDS) total[f] = (total[f] || 0) + (rec[f] || 0);
+          total.abl_points = calculateAblPoints(total);
+          return total;
+        }, emptyStats());
+      return { ...player, dailyStats: playerStats };
+    });
+  }
+
+  // Legacy format: one doc per player-game (backward compat during/after migration)
   const statlineDocs = await db.collection('statlines').aggregate([
-    {
-      $match: {
-        ablDate,
-      },
-    },
-    {
-      $addFields: {
-        stats: { $ifNull: ['$updatedStats', '$stats'] },
-      },
-    },
+    { $match: { ablDate } },
+    { $addFields: { stats: { $ifNull: ['$updatedStats', '$stats'] } } },
   ]).toArray();
 
   return roster.map(player => {
     const mlbID = player.player?.mlbID || player.mlbID;
-
     const playerStats = statlineDocs
       .filter(sl => String(sl.mlbId) === String(mlbID))
       .map(parseDailyStats)
       .filter(Boolean)
       .reduce((total: any, rec: any) => {
-        const fields = ['g', 'ab', 'h', '2b', '3b', 'hr', 'bb', 'ibb', 'hbp', 'sb', 'cs', 'sac', 'sf', 'po', 'e', 'pb'];
-        for (const f of fields) total[f] = (total[f] || 0) + (rec[f] || 0);
+        for (const f of STAT_FIELDS) total[f] = (total[f] || 0) + (rec[f] || 0);
         total.abl_points = calculateAblPoints(total);
         return total;
       }, emptyStats());
-
     return { ...player, dailyStats: playerStats };
   });
 }

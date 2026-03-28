@@ -210,6 +210,36 @@ function slimSeasonStats(seasonStats: any): { batting: Record<string, number> } 
   return { batting };
 }
 
+// Maps long MLB batting field names → short field names used in compact statline storage
+const BATTING_SHORT: Record<string, string> = {
+  gamesPlayed: 'g', atBats: 'ab', hits: 'h', doubles: '2b', triples: '3b',
+  homeRuns: 'hr', baseOnBalls: 'bb', intentionalWalks: 'ibb', hitByPitch: 'hbp',
+  stolenBases: 'sb', caughtStealing: 'cs', sacBunts: 'sac', sacFlies: 'sf',
+  pickoffs: 'po',
+};
+
+/**
+ * Convert a statlineDoc (with nested batting/fielding) into the compact
+ * format stored in the date-keyed collection: { b, pos, t }
+ * Zero values are omitted to save space.
+ */
+function encodeStatlineEntry(statlineDoc: any): Record<string, any> {
+  const s = statlineDoc.stats;
+  const b: Record<string, number> = {};
+  for (const [long, short] of Object.entries(BATTING_SHORT)) {
+    const v = toNumber(s?.batting?.[long]);
+    if (v !== 0) b[short] = v;
+  }
+  const e = toNumber(s?.fielding?.e);
+  const pb = toNumber(s?.fielding?.pb);
+  if (e) b.e = e;
+  if (pb) b.pb = pb;
+  const entry: Record<string, any> = { b };
+  if (statlineDoc.positions?.length) entry.pos = statlineDoc.positions;
+  if (statlineDoc.statlineType) entry.t = statlineDoc.statlineType;
+  return entry;
+}
+
 function hasAnyStats(statlineDoc: Record<string, any>): boolean {
   return (
     Object.keys(statlineDoc.stats.batting).length > 0 ||
@@ -319,12 +349,12 @@ async function processGameBoxscore(db: Db, game: any) {
       await db.collection('statlines').bulkWrite(
         statlineDocs.map((doc) => ({
           updateOne: {
-            filter: {
-              mlbId: doc.statlineDoc.mlbId,
-              gamePk: doc.statlineDoc.gamePk,
-              ablDate: doc.statlineDoc.ablDate,
+            filter: { _id: doc.statlineDoc.ablDate },
+            update: {
+              $set: {
+                [`p.${doc.statlineDoc.mlbId}_${doc.statlineDoc.gamePk}`]: encodeStatlineEntry(doc.statlineDoc),
+              },
             },
-            update: { $set: doc.statlineDoc },
             upsert: true,
           },
         })),
@@ -488,12 +518,12 @@ async function processResumedGameWithPlayByPlay(db: Db, game: any) {
       await db.collection('statlines').bulkWrite(
         statlineDocs.map((doc) => ({
           updateOne: {
-            filter: {
-              mlbId: doc.statlineDoc.mlbId,
-              gamePk: doc.statlineDoc.gamePk,
-              ablDate: doc.statlineDoc.ablDate,
+            filter: { _id: doc.statlineDoc.ablDate },
+            update: {
+              $set: {
+                [`p.${doc.statlineDoc.mlbId}_${doc.statlineDoc.gamePk}`]: encodeStatlineEntry(doc.statlineDoc),
+              },
             },
-            update: { $set: doc.statlineDoc },
             upsert: true,
           },
         })),
