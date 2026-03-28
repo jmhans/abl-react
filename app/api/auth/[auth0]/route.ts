@@ -42,11 +42,17 @@ export async function GET(
   const url = new URL(request.url);
 
   if (route === 'login') {
+    // Support ?returnTo=/some/path — encoded into OAuth state so it survives the redirect round-trip
+    const returnTo = url.searchParams.get('returnTo') || '/';
+    const safeReturnTo = returnTo.startsWith('/') ? returnTo : '/';
+    const state = Buffer.from(JSON.stringify({ returnTo: safeReturnTo })).toString('base64url');
+
     const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
       `response_type=code&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}&` +
       `redirect_uri=${encodeURIComponent(`${process.env.AUTH0_BASE_URL}/api/auth/callback`)}&` +
-      `scope=openid profile email`;
+      `scope=openid profile email&` +
+      `state=${encodeURIComponent(state)}`;
     return redirect(loginUrl);
   }
 
@@ -114,7 +120,21 @@ export async function GET(
       };
 
       // Set session cookie
-      const response = NextResponse.redirect(process.env.AUTH0_BASE_URL!);
+      // Decode state to find returnTo destination (from login ?returnTo= param)
+      let redirectTo = process.env.AUTH0_BASE_URL!;
+      const stateParam = url.searchParams.get('state');
+      if (stateParam) {
+        try {
+          const decoded = JSON.parse(Buffer.from(stateParam, 'base64url').toString('utf8'));
+          if (typeof decoded.returnTo === 'string' && decoded.returnTo.startsWith('/')) {
+            redirectTo = `${process.env.AUTH0_BASE_URL}${decoded.returnTo}`;
+          }
+        } catch {
+          // malformed state — fall back to base URL
+        }
+      }
+
+      const response = NextResponse.redirect(redirectTo);
       response.cookies.set('appSession', JSON.stringify({ user: sessionUser }), {
         httpOnly: true,
         secure: true,
