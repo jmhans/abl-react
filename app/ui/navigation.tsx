@@ -1,41 +1,120 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export default function Navigation() {
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
+
+  useEffect(() => {
+    const fetchUserTeam = async () => {
+      try {
+        const [userRes, adminRes] = await Promise.all([
+          fetch('/api/auth/me'),
+          fetch('/api/admin/me'),
+        ]);
+
+        if (adminRes.ok) {
+          const adminData = await adminRes.json();
+          setIsAdmin(Boolean(adminData?.isAdmin));
+        }
+
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          const user = userData?.user;
+
+          if (!user?.sub) return;
+
+          const teamsRes = await fetch('/api/teams');
+          if (teamsRes.ok) {
+            const teams = await teamsRes.json();
+            const myTeam = teams.find((t: any) =>
+              t.owners?.some((o: any) => o.userId === user.sub)
+            );
+            if (myTeam) {
+              setUserTeamId(myTeam._id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch user team:', err);
+      }
+    };
+
+    fetchUserTeam();
+  }, []);
+
   return (
-    <aside className="w-64 bg-gray-100 p-4 border-r border-gray-200 min-h-screen">
-      <nav className="space-y-2">
-        <Link 
-          href="/dashboard" 
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition"
+    <aside className={`${isOpen ? 'w-64' : 'w-16'} bg-gray-100 border-r border-gray-200 min-h-screen transition-all duration-200 ease-in-out flex flex-col`}>
+      <div className="p-4 border-b border-gray-200">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="text-gray-600 hover:text-gray-900 text-xl p-2 hover:bg-gray-200 rounded transition"
+          title={isOpen ? 'Collapse' : 'Expand'}
         >
-          Dashboard
+          ☰
+        </button>
+      </div>
+      <nav className="space-y-2 p-4 flex-1">
+        <Link 
+          href="/" 
+          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Dashboard"
+        >
+          {isOpen ? 'Dashboard' : '📊'}
         </Link>
         <Link 
           href="/standings" 
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition"
+          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Standings"
         >
-          Standings
+          {isOpen ? 'Standings' : '📈'}
         </Link>
         <Link 
-          href="/rosters" 
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition"
+          href="/draft" 
+          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Draft"
         >
-          My Roster
+          {isOpen ? 'Draft' : '🎯'}
         </Link>
-        <Link 
-          href="/free-agents" 
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition"
-        >
-          Free Agents
-        </Link>
+        {userTeamId ? (
+          <>
+            <Link 
+              href={`/teams/${userTeamId}/roster`}
+              className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="My Roster"
+            >
+              {isOpen ? 'My Roster' : '👥'}
+            </Link>
+            <Link 
+              href={`/teams/${userTeamId}/free-agents`}
+              className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Free Agents"
+            >
+              {isOpen ? 'Free Agents' : '✨'}
+            </Link>
+          </>
+        ) : (
+          <>
+            <div className="block px-4 py-2 rounded text-gray-400 cursor-not-allowed text-sm">
+              {isOpen ? 'My Roster' : '👥'}
+            </div>
+            <div className="block px-4 py-2 rounded text-gray-400 cursor-not-allowed text-sm">
+              {isOpen ? 'Free Agents' : '✨'}
+            </div>
+          </>
+        )}
         <Link 
           href="/scores" 
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition"
+          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Scores"
         >
-          Scores
+          {isOpen ? 'Scores' : '⚾'}
         </Link>
+        {isAdmin && (
+          <Link 
+            href="/admin" 
+            className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Admin"
+          >
+            {isOpen ? 'Admin' : '⚙️'}
+          </Link>
+        )}
       </nav>
     </aside>
   );

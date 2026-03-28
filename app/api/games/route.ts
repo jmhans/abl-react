@@ -11,30 +11,7 @@ export async function GET(request: NextRequest) {
     const display = searchParams.get('display');
     
     // Build aggregation pipeline
-    const pipeline: any[] = [
-      {
-        $addFields: {
-          results: {
-            $cond: {
-              if: { $isArray: '$results' },
-              then: '$results',
-              else: ['$results']
-            }
-          }
-        }
-      },
-      {
-        $addFields: {
-          results: {
-            $filter: {
-              input: '$results',
-              as: 'res',
-              cond: { $ne: ['$$res', null] }
-            }
-          }
-        }
-      }
-    ];
+    const pipeline: any[] = [];
 
     // Playoffs filter
     if (display === 'playoffs') {
@@ -56,17 +33,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const games = await db.collection('games').aggregate(pipeline).toArray();
+    const games = await db.collection('games').aggregate(pipeline, { allowDiskUse: true }).toArray();
     
     // Populate team references
     const teamIds = new Set<string>();
     games.forEach(game => {
       if (game.awayTeam) teamIds.add(game.awayTeam.toString());
       if (game.homeTeam) teamIds.add(game.homeTeam.toString());
-      game.results?.forEach((result: any) => {
-        if (result.winner) teamIds.add(result.winner.toString());
-        if (result.loser) teamIds.add(result.loser.toString());
-      });
+      if (game.result?.winner) teamIds.add(game.result.winner.toString());
+      if (game.result?.loser) teamIds.add(game.result.loser.toString());
     });
 
     const teams = await db.collection('ablteams')
@@ -79,10 +54,8 @@ export async function GET(request: NextRequest) {
     games.forEach(game => {
       if (game.awayTeam) game.awayTeam = teamMap.get(game.awayTeam.toString());
       if (game.homeTeam) game.homeTeam = teamMap.get(game.homeTeam.toString());
-      game.results?.forEach((result: any) => {
-        if (result.winner) result.winner = teamMap.get(result.winner.toString());
-        if (result.loser) result.loser = teamMap.get(result.loser.toString());
-      });
+      if (game.result?.winner) game.result.winner = teamMap.get(game.result.winner.toString());
+      if (game.result?.loser) game.result.loser = teamMap.get(game.result.loser.toString());
     });
 
     return NextResponse.json(games);

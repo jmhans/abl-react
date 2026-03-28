@@ -15,28 +15,6 @@ export async function GET(
       {
         $match: { _id: new ObjectId(id) }
       },
-      {
-        $addFields: {
-          results: {
-            $cond: {
-              if: { $isArray: '$results' },
-              then: '$results',
-              else: ['$results']
-            }
-          }
-        }
-      },
-      {
-        $addFields: {
-          results: {
-            $filter: {
-              input: '$results',
-              as: 'res',
-              cond: { $ne: ['$$res', null] }
-            }
-          }
-        }
-      }
     ]).toArray();
 
     if (!result || result.length === 0) {

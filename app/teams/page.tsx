@@ -103,7 +103,7 @@ export default function TeamsPage() {
 
             <div className="mt-4 pt-4 border-t border-gray-200">
               <Link
-                href={`/teams/${team._id}`}
+                href={`/teams/${team._id}/roster`}
                 className="text-blue-600 hover:text-blue-800 text-sm font-medium"
               >
                 View Roster →

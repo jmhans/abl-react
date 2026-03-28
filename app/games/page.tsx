@@ -16,11 +16,43 @@ interface Game {
   homeTeam: Team;
   gameType?: string;
   description?: string;
-  results?: Array<{
+  result?: {
     winner?: Team;
     loser?: Team;
     scores?: any[];
-  }>;
+  };
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function extractRuns(scoreLike: any): number | null {
+  if (scoreLike == null) return null;
+  const direct = toNullableNumber(scoreLike);
+  if (direct != null) return direct;
+  return toNullableNumber(scoreLike?.abl_runs);
+}
+
+function formatRuns(value: number | null): string | null {
+  if (value == null) return null;
+  return value.toFixed(2);
+}
+
+function findScoreForTeam(scores: any[] | undefined, game: Game, side: 'away' | 'home') {
+  const teamId = side === 'away' ? game.awayTeam?._id : game.homeTeam?._id;
+  const location = side === 'away' ? 'A' : 'H';
+
+  return (Array.isArray(scores) ? scores : []).find((score: any) => {
+    const scoreTeamId = score?.team?._id || score?.team?.toString?.() || score?.team;
+    if (teamId && scoreTeamId && String(scoreTeamId) === String(teamId)) return true;
+    return score?.location === location;
+  });
 }
 
 export default function GamesPage() {
@@ -92,8 +124,10 @@ export default function GamesPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">{date}</h2>
             <div className="space-y-4">
               {gamesByDate[date].map(game => {
-                const hasResult = game.results && game.results.length > 0 && game.results[0].winner;
-                const result = hasResult ? game.results![0] : null;
+                const hasResult = !!game.result?.winner;
+                const result = hasResult ? game.result! : null;
+                const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
+                const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
 
                 return (
                   <Link
@@ -104,13 +138,23 @@ export default function GamesPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-4">
-                          <div className="text-right min-w-[200px]">
+                          <div className="text-right min-w-[240px]">
                             <span className={`font-semibold ${result?.winner?._id === game.awayTeam._id ? 'text-green-600' : ''}`}>
                               {game.awayTeam.location} {game.awayTeam.nickname}
                             </span>
+                            {awayScore != null && (
+                              <span className="ml-3 inline-block min-w-8 text-right font-mono text-gray-900">
+                                {awayScore}
+                              </span>
+                            )}
                           </div>
                           <div className="text-gray-500 font-bold">@</div>
-                          <div className="min-w-[200px]">
+                          <div className="min-w-[240px]">
+                            {homeScore != null && (
+                              <span className="mr-3 inline-block min-w-8 text-right font-mono text-gray-900">
+                                {homeScore}
+                              </span>
+                            )}
                             <span className={`font-semibold ${result?.winner?._id === game.homeTeam._id ? 'text-green-600' : ''}`}>
                               {game.homeTeam.location} {game.homeTeam.nickname}
                             </span>

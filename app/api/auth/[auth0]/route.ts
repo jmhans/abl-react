@@ -1,6 +1,39 @@
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
 
+const AUTH0_ROLES_CLAIM_NAMESPACE = process.env.AUTH0_ROLES_CLAIM_NAMESPACE || 'https://abl.app';
+const AUTH0_ROLES_CLAIM_KEY = `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles`;
+
+function decodeJwtPayload(token?: string): Record<string, unknown> | null {
+  if (!token) return null;
+
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+
+    const decoded = Buffer.from(payload, 'base64url').toString('utf8');
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+}
+
+function extractRolesFromClaims(claims: Record<string, unknown> | null): string[] {
+  if (!claims) return [];
+
+  const namespacedRoles = toStringArray(claims[AUTH0_ROLES_CLAIM_KEY]);
+  const standardRoles = toStringArray(claims.roles);
+
+  return Array.from(new Set([...namespacedRoles, ...standardRoles]));
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ auth0: string }> }
@@ -35,15 +68,7 @@ export async function GET(
 
     try {
       const redirectUri = `${process.env.AUTH0_BASE_URL}/api/auth/callback`;
-      
-      console.log('Token exchange params:');
-      console.log('  issuer:', process.env.AUTH0_ISSUER_BASE_URL);
-      console.log('  client_id:', process.env.AUTH0_CLIENT_ID);
-      console.log('  client_secret exists:', !!process.env.AUTH0_CLIENT_SECRET);
-      console.log('  client_secret length:', process.env.AUTH0_CLIENT_SECRET?.length);
-      console.log('  redirect_uri:', redirectUri);
-      console.log('  code length:', code?.length);
-      
+
       // Exchange code for tokens using form-urlencoded
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
@@ -52,9 +77,7 @@ export async function GET(
         code: code,
         redirect_uri: redirectUri,
       });
-      
-      console.log('Request body:', params.toString());
-      
+
       const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -64,7 +87,6 @@ export async function GET(
       if (!tokenResponse.ok) {
         const error = await tokenResponse.text();
         console.error('Token exchange failed:', error);
-        console.error('Response status:', tokenResponse.status);
         return redirect('/?error=token_failed');
       }
 
@@ -80,10 +102,20 @@ export async function GET(
       }
 
       const user = await userResponse.json();
+      const tokenClaims = decodeJwtPayload(tokens?.id_token);
+      const roles = extractRolesFromClaims(tokenClaims);
+
+      const sessionUser = {
+        ...user,
+        ...(tokenClaims && tokenClaims[AUTH0_ROLES_CLAIM_KEY]
+          ? { [AUTH0_ROLES_CLAIM_KEY]: tokenClaims[AUTH0_ROLES_CLAIM_KEY] }
+          : {}),
+        roles,
+      };
 
       // Set session cookie
       const response = NextResponse.redirect(process.env.AUTH0_BASE_URL!);
-      response.cookies.set('appSession', JSON.stringify({ user, tokens }), {
+      response.cookies.set('appSession', JSON.stringify({ user: sessionUser }), {
         httpOnly: true,
         secure: true,
         sameSite: 'lax',

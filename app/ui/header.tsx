@@ -30,8 +30,11 @@ export default function Header() {
           <Link href="/standings" className="hover:text-blue-100">
             Standings
           </Link>
-          <Link href="/rosters" className="hover:text-blue-100">
-            Rosters
+          <Link href="/draft" className="hover:text-blue-100">
+            Draft
+          </Link>
+          <Link href="/teams" className="hover:text-blue-100">
+            Teams
           </Link>
           <Link href="/free-agents" className="hover:text-blue-100">
             Free Agents
