@@ -192,7 +192,7 @@ function shortenBoxscoreStats(stats: any) {
   };
 }
 
-function hasAnyStats(statlineDoc: { stats: { batting: Record<string, number>; fielding: { e: number; pb: number } } }): boolean {
+function hasAnyStats(statlineDoc: Record<string, any>): boolean {
   return (
     Object.keys(statlineDoc.stats.batting).length > 0 ||
     statlineDoc.stats.fielding.e > 0 ||

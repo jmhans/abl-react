@@ -11,6 +11,7 @@ interface Player {
   team: string;
   position?: string;
   eligible?: string[];
+  status?: string;
   ablstatus?: {
     ablTeam: string;
     acqType: 'draft' | 'supp_draft' | 'fa' | 'trade';
@@ -18,6 +19,7 @@ interface Player {
   };
   stats?: any;
   abl_runs?: number;
+  abl?: number;
 }
 
 interface RosterItem {

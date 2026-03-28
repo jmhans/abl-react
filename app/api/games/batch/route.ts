@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       total: games.length,
       processed: 0,
       skipped: 0,
-      errors: [],
+      errors: [] as { gameId: string; error: string }[],
       summary: [] as any[]
     };
 
