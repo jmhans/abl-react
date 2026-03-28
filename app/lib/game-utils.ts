@@ -386,6 +386,31 @@ export async function calculateGameResultLive(
   const winner = finalScores.home.abl_runs > finalScores.away.abl_runs ? homeTeamId : awayTeamId;
   const loser  = finalScores.home.abl_runs > finalScores.away.abl_runs ? awayTeamId : homeTeamId;
 
+  /**
+   * Keep only the fields needed from each player entry:
+   *   player: { _id, name, eligible }  — drop seasonStats, team, mlbID, status, etc.
+   *   dailyStats, lineupPosition, playedPosition, ablstatus, ablRosterPosition, lineupOrder, ablPlayedType
+   * This keeps game docs small. The full player record lives in the players collection.
+   */
+  function slimLineup(lineup: any[]) {
+    return lineup.map((p) => ({
+      player: p.player
+        ? {
+            _id: p.player._id,
+            name: p.player.name,
+            eligible: p.player.eligible,
+          }
+        : p.player,
+      lineupPosition: p.lineupPosition,
+      ablstatus: p.ablstatus,
+      playedPosition: p.playedPosition,
+      ablRosterPosition: p.ablRosterPosition,
+      lineupOrder: p.lineupOrder,
+      ablPlayedType: p.ablPlayedType,
+      dailyStats: p.dailyStats,
+    }));
+  }
+
   return {
     scores: [
       {
@@ -393,14 +418,14 @@ export async function calculateGameResultLive(
         location: 'H',
         regulation: regulationScores.home,
         final: finalScores.home,
-        players: homeLineup,
+        players: slimLineup(homeLineup),
       },
       {
         team: new ObjectId(awayTeamId),
         location: 'A',
         regulation: regulationScores.away,
         final: finalScores.away,
-        players: awayLineup,
+        players: slimLineup(awayLineup),
       },
     ],
     winner: new ObjectId(winner),
