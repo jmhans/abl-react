@@ -47,48 +47,76 @@ function slimPlayer(player) {
   return slim;
 }
 
-function slimGameResult(result) {
-  if (!result || !Array.isArray(result.scores)) return result;
-  return {
-    ...result,
-    scores: result.scores.map((score) => ({
-      ...score,
-      players: Array.isArray(score.players)
-        ? score.players.map((entry) => ({
-            ...entry,
-            player: slimPlayer(entry.player),
-          }))
-        : score.players,
-    })),
-  };
+function slimScores(scores) {
+  return scores.map((score) => ({
+    ...score,
+    players: Array.isArray(score.players)
+      ? score.players.map((entry) => ({
+          ...entry,
+          player: slimPlayer(entry.player),
+        }))
+      : score.players,
+  }));
+}
+
+// Handles both result (singular) and results (array) shapes
+function slimGameResult(game) {
+  if (game.result?.scores) {
+    return { result: { ...game.result, scores: slimScores(game.result.scores) } };
+  }
+  if (Array.isArray(game.results) && game.results.length > 0) {
+    return {
+      results: game.results.map((r) =>
+        r?.scores ? { ...r, scores: slimScores(r.scores) } : r
+      ),
+    };
+  }
+  return null;
 }
 
 function playerNeedsSlimming(player) {
   if (!player || typeof player !== 'object') return false;
-  // If any key exists beyond our keep-set, it needs slimming
   return Object.keys(player).some((k) => !PLAYER_KEEP_FIELDS.has(k));
 }
 
-function gameNeedsSlimming(game) {
-  if (!game.result?.scores) return false;
-  return game.result.scores.some((score) =>
+function scoresNeedSlimming(scores) {
+  if (!Array.isArray(scores)) return false;
+  return scores.some((score) =>
     Array.isArray(score.players) &&
     score.players.some((entry) => playerNeedsSlimming(entry.player))
   );
 }
 
+function gameNeedsSlimming(game) {
+  if (game.result?.scores) return scoresNeedSlimming(game.result.scores);
+  if (Array.isArray(game.results)) {
+    return game.results.some((r) => scoresNeedSlimming(r?.scores));
+  }
+  return false;
+}
+
 async function slimDb(db, dbName) {
   console.log(`\n=== Slimming game players in ${dbName} ===`);
 
-  const total = await db.collection('games').countDocuments({ 'result.scores': { $exists: true } });
-  console.log(`  Total games with result.scores: ${total}`);
+  const total = await db.collection('games').countDocuments({
+    $or: [
+      { 'result.scores': { $exists: true } },
+      { 'results.0.scores': { $exists: true } },
+    ],
+  });
+  console.log(`  Total games with scores: ${total}`);
 
   if (total === 0) {
     console.log('  Nothing to do.');
     return;
   }
 
-  const cursor = db.collection('games').find({ 'result.scores': { $exists: true } });
+  const cursor = db.collection('games').find({
+    $or: [
+      { 'result.scores': { $exists: true } },
+      { 'results.0.scores': { $exists: true } },
+    ],
+  });
 
   let checked = 0, slimmed = 0, alreadySlim = 0;
   const bulk = [];
@@ -101,7 +129,7 @@ async function slimDb(db, dbName) {
       continue;
     }
 
-    const slimmedResult = slimGameResult(game.result);
+    const slimmedUpdate = slimGameResult(game);
 
     if (dryRun) {
       slimmed++;
@@ -111,7 +139,7 @@ async function slimDb(db, dbName) {
     bulk.push({
       updateOne: {
         filter: { _id: game._id },
-        update: { $set: { result: slimmedResult } },
+        update: { $set: slimmedUpdate },
       },
     });
     slimmed++;
