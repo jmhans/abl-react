@@ -2,8 +2,18 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+
+/** Extract /[league]/[season] prefix from the current URL, fallback to /abl/2025 */
+function useLeagueSeasonBase(defaultBase = '/abl/2025'): string {
+  const pathname = usePathname();
+  const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/|$)/);
+  if (match) return `/${match[1]}/${match[2]}`;
+  return defaultBase;
+}
 
 export default function Navigation() {
+  const base = useLeagueSeasonBase();
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
@@ -58,34 +68,34 @@ export default function Navigation() {
         </button>
       </div>
       <nav className="space-y-2 p-4 flex-1">
-        <Link 
-          href="/" 
+        <Link
+          href={base}
           className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Dashboard"
         >
           {isOpen ? 'Dashboard' : '📊'}
         </Link>
-        <Link 
-          href="/standings" 
+        <Link
+          href={`${base}/standings`}
           className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Standings"
         >
           {isOpen ? 'Standings' : '📈'}
         </Link>
-        <Link 
-          href="/draft" 
+        <Link
+          href={`${base}/draft`}
           className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Draft"
         >
           {isOpen ? 'Draft' : '🎯'}
         </Link>
         {userTeamId ? (
           <>
-            <Link 
-              href={`/teams/${userTeamId}/roster`}
+            <Link
+              href={`${base}/teams/${userTeamId}/roster`}
               className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="My Roster"
             >
               {isOpen ? 'My Roster' : '👥'}
             </Link>
-            <Link 
-              href={`/teams/${userTeamId}/free-agents`}
+            <Link
+              href={`${base}/teams/${userTeamId}/free-agents`}
               className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Free Agents"
             >
               {isOpen ? 'Free Agents' : '✨'}
@@ -101,8 +111,8 @@ export default function Navigation() {
             </div>
           </>
         )}
-        <Link 
-          href="/scores" 
+        <Link
+          href={`${base}/games`}
           className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm" title="Scores"
         >
           {isOpen ? 'Scores' : '⚾'}

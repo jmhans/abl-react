@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
 // GET /api/games - Get all games with populated teams
 export async function GET(request: NextRequest) {
@@ -9,13 +10,31 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const view = searchParams.get('view');
     const display = searchParams.get('display');
-    
+    const leagueParam = searchParams.get('league');
+    const seasonParam = searchParams.get('season');
+
     // Build aggregation pipeline
     const pipeline: any[] = [];
 
+    // League+season scoping (optional – falls back to all games if omitted)
+    if (leagueParam && seasonParam) {
+      try {
+        const ctx = await resolveLeagueContext(db, leagueParam, seasonParam);
+        pipeline.push({
+          $match: {
+            leagueId: ctx.league._id,
+            seasonId: ctx.season._id,
+          },
+        });
+      } catch {
+        // Unknown league/season — return empty
+        return NextResponse.json([]);
+      }
+    }
+
     // Playoffs filter
     if (display === 'playoffs') {
-      pipeline.unshift({
+      pipeline.push({
         $match: { 
           gameDate: { $gte: new Date('2023-08-22T00:00:00Z') } 
         }
