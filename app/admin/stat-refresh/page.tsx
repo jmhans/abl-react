@@ -135,17 +135,17 @@ export default function StatRefreshPage() {
         </div>
         {singleResult?.ok && (
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900 space-y-1">
-            <div className="font-medium">Completed for {singleResult.targetDate}</div>
+            <div className="font-medium">Stats downloaded for {singleResult.targetDate}</div>
             <div>
-              Scheduled games {singleResult.refreshSummary?.scheduledGames ?? 0} &bull;{' '}
-              Players updated {singleResult.refreshSummary?.playersUpdated ?? 0} &bull;{' '}
-              Statlines updated {singleResult.refreshSummary?.statlinesUpdated ?? 0}
+              {singleResult.refreshSummary?.scheduledGames ?? 0} MLB games &bull;{' '}
+              {singleResult.refreshSummary?.playersUpdated ?? 0} players updated &bull;{' '}
+              {singleResult.refreshSummary?.statlinesUpdated ?? 0} stat lines recorded
             </div>
             {singleResult.recalculate !== false && singleResult.recalcSummary && (
               <div className="text-emerald-700">
-                Recalc: total {singleResult.recalcSummary.totalGames ?? 0}, processed{' '}
-                {singleResult.recalcSummary.processed ?? 0}, skipped {singleResult.recalcSummary.skipped ?? 0},{' '}
-                errors {singleResult.recalcSummary.errors ?? 0}
+                Recalculated {singleResult.recalcSummary.processed ?? 0} of {singleResult.recalcSummary.totalGames ?? 0} ABL games
+                {(singleResult.recalcSummary.skipped ?? 0) > 0 && ` (${singleResult.recalcSummary.skipped} skipped)`}
+                {(singleResult.recalcSummary.errors ?? 0) > 0 && ` · ${singleResult.recalcSummary.errors} errors`}
               </div>
             )}
           </div>
@@ -196,18 +196,18 @@ export default function StatRefreshPage() {
         {bulkResult?.ok && (
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-900 space-y-1">
             <div className="font-medium">
-              Completed — {bulkResult.daysProcessed} days processed ({bulkResult.dateRange?.start} to{' '}
-              {bulkResult.dateRange?.end})
+              Downloaded stats for {bulkResult.daysProcessed} days ({bulkResult.dateRange?.start} – {bulkResult.dateRange?.end})
             </div>
             <div>
-              Scheduled games {bulkResult.refreshSummary?.scheduledGames ?? 0} &bull;{' '}
-              Players updated {bulkResult.refreshSummary?.playersUpdated ?? 0} &bull;{' '}
-              Statlines updated {bulkResult.refreshSummary?.statlinesUpdated ?? 0}
+              {bulkResult.refreshSummary?.scheduledGames ?? 0} MLB games &bull;{' '}
+              {bulkResult.refreshSummary?.playersUpdated ?? 0} players updated &bull;{' '}
+              {bulkResult.refreshSummary?.statlinesUpdated ?? 0} stat lines recorded
             </div>
             {bulkResult.recalculate !== false && bulkResult.recalcSummary && (
               <div className="text-emerald-700">
-                Recalc: processed {bulkResult.recalcSummary.processed ?? 0}, skipped{' '}
-                {bulkResult.recalcSummary.skipped ?? 0}, errors {bulkResult.recalcSummary.errors ?? 0}
+                Recalculated {bulkResult.recalcSummary.processed ?? 0} ABL games
+                {(bulkResult.recalcSummary.skipped ?? 0) > 0 && ` (${bulkResult.recalcSummary.skipped} skipped)`}
+                {(bulkResult.recalcSummary.errors ?? 0) > 0 && ` · ${bulkResult.recalcSummary.errors} errors`}
               </div>
             )}
           </div>
