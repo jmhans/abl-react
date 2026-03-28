@@ -192,6 +192,24 @@ function shortenBoxscoreStats(stats: any) {
   };
 }
 
+// Only keep the batting fields needed by calculateAblScore / calculateDraftAblScore.
+// Drops pitching, fielding, and unused batting fields from the full MLB seasonStats blob.
+const SEASON_STAT_BATTING_FIELDS = [
+  'atBats', 'hits', 'doubles', 'triples', 'homeRuns',
+  'baseOnBalls', 'hitByPitch', 'stolenBases', 'caughtStealing',
+  'pickoffs', 'sacBunts', 'sacFlies',
+] as const;
+
+function slimSeasonStats(seasonStats: any): { batting: Record<string, number> } {
+  if (!seasonStats?.batting) return { batting: {} };
+  const batting: Record<string, number> = {};
+  for (const field of SEASON_STAT_BATTING_FIELDS) {
+    const v = toNumber(seasonStats.batting[field]);
+    if (v !== 0) batting[field] = v;
+  }
+  return { batting };
+}
+
 function hasAnyStats(statlineDoc: Record<string, any>): boolean {
   return (
     Object.keys(statlineDoc.stats.batting).length > 0 ||
@@ -245,7 +263,7 @@ function buildPlayerAndStatlineDocs(game: any, teamAbbr: string, boxscorePlayer:
     name: boxscorePlayer?.person?.fullName || '',
     team: teamAbbr,
     status: boxscorePlayer?.status?.description || '',
-    stats: boxscorePlayer?.seasonStats || {},
+    stats: slimSeasonStats(boxscorePlayer?.seasonStats),
     lastStatUpdate: gameDate,
   };
 
@@ -428,7 +446,7 @@ async function processResumedGameWithPlayByPlay(db: Db, game: any) {
       name: boxscorePlayer?.person?.fullName || '',
       team: meta.teamAbbr,
       status: boxscorePlayer?.status?.description || '',
-      stats: boxscorePlayer?.seasonStats || {},
+      stats: slimSeasonStats(boxscorePlayer?.seasonStats),
       lastStatUpdate: new Date(game.gameDate),
     };
 
