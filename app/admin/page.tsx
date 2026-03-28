@@ -11,6 +11,22 @@ interface AdminCard {
 
 const cards: AdminCard[] = [
   {
+    href: '/admin/leagues',
+    title: 'League Management',
+    description: 'Create leagues and manage their seasons and team rosters.',
+    accent: 'border-l-purple-500',
+    iconBg: 'bg-purple-100',
+    icon: '🏟️',
+  },
+  {
+    href: '/admin/seasons',
+    title: 'Season Management',
+    description: 'Create seasons, assign teams, and track season status.',
+    accent: 'border-l-orange-500',
+    iconBg: 'bg-orange-100',
+    icon: '📅',
+  },
+  {
     href: '/admin/new-draft',
     title: 'Draft Management',
     description: 'Set pick order and start a new season draft.',
