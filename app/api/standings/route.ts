@@ -1,15 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
-// GET /api/standings - Get league standings
+// GET /api/standings?league=abl&season=2025 - Get season-scoped standings
 export async function GET(request: NextRequest) {
   try {
     const db = await connectToDatabase();
+    const { searchParams } = request.nextUrl;
+    const leagueSlug = searchParams.get('league');
+    const seasonSlug = searchParams.get('season');
 
-    // Get standings from standings_view collection
-    const standings = await db.collection('standings_view')
-      .find({})
-      .toArray();
+    let standings: any[];
+
+    if (leagueSlug && seasonSlug) {
+      // Resolve the season to get its ObjectId
+      const ctx = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+      const seasonId = ctx.season._id;
+
+      // Dynamically fetch both view pipelines so we stay in sync if views change
+      const [standingsDef, advancedDef] = await Promise.all([
+        db.listCollections({ name: 'standings_view' }).next() as Promise<any>,
+        db.listCollections({ name: 'advanced_standings_view' }).next() as Promise<any>,
+      ]);
+      const advancedPipeline: any[] = advancedDef?.options?.pipeline ?? [];
+      const standingsPipeline: any[] = standingsDef?.options?.pipeline ?? [];
+
+      // Replace the "$lookup from: advanced_standings_view" stage with an inline
+      // pipeline lookup on games so the advanced stats are also season-scoped.
+      const scopedStandingsPipeline = standingsPipeline.map((stage: any) => {
+        if (stage.$lookup?.from === 'advanced_standings_view') {
+          return {
+            $lookup: {
+              as: 'AdvancedStandings',
+              from: 'games',
+              let: { nickname: '$tm.nickname' },
+              pipeline: [
+                // Season filter must be first so it runs on game documents
+                { $match: { seasonId } },
+                ...advancedPipeline,
+                // Narrow to the single team being looked up
+                { $match: { $expr: { $eq: ['$_id', '$$nickname'] } } },
+              ],
+            },
+          };
+        }
+        return stage;
+      });
+
+      // Prepend the season $match and run directly on the games collection
+      standings = await db.collection('games')
+        .aggregate([{ $match: { seasonId } }, ...scopedStandingsPipeline])
+        .toArray();
+    } else {
+      // Fallback: no season context — return all data from the unfiltered view
+      standings = await db.collection('standings_view').find({}).toArray();
+    }
 
     // Calculate games behind (GB)
     // Find the best record
