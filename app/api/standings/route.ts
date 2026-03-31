@@ -104,20 +104,20 @@ export async function GET(request: NextRequest) {
       let awayRecord = '';
       let xtrasRecord = '';
       if (team.outcomes && Array.isArray(team.outcomes)) {
-        const homeGames = team.outcomes.filter(g => g.location === 'H');
-        const awayGames = team.outcomes.filter(g => g.location === 'A');
-        const extrasGames = team.outcomes.filter(g => g.extras === true);
+        const homeGames = team.outcomes.filter((g: any) => g.location === 'H');
+        const awayGames = team.outcomes.filter((g: any) => g.location === 'A');
+        const extrasGames = team.outcomes.filter((g: any) => g.extras === true);
         
-        const homeW = homeGames.filter(g => g.outcome?.toLowerCase() === 'w').length;
-        const homeL = homeGames.filter(g => g.outcome?.toLowerCase() === 'l').length;
+        const homeW = homeGames.filter((g: any) => g.outcome?.toLowerCase() === 'w').length;
+        const homeL = homeGames.filter((g: any) => g.outcome?.toLowerCase() === 'l').length;
         homeRecord = `${homeW}-${homeL}`;
         
-        const awayW = awayGames.filter(g => g.outcome?.toLowerCase() === 'w').length;
-        const awayL = awayGames.filter(g => g.outcome?.toLowerCase() === 'l').length;
+        const awayW = awayGames.filter((g: any) => g.outcome?.toLowerCase() === 'w').length;
+        const awayL = awayGames.filter((g: any) => g.outcome?.toLowerCase() === 'l').length;
         awayRecord = `${awayW}-${awayL}`;
         
-        const xtrasW = extrasGames.filter(g => g.outcome?.toLowerCase() === 'w').length;
-        const xtrasL = extrasGames.filter(g => g.outcome?.toLowerCase() === 'l').length;
+        const xtrasW = extrasGames.filter((g: any) => g.outcome?.toLowerCase() === 'w').length;
+        const xtrasL = extrasGames.filter((g: any) => g.outcome?.toLowerCase() === 'l').length;
         xtrasRecord = `${xtrasW}-${xtrasL}`;
       }
 
