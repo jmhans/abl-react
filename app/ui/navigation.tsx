@@ -21,7 +21,7 @@ interface SessionUser {
 
 interface MyLeagueEntry {
   team: { _id: string; nickname: string; location: string } | null;
-  season: { _id: string; year: number; slug: string };
+  season: { _id: string; year: number; slug: string; status?: string };
   league: { _id: string; name: string; slug: string } | null;
 }
 
@@ -129,45 +129,58 @@ export default function Navigation() {
       </div>
 
       {/* League switcher */}
-      {isOpen && myLeagues.length > 0 && (
-        <div className="px-4 py-3 border-b border-gray-200">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-            League
-          </p>
-          {myLeagues.length === 1 ? (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-800">
-                {myLeagues[0].league?.name ?? currentLeagueSlug.toUpperCase()}
-              </span>
-              <span className="text-xs text-gray-400">{myLeagues[0].season?.year}</span>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {myLeagues.map((entry) => {
-                if (!entry.league) return null;
-                const href = `/${entry.league.slug}/${entry.season.year}`;
-                const isCurrent =
-                  entry.league.slug === currentLeagueSlug &&
-                  String(entry.season.year) === currentSeasonYear;
-                return (
-                  <Link
-                    key={entry.season._id}
-                    href={href}
-                    className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                      isCurrent
-                        ? 'bg-blue-100 text-blue-700 font-semibold'
-                        : 'text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    <span>{entry.league.name}</span>
-                    <span className="text-xs opacity-60">{entry.season.year}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      {isOpen && myLeagues.length > 0 && (() => {
+        const activeLeagues = myLeagues.filter(e => e.season?.status !== 'completed');
+        const hasCompleted = myLeagues.some(e => e.season?.status === 'completed');
+        if (activeLeagues.length === 0 && !hasCompleted) return null;
+        return (
+          <div className="px-4 py-3 border-b border-gray-200">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+              League
+            </p>
+            {activeLeagues.length === 0 ? null : activeLeagues.length === 1 ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-800">
+                  {activeLeagues[0].league?.name ?? currentLeagueSlug.toUpperCase()}
+                </span>
+                <span className="text-xs text-gray-400">{activeLeagues[0].season?.year}</span>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {activeLeagues.map((entry) => {
+                  if (!entry.league) return null;
+                  const href = `/${entry.league.slug}/${entry.season.year}`;
+                  const isCurrent =
+                    entry.league.slug === currentLeagueSlug &&
+                    String(entry.season.year) === currentSeasonYear;
+                  return (
+                    <Link
+                      key={entry.season._id}
+                      href={href}
+                      className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                        isCurrent
+                          ? 'bg-blue-100 text-blue-700 font-semibold'
+                          : 'text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      <span>{entry.league.name}</span>
+                      <span className="text-xs opacity-60">{entry.season.year}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+            {hasCompleted && (
+              <Link
+                href="/my-seasons"
+                className="mt-2 block text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                View completed seasons →
+              </Link>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Join available leagues */}
       {user && availableLeagues.length > 0 && (
