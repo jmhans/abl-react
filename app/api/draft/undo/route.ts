@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
 function toStringId(value: any): string {
   if (!value) return '';
@@ -39,10 +40,17 @@ async function hydrateDraft(db: any, draft: any) {
   };
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const db = await connectToDatabase();
-    const draft = await db.collection('drafts').findOne({ status: 'active' }, { sort: { createdAt: -1 } });
+    const body = await request.json().catch(() => ({}));
+    const leagueSlug = body.league || 'abl';
+    const seasonSlug = body.season || 'active';
+    const { league, season } = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+    const draft = await db.collection('drafts').findOne(
+      { status: 'active', leagueId: league._id.toString(), seasonId: season._id.toString() },
+      { sort: { createdAt: -1 } }
+    );
 
     if (!draft) {
       return NextResponse.json({ error: 'No active draft found' }, { status: 404 });

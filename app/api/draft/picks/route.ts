@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { buildDraftBoard } from '@/app/lib/draft-utils';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
 function toStringId(value: any): string {
   if (!value) return '';
@@ -44,13 +45,19 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const playerId = String(body.playerId || '');
+    const leagueSlug = String(body.league || 'abl');
+    const seasonSlug = String(body.season || 'active');
 
     if (!playerId || !ObjectId.isValid(playerId)) {
       return NextResponse.json({ error: 'Valid playerId is required' }, { status: 400 });
     }
 
     const db = await connectToDatabase();
-    const draft = await db.collection('drafts').findOne({ status: 'active' }, { sort: { createdAt: -1 } });
+    const { league, season } = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+    const draft = await db.collection('drafts').findOne(
+      { status: 'active', leagueId: league._id.toString(), seasonId: season._id.toString() },
+      { sort: { createdAt: -1 } }
+    );
 
     if (!draft) {
       return NextResponse.json({ error: 'No active draft found' }, { status: 404 });

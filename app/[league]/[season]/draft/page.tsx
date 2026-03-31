@@ -80,9 +80,9 @@ export default function DraftPage() {
       try {
         setLoading(true);
         const [teamsRes, playersRes, draftRes, adminRes] = await Promise.all([
-          fetch('/api/teams'),
+          fetch(`/api/teams?league=${league}&season=${season}`),
           fetch('/api/players'),
-          fetch('/api/draft', { cache: 'no-store' }),
+          fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
           fetch('/api/admin/me', { cache: 'no-store' }),
         ]);
 
@@ -193,10 +193,7 @@ export default function DraftPage() {
         const res = await fetch('/api/draft/order', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderIds: next }),
-        });
-
-        if (!res.ok) {
+        body: JSON.stringify({ orderIds: next, league, season }),
           throw new Error('Failed to save draft order');
         }
       } catch (err) {
@@ -211,8 +208,8 @@ export default function DraftPage() {
 
   const refreshDraft = async () => {
     const [draftRes, teamsRes] = await Promise.all([
-      fetch('/api/draft', { cache: 'no-store' }),
-      fetch('/api/teams', { cache: 'no-store' }),
+      fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
+      fetch(`/api/teams?league=${league}&season=${season}`, { cache: 'no-store' }),
     ]);
 
     if (!draftRes.ok || !teamsRes.ok) {
@@ -234,7 +231,7 @@ export default function DraftPage() {
       const res = await fetch('/api/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds }),
+        body: JSON.stringify({ orderIds, league, season }),
       });
 
       if (!res.ok) {
@@ -258,7 +255,7 @@ export default function DraftPage() {
       const res = await fetch('/api/draft/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: player._id }),
+        body: JSON.stringify({ playerId: player._id, league, season }),
       });
 
       if (!res.ok) {
@@ -282,7 +279,11 @@ export default function DraftPage() {
     try {
       setIsWorking(true);
       setError(null);
-      const res = await fetch('/api/draft/undo', { method: 'POST' });
+      const res = await fetch('/api/draft/undo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league, season }),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to undo pick');
@@ -302,7 +303,11 @@ export default function DraftPage() {
     try {
       setIsWorking(true);
       setError(null);
-      const res = await fetch('/api/draft/finalize', { method: 'POST' });
+      const res = await fetch('/api/draft/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league, season }),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to finalize draft');

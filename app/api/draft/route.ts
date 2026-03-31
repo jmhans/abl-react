@@ -2,14 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
 function toStringId(value: any): string {
   if (!value) return '';
   return typeof value === 'string' ? value : value.toString();
 }
 
-async function getActiveDraft(db: any) {
-  return db.collection('drafts').findOne({ status: 'active' }, { sort: { createdAt: -1 } });
+async function getDraftForSeason(db: any, leagueId: any, seasonId: any) {
+  // Find the most-recent completed or active draft tied to this season.
+  // Falls back to any draft with matching leagueId when seasonId doesn't match
+  // (e.g. draft saved under wrong season — handled by fix-draft-2026 script).
+  const draft = await db.collection('drafts').findOne(
+    { leagueId: leagueId.toString(), seasonId: seasonId.toString() },
+    { sort: { createdAt: -1 } }
+  );
+  return draft;
+}
+
+async function getActiveDraftForSeason(db: any, leagueId: any, seasonId: any) {
+  return db.collection('drafts').findOne(
+    { status: 'active', leagueId: leagueId.toString(), seasonId: seasonId.toString() },
+    { sort: { createdAt: -1 } }
+  );
+}
+
+// Resolve league+season from query params (league=abl&season=2026 or defaults to active)
+async function resolveFromParams(db: any, searchParams: URLSearchParams) {
+  const leagueSlug = searchParams.get('league') || 'abl';
+  const seasonSlug = searchParams.get('season') || 'active';
+  return resolveLeagueContext(db, leagueSlug, seasonSlug);
 }
 
 async function hydrateDraft(db: any, draft: any) {
@@ -47,10 +69,12 @@ async function hydrateDraft(db: any, draft: any) {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const db = await connectToDatabase();
-    const draft = await getActiveDraft(db);
+    const { league, season } = await resolveFromParams(db, request.nextUrl.searchParams);
+    // Return the most recent draft for this season (active or completed)
+    const draft = await getDraftForSeason(db, league._id, season._id);
     const hydrated = await hydrateDraft(db, draft);
     return NextResponse.json({ draft: hydrated });
   } catch (error) {
@@ -69,7 +93,12 @@ export async function POST(request: NextRequest) {
     const db = await connectToDatabase();
     const body = await request.json().catch(() => ({}));
 
-    const teams = await db.collection('ablteams').find({}).toArray();
+    const { league, season } = await resolveFromParams(db, request.nextUrl.searchParams);
+
+    const seasonTeamIds = (season.teamIds || []).map((id: any) => id.toString());
+    const teams = seasonTeamIds.length
+      ? await db.collection('ablteams').find({ _id: { $in: seasonTeamIds.map((id: string) => new ObjectId(id)) } }).toArray()
+      : await db.collection('ablteams').find({}).toArray();
     const validTeamIds = teams.map((team: any) => toStringId(team._id));
 
     const providedOrder = Array.isArray(body.orderIds) ? body.orderIds.map(String) : validTeamIds;
@@ -82,26 +111,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid team orderIds' }, { status: 400 });
     }
 
+    // Abandon any existing active drafts for this season
     await db.collection('drafts').updateMany(
-      { status: 'active' },
+      { status: 'active', leagueId: league._id.toString(), seasonId: season._id.toString() },
       { $set: { status: 'abandoned', completedAt: new Date() } }
-    );
-
-    await db.collection('players').updateMany(
-      {},
-      {
-        $set: {
-          'ablstatus.ablTeam': null,
-          'ablstatus.onRoster': false,
-          'ablstatus.acqType': null,
-        },
-      }
     );
 
     await db.collection('lineups').deleteMany({});
 
     const insert = await db.collection('drafts').insertOne({
       status: 'active',
+      leagueId: league._id.toString(),
+      seasonId: season._id.toString(),
+      year: season.year,
       orderIds: providedOrder,
       picks: [],
       createdAt: new Date(),

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -17,7 +19,13 @@ export async function PATCH(request: NextRequest) {
     }
 
     const db = await connectToDatabase();
-    const draft = await db.collection('drafts').findOne({ status: 'active' }, { sort: { createdAt: -1 } });
+    const leagueSlug = body.league || 'abl';
+    const seasonSlug = body.season || 'active';
+    const { league, season } = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+    const draft = await db.collection('drafts').findOne(
+      { status: 'active', leagueId: league._id.toString(), seasonId: season._id.toString() },
+      { sort: { createdAt: -1 } }
+    );
 
     if (!draft) {
       return NextResponse.json({ error: 'No active draft found' }, { status: 404 });
@@ -27,7 +35,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Order is locked after draft starts' }, { status: 400 });
     }
 
-    const teams = await db.collection('ablteams').find({}).toArray();
+    const seasonTeamIds = (season.teamIds || []).map((id: any) => id.toString());
+    const teams = seasonTeamIds.length
+      ? await db.collection('ablteams').find({ _id: { $in: seasonTeamIds.map((id: string) => new ObjectId(id)) } }).toArray()
+      : await db.collection('ablteams').find({}).toArray();
     const validTeamIds = new Set(teams.map((team: any) => String(team._id)));
 
     if (
