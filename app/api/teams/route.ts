@@ -1,13 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { resolveLeagueContext } from '@/app/lib/league-context';
 
-// GET /api/teams - Get all teams
+// GET /api/teams?league=abl&season=2025 - Get teams, optionally scoped to a season
 export async function GET(request: NextRequest) {
   try {
     const db = await connectToDatabase();
+    const { searchParams } = request.nextUrl;
+    const leagueSlug = searchParams.get('league');
+    const seasonSlug = searchParams.get('season');
+
+    if (leagueSlug && seasonSlug) {
+      // Return only the teams assigned to this specific season
+      const ctx = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+      const teamIds: ObjectId[] = (ctx.season.teamIds ?? []).map((id: any) =>
+        id instanceof ObjectId ? id : new ObjectId(id)
+      );
+      if (teamIds.length === 0) return NextResponse.json([]);
+      const teams = await db.collection('ablteams')
+        .find({ _id: { $in: teamIds } })
+        .toArray();
+      return NextResponse.json(teams);
+    }
+
+    // No filter — return all teams (admin / legacy use)
     const teams = await db.collection('ablteams').find({}).toArray();
-    
     return NextResponse.json(teams);
   } catch (error) {
     console.error('Error fetching teams:', error);

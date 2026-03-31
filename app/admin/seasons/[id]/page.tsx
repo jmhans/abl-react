@@ -6,9 +6,10 @@ import Link from 'next/link';
 
 interface Team {
   _id: string;
-  tm?: string;
-  teamName?: string;
-  owner?: string;
+  nickname?: string;
+  location?: string;
+  stadium?: string;
+  owners?: { name?: string; userId?: string }[];
 }
 
 interface League {
@@ -34,6 +35,7 @@ export default function AdminSeasonDetailPage() {
 
   const [season, setSeason] = useState<Season | null>(null);
   const [allTeams, setAllTeams] = useState<Team[]>([]);
+  const [activeSeasonYear, setActiveSeasonYear] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   // team checkbox selection
@@ -52,13 +54,29 @@ export default function AdminSeasonDetailPage() {
       fetch('/api/teams').then((r) => r.json()),
     ]);
 
-    setSeason(seasonRes.error ? null : seasonRes);
-    const teams: Team[] = Array.isArray(teamsRes) ? teamsRes : [];
-    setAllTeams(teams);
     if (!seasonRes.error) {
+      // Normalise: isActive may be missing on older season docs — derive from status
+      const normalised = {
+        ...seasonRes,
+        isActive: seasonRes.isActive ?? (seasonRes.status === 'active'),
+      };
+      setSeason(normalised);
       const ids = (seasonRes.teamIds ?? []).map((tid: any) => tid.toString());
       setSelected(new Set(ids));
+
+      // Fetch the active season for this league so the link always targets it
+      if (seasonRes.league?.slug) {
+        const activeRes = await fetch(
+          `/api/seasons?league=${seasonRes.league.slug}&status=active`
+        ).then((r) => r.json()).catch(() => []);
+        const activeSeason = Array.isArray(activeRes) ? activeRes[0] : null;
+        setActiveSeasonYear(activeSeason?.year ?? null);
+      }
+    } else {
+      setSeason(null);
     }
+    const teams: Team[] = Array.isArray(teamsRes) ? teamsRes : [];
+    setAllTeams(teams);
     setLoading(false);
   };
 
@@ -97,22 +115,22 @@ export default function AdminSeasonDetailPage() {
     }
   };
 
-  const toggleActive = async () => {
+  const setStatus = async (newStatus: 'pre-draft' | 'active' | 'completed') => {
     if (!season) return;
     setStatusMsg('');
     setStatusSaving(true);
-    const newActive = !season.isActive;
+    const newActive = newStatus !== 'completed';
     try {
       const res = await fetch(`/api/seasons/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: newActive, status: newActive ? 'active' : 'completed' }),
+        body: JSON.stringify({ isActive: newActive, status: newStatus }),
       });
       const data = await res.json();
       if (!res.ok) setStatusMsg(`Error: ${data.error}`);
       else {
         setSeason((prev) => prev ? { ...prev, isActive: data.isActive, status: data.status } : prev);
-        setStatusMsg(`Season marked ${newActive ? 'active' : 'completed'}.`);
+        setStatusMsg(`Status set to "${newStatus}".`);
       }
     } catch {
       setStatusMsg('Network error');
@@ -121,10 +139,13 @@ export default function AdminSeasonDetailPage() {
     }
   };
 
-  const teamLabel = (t: Team) =>
-    [t.teamName ?? t.tm ?? '(unnamed)', t.owner ? `— ${t.owner}` : '']
-      .filter(Boolean)
-      .join(' ');
+  const teamLabel = (t: Team) => {
+    const name = t.location && t.nickname
+      ? `${t.location} ${t.nickname}`
+      : t.nickname ?? t.location ?? '(unnamed)';
+    const ownerNames = (t.owners ?? []).map(o => o.name).filter(Boolean).join(', ');
+    return ownerNames ? `${name} — ${ownerNames}` : name;
+  };
 
   if (loading) {
     return (
@@ -145,9 +166,11 @@ export default function AdminSeasonDetailPage() {
     );
   }
 
-  const liveHref = season.league
-    ? `/${season.league.slug}/${season.year}`
+  const liveHref = season?.league && activeSeasonYear
+    ? `/${season.league.slug}/${activeSeasonYear}`
     : null;
+
+  const isViewingSeason = season?.year === activeSeasonYear;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl space-y-10">
@@ -172,15 +195,18 @@ export default function AdminSeasonDetailPage() {
                 target="_blank"
                 className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5"
               >
-                View live season ↗
+                {isViewingSeason ? 'View live season ↗' : `Go to active season (${activeSeasonYear}) ↗`}
               </Link>
             )}
             <span
               className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                season.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                season.status === 'pre-draft' ? 'bg-yellow-100 text-yellow-700' :
+                season.status === 'active' ? 'bg-green-100 text-green-700' :
+                'bg-gray-100 text-gray-500'
               }`}
             >
-              {season.isActive ? 'Active' : 'Inactive'}
+              {season.status === 'pre-draft' ? 'Pre-Draft' :
+               season.status === 'active' ? 'Active' : 'Inactive'}
             </span>
           </div>
         </div>
@@ -191,29 +217,43 @@ export default function AdminSeasonDetailPage() {
         <h2 className="text-lg font-semibold text-gray-800">Season Status</h2>
         <p className="text-sm text-gray-500">
           Currently{' '}
-          <strong>{season.isActive ? 'active' : season.status ?? 'inactive'}</strong>.
-          Marking a season active determines the default for the &quot;/abl/…&quot; links.
+          <strong className={season.status === 'pre-draft' ? 'text-yellow-700' : season.status === 'active' ? 'text-green-700' : 'text-gray-700'}>
+            {season.status === 'pre-draft' ? 'pre-draft' : season.status === 'active' ? 'active' : 'completed'}
+          </strong>
+          . Lifecycle: <span className="font-mono text-xs">pre-draft → active → completed</span>
         </p>
         {statusMsg && (
           <p className={`text-sm ${statusMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
             {statusMsg}
           </p>
         )}
-        <button
-          onClick={toggleActive}
-          disabled={statusSaving}
-          className={`rounded-lg px-5 py-2.5 text-sm font-medium text-white transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed ${
-            season.isActive
-              ? 'bg-gray-500 hover:bg-gray-600'
-              : 'bg-green-600 hover:bg-green-700'
-          }`}
-        >
-          {statusSaving
-            ? 'Saving…'
-            : season.isActive
-            ? 'Mark as Completed'
-            : 'Mark as Active'}
-        </button>
+        {season.status === 'pre-draft' && (
+          <button
+            onClick={() => setStatus('active')}
+            disabled={statusSaving}
+            className="rounded-lg px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            {statusSaving ? 'Saving…' : 'Mark Active (Draft Complete)'}
+          </button>
+        )}
+        {season.status === 'active' && (
+          <button
+            onClick={() => setStatus('completed')}
+            disabled={statusSaving}
+            className="rounded-lg px-5 py-2.5 text-sm font-medium text-white bg-gray-500 hover:bg-gray-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            {statusSaving ? 'Saving…' : 'Mark as Completed'}
+          </button>
+        )}
+        {season.status === 'completed' && (
+          <button
+            onClick={() => setStatus('pre-draft')}
+            disabled={statusSaving}
+            className="rounded-lg px-5 py-2.5 text-sm font-medium text-white bg-yellow-500 hover:bg-yellow-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            {statusSaving ? 'Saving…' : 'Re-open as Pre-Draft'}
+          </button>
+        )}
       </section>
 
       {/* Team assignment */}

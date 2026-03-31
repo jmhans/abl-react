@@ -3,18 +3,35 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
 // GET /api/seasons/[id] — fetch a single season with populated teams
+// [id] can be a MongoDB ObjectId OR a human-readable slug like "abl-2025"
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    if (!ObjectId.isValid(id)) {
-      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    const db = await connectToDatabase();
+
+    let season: any = null;
+
+    if (ObjectId.isValid(id)) {
+      // Plain ObjectId lookup
+      season = await db.collection('seasons').findOne({ _id: new ObjectId(id) });
+    } else {
+      // Try human-readable slug: "abl-2025" → league slug "abl", year 2025
+      const match = id.match(/^(.+)-(\d{4})$/);
+      if (match) {
+        const [, leagueSlug, yearStr] = match;
+        const league = await db.collection('leagues').findOne({ slug: leagueSlug });
+        if (league) {
+          season = await db.collection('seasons').findOne({
+            leagueId: league._id,
+            year: Number(yearStr),
+          });
+        }
+      }
     }
 
-    const db = await connectToDatabase();
-    const season = await db.collection('seasons').findOne({ _id: new ObjectId(id) });
     if (!season) {
       return NextResponse.json({ error: 'Season not found' }, { status: 404 });
     }
@@ -38,6 +55,7 @@ export async function GET(
 }
 
 // PATCH /api/seasons/[id] — update season fields
+// [id] can be an ObjectId or "abl-2025" slug
 // Body: { teamIds?: string[], status?: string, isActive?: boolean }
 export async function PATCH(
   req: NextRequest,
@@ -45,8 +63,28 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    if (!ObjectId.isValid(id)) {
-      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    const db = await connectToDatabase();
+
+    // Resolve the season _id from ObjectId or slug
+    let seasonObjectId: ObjectId | null = null;
+    if (ObjectId.isValid(id)) {
+      seasonObjectId = new ObjectId(id);
+    } else {
+      const match = id.match(/^(.+)-(\d{4})$/);
+      if (match) {
+        const [, leagueSlug, yearStr] = match;
+        const league = await db.collection('leagues').findOne({ slug: leagueSlug });
+        if (league) {
+          const found = await db.collection('seasons').findOne({
+            leagueId: league._id,
+            year: Number(yearStr),
+          });
+          if (found) seasonObjectId = found._id;
+        }
+      }
+    }
+    if (!seasonObjectId) {
+      return NextResponse.json({ error: 'Season not found' }, { status: 404 });
     }
 
     const body = await req.json();
@@ -62,11 +100,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     }
 
-    const db = await connectToDatabase();
     const result = await db
       .collection('seasons')
       .findOneAndUpdate(
-        { _id: new ObjectId(id) },
+        { _id: seasonObjectId },
         { $set: update },
         { returnDocument: 'after' }
       );

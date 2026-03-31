@@ -1,16 +1,14 @@
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { connectToDatabase } from '@/app/lib/mongodb';
-import { ObjectId } from 'mongodb';
-
-const FALLBACK = '/abl/2025';
 
 /**
  * Root: redirect to the user's active league/season if they have one,
- * otherwise fall back to the default ABL 2025 season.
+ * otherwise fall back to the current active ABL season.
  */
 export default async function RootPage() {
   try {
+    const db = await connectToDatabase();
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('appSession');
 
@@ -18,16 +16,16 @@ export default async function RootPage() {
       const userId: string | undefined = JSON.parse(sessionCookie.value).user?.sub;
 
       if (userId) {
-        const db = await connectToDatabase();
         const myTeam = await db
           .collection('ablteams')
           .findOne({ 'owners.userId': userId });
 
         if (myTeam) {
-          const season = await db.collection('seasons').findOne({
-            teamIds: myTeam._id,
-            isActive: true,
-          });
+          // Prefer the newest active season this user's team belongs to
+          const season = await db.collection('seasons').findOne(
+            { teamIds: myTeam._id, isActive: true },
+            { sort: { year: -1 } }
+          );
 
           if (season) {
             const league = await db
@@ -41,10 +39,22 @@ export default async function RootPage() {
         }
       }
     }
+
+    // Fallback: find the active ABL season dynamically (never hardcode a year)
+    const ablLeague = await db.collection('leagues').findOne({ slug: 'abl' });
+    if (ablLeague) {
+      const activeSeason = await db.collection('seasons').findOne(
+        { leagueId: ablLeague._id, isActive: true },
+        { sort: { year: -1 } }
+      );
+      if (activeSeason) {
+        redirect(`/abl/${activeSeason.year}`);
+      }
+    }
   } catch {
-    // DB/cookie errors — fall through to fallback
+    // DB/cookie errors — last-resort static fallback
   }
 
-  redirect(FALLBACK);
+  redirect('/abl/2026');
 }
 

@@ -43,6 +43,14 @@ export default function FreeAgentsPage() {
   const [adding, setAdding] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [showAll, setShowAll] = useState(false);
+  const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/seasons?league=${league}&year=${season}`)
+      .then(r => r.json())
+      .then((data: any[]) => setSeasonStatus(data[0]?.status ?? null))
+      .catch(() => {});
+  }, [league, season]);
 
   useEffect(() => {
     const fetchILPositions = async () => {
@@ -158,6 +166,15 @@ export default function FreeAgentsPage() {
           ← Back to Home
         </Link>
         <h1 className="text-4xl font-bold text-gray-900 mb-4">Free Agents</h1>
+
+        {seasonStatus === 'pre-draft' && (
+          <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-6">
+            <p className="text-yellow-900 font-semibold">⏳ Draft hasn&apos;t happened yet</p>
+            <p className="text-yellow-800 text-sm mt-1">
+              Players cannot be added until after the draft. Check back once the draft is complete.
+            </p>
+          </div>
+        )}
 
         <div
           className={`p-4 rounded-lg mb-6 ${
@@ -281,13 +298,17 @@ export default function FreeAgentsPage() {
                     {player.abl?.toFixed(2) || '0.00'}
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <button
-                      onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
-                      disabled={adding === player._id || ilPositions.length === 0}
-                      className="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {adding === player._id ? 'Adding...' : 'Add'}
-                    </button>
+                    {seasonStatus === 'pre-draft' ? (
+                      <span className="text-xs text-yellow-700 font-medium">Pre-Draft</span>
+                    ) : (
+                      <button
+                        onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
+                        disabled={adding === player._id || ilPositions.length === 0}
+                        className="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {adding === player._id ? 'Adding...' : 'Add'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))

@@ -59,6 +59,7 @@ export default function TeamRosterPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUserAndRoster();
@@ -80,6 +81,11 @@ export default function TeamRosterPage() {
           setIsOwner(userOwnsTeam || false);
         }
       }
+
+      // Fetch season status to gate pre-draft actions
+      const seasonRes = await fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []);
+      const seasonData = Array.isArray(seasonRes) ? seasonRes[0] : null;
+      setSeasonStatus(seasonData?.status ?? null);
 
       const rosterRes = await fetch(`/api/teams/${teamId}/roster`);
       if (!rosterRes.ok) throw new Error('Failed to fetch roster');
@@ -272,12 +278,14 @@ export default function TeamRosterPage() {
         <div className="flex gap-4 mb-6">
           {isOwner && (
             <>
-              <Link
-                href={`/${league}/${season}/teams/${teamId}/free-agents`}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Add Players
-              </Link>
+              {seasonStatus !== 'pre-draft' && (
+                <Link
+                  href={`/${league}/${season}/teams/${teamId}/free-agents`}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Add Players
+                </Link>
+              )}
               {hasChanges && !roster.locked && (
                 <button
                   onClick={handleSave}
@@ -296,6 +304,11 @@ export default function TeamRosterPage() {
                 </button>
               )}
             </>
+          )}
+          {seasonStatus === 'pre-draft' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 text-yellow-800 text-sm">
+              ⏳ Season hasn&apos;t drafted yet — player adds will be available after the draft.
+            </div>
           )}
         </div>
 
@@ -422,7 +435,9 @@ export default function TeamRosterPage() {
 
         {roster.roster.length === 0 && (
           <div className="text-center py-12 text-gray-500">
-            No players on roster. Add players from Free Agents.
+            {seasonStatus === 'pre-draft'
+              ? 'No players yet — rosters are filled during the draft.'
+              : 'No players on roster. Add players from Free Agents.'}
           </div>
         )}
       </div>

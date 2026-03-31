@@ -28,10 +28,8 @@ export default function TeamsPage() {
   useEffect(() => {
     async function fetchTeams() {
       try {
-        const response = await fetch('/api/teams');
-        if (!response.ok) {
-          throw new Error('Failed to fetch teams');
-        }
+        const response = await fetch(`/api/teams?league=${league}&season=${season}`);
+        if (!response.ok) throw new Error('Failed to fetch teams');
         const data = await response.json();
         setTeams(data);
       } catch (err) {
@@ -41,9 +39,8 @@ export default function TeamsPage() {
         setLoading(false);
       }
     }
-
     fetchTeams();
-  }, []);
+  }, [league, season]);
 
   if (loading) {
     return (
@@ -67,8 +64,8 @@ export default function TeamsPage() {
         <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-4 inline-block">
           ← Back to Home
         </Link>
-        <h1 className="text-4xl font-bold text-gray-900">ABL Teams</h1>
-        <p className="text-gray-600 mt-2">{teams.length} teams in the league</p>
+        <h1 className="text-4xl font-bold text-gray-900">{league.toUpperCase()} Teams — {season}</h1>
+        <p className="text-gray-600 mt-2">{teams.length} team{teams.length !== 1 ? 's' : ''}</p>
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

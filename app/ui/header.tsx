@@ -13,7 +13,6 @@ export default function Header() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // Check for user session by making a request to a session endpoint  
     fetch('/api/auth/me')
       .then(res => res.ok ? res.json() : null)
       .then(data => setUser(data?.user || null))
@@ -21,39 +20,25 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="bg-blue-600 text-white p-4 shadow-md">
-      <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <Link href="/" className="text-2xl font-bold">
+    <header className="bg-blue-600 text-white px-4 py-3 shadow-md">
+      <div className="flex justify-between items-center">
+        <Link href="/" className="text-xl font-bold tracking-tight">
           ABL
         </Link>
-        <nav className="flex items-center gap-6">
-          <Link href="/standings" className="hover:text-blue-100">
-            Standings
-          </Link>
-          <Link href="/draft" className="hover:text-blue-100">
-            Draft
-          </Link>
-          <Link href="/teams" className="hover:text-blue-100">
-            Teams
-          </Link>
-          <Link href="/free-agents" className="hover:text-blue-100">
-            Free Agents
-          </Link>
-          <div className="border-l border-blue-400 pl-4">
-            {user ? (
-              <div className="flex items-center gap-4">
-                <span>{user.name}</span>
-                <a href="/api/auth/logout" className="bg-blue-800 px-3 py-1 rounded hover:bg-blue-900">
-                  Logout
-                </a>
-              </div>
-            ) : (
-              <a href="/api/auth/login" className="bg-blue-800 px-3 py-1 rounded hover:bg-blue-900">
-                Login
+        <div>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-blue-100">{user.name}</span>
+              <a href="/api/auth/logout" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
+                Sign out
               </a>
-            )}
-          </div>
-        </nav>
+            </div>
+          ) : (
+            <a href="/api/auth/login" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
+              Sign in
+            </a>
+          )}
+        </div>
       </div>
     </header>
   );

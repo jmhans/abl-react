@@ -76,6 +76,10 @@ export default function AdminSeasonsPage() {
   const leagueFor = (leagueId: string) =>
     leagues.find((l) => l._id.toString() === leagueId.toString());
 
+  /** Build a readable slug for admin URLs: abl-2025, abml-2026, etc. */
+  const adminSlug = (league: League | undefined, season: Season) =>
+    league ? `${league.slug}-${season.year}` : season._id;
+
   // Group seasons by league id
   const grouped: Record<string, Season[]> = {};
   for (const s of seasons) {
@@ -133,10 +137,10 @@ export default function AdminSeasonsPage() {
                         <div className="flex items-center gap-4 text-sm text-gray-500">
                           <span>{season.teamIds?.length ?? 0} teams</span>
                           <Link
-                            href={`/admin/seasons/${season._id}`}
+                            href={`/admin/seasons/${adminSlug(league, season)}`}
                             className="text-blue-600 hover:text-blue-800"
                           >
-                            Manage teams →
+                            Manage →
                           </Link>
                         </div>
                       </div>

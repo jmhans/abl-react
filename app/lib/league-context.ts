@@ -20,7 +20,7 @@ export async function resolveLeagueContext(
 
   const seasonFilter: Record<string, any> = { leagueId: league._id };
   if (seasonSlug === 'active') {
-    seasonFilter.status = 'active';
+    seasonFilter.isActive = true; // covers both 'active' and 'pre-draft' (both have isActive:true)
   } else {
     seasonFilter.year = Number(seasonSlug);
   }
@@ -38,7 +38,7 @@ export async function resolveLeagueContext(
 export async function getActiveSeason(db: Db, leagueSlug: string) {
   const league = await db.collection('leagues').findOne({ slug: leagueSlug });
   if (!league) return null;
-  return db.collection('seasons').findOne({ leagueId: league._id, status: 'active' });
+  return db.collection('seasons').findOne({ leagueId: league._id, isActive: true });
 }
 
 /**

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
-/** Extract /[league]/[season] prefix from the current URL, fallback to /abl/2025 */
-function useLeagueSeasonBase(defaultBase = '/abl/2025'): string {
+/** Extract /[league]/[season] prefix from the current URL, fallback to /abl/2026 */
+function useLeagueSeasonBase(defaultBase = '/abl/2026'): string {
   const pathname = usePathname();
   const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/|$)/);
   if (match) return `/${match[1]}/${match[2]}`;
@@ -25,7 +25,13 @@ interface MyLeagueEntry {
   league: { _id: string; name: string; slug: string } | null;
 }
 
+interface AvailableLeagueEntry {
+  league: { _id: string; name: string; slug: string };
+  season: { _id: string; year: number };
+}
+
 export default function Navigation() {
+  const pathname = usePathname();
   const base = useLeagueSeasonBase();
   const currentLeagueSlug = base.split('/')[1] ?? '';
   const currentSeasonYear = base.split('/')[2] ?? '';
@@ -35,14 +41,28 @@ export default function Navigation() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
   const [myLeagues, setMyLeagues] = useState<MyLeagueEntry[]>([]);
+  const [availableLeagues, setAvailableLeagues] = useState<AvailableLeagueEntry[]>([]);
+  const [hasDraft, setHasDraft] = useState(false);
+
+  // Active link helper
+  const isActive = (href: string) =>
+    pathname === href || (pathname?.startsWith(href + '/') ?? false);
+
+  const navLinkClass = (href: string) =>
+    `block px-4 py-2 rounded transition text-sm ${
+      isActive(href)
+        ? 'bg-blue-100 text-blue-700 font-semibold'
+        : 'text-gray-700 hover:bg-gray-200'
+    }`;
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [meRes, adminRes, myLeaguesRes] = await Promise.all([
+        const [meRes, adminRes, myLeaguesRes, availableRes] = await Promise.all([
           fetch('/api/auth/me').then((r) => r.json()).catch(() => ({ user: null })),
           fetch('/api/admin/me').then((r) => r.json()).catch(() => ({})),
           fetch('/api/auth/my-leagues').then((r) => r.json()).catch(() => []),
+          fetch('/api/auth/available-leagues').then((r) => r.json()).catch(() => []),
         ]);
 
         if (adminRes?.isAdmin) setIsAdmin(true);
@@ -50,6 +70,7 @@ export default function Navigation() {
         const sessionUser = meRes?.user ?? null;
         setUser(sessionUser);
         setMyLeagues(Array.isArray(myLeaguesRes) ? myLeaguesRes : []);
+        setAvailableLeagues(Array.isArray(availableRes) ? availableRes : []);
 
         if (sessionUser?.sub) {
           // Find the team in the current league/season
@@ -67,6 +88,18 @@ export default function Navigation() {
               t.owners?.some((o: any) => o.userId === sessionUser.sub)
             );
             if (myTeam) setUserTeamId(myTeam._id);
+          }
+        }
+
+        // Check whether this league-season has draft data
+        if (sessionUser && currentLeagueSlug && currentSeasonYear) {
+          try {
+            const draftCheck = await fetch(
+              `/api/games?league=${currentLeagueSlug}&season=${currentSeasonYear}&gameType=D&limit=1&view=summary`
+            ).then((r) => r.json()).catch(() => []);
+            setHasDraft(Array.isArray(draftCheck) && draftCheck.length > 0);
+          } catch {
+            setHasDraft(false);
           }
         }
       } catch (err) {
@@ -136,67 +169,96 @@ export default function Navigation() {
         </div>
       )}
 
+      {/* Join available leagues */}
+      {user && availableLeagues.length > 0 && (
+        <div className={`border-b border-gray-200 ${isOpen ? 'px-4 py-3 space-y-1.5' : 'py-2 flex flex-col items-center gap-1'}`}>
+          {isOpen && (
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+              Join a League
+            </p>
+          )}
+          {availableLeagues.map((entry) => (
+            <Link
+              key={entry.season._id.toString()}
+              href={`/join/${entry.league.slug}`}
+              title={`Join ${entry.league.name} ${entry.season.year}`}
+              className={
+                isOpen
+                  ? 'flex items-center justify-between rounded-lg px-3 py-2 text-sm bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-colors font-medium'
+                  : 'text-orange-500 hover:text-orange-700 text-lg p-1'
+              }
+            >
+              {isOpen ? (
+                <>
+                  <span>{entry.league.name} {entry.season.year}</span>
+                  <span className="text-xs">Join →</span>
+                </>
+              ) : '➕'}
+            </Link>
+          ))}
+        </div>
+      )}
+
       {/* Nav links */}
-      <nav className="space-y-2 p-4 flex-1">
+      <nav className="space-y-1 p-4 flex-1">
         <Link
           href={base}
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
+          className={navLinkClass(base)}
           title="Dashboard"
         >
           {isOpen ? 'Dashboard' : '📊'}
         </Link>
         <Link
           href={`${base}/standings`}
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
+          className={navLinkClass(`${base}/standings`)}
           title="Standings"
         >
           {isOpen ? 'Standings' : '📈'}
         </Link>
         <Link
-          href={`${base}/draft`}
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
-          title="Draft"
+          href={`${base}/games`}
+          className={navLinkClass(`${base}/games`)}
+          title="Scores"
         >
-          {isOpen ? 'Draft' : '🎯'}
+          {isOpen ? 'Scores' : '⚾'}
         </Link>
+        {hasDraft && (
+          <Link
+            href={`${base}/draft`}
+            className={navLinkClass(`${base}/draft`)}
+            title="Draft"
+          >
+            {isOpen ? 'Draft' : '🎯'}
+          </Link>
+        )}
         {userTeamId ? (
           <>
             <Link
               href={`${base}/teams/${userTeamId}/roster`}
-              className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
+              className={navLinkClass(`${base}/teams/${userTeamId}/roster`)}
               title="My Roster"
             >
               {isOpen ? 'My Roster' : '👥'}
             </Link>
             <Link
               href={`${base}/teams/${userTeamId}/free-agents`}
-              className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
+              className={navLinkClass(`${base}/teams/${userTeamId}/free-agents`)}
               title="Free Agents"
             >
               {isOpen ? 'Free Agents' : '✨'}
             </Link>
           </>
         ) : (
-          <>
-            <div className="block px-4 py-2 rounded text-gray-400 cursor-not-allowed text-sm">
-              {isOpen ? 'My Roster' : '👥'}
+          user && (
+            <div className="px-4 py-2 text-xs text-gray-400">
+              {isOpen ? 'No team this season' : '—'}
             </div>
-            <div className="block px-4 py-2 rounded text-gray-400 cursor-not-allowed text-sm">
-              {isOpen ? 'Free Agents' : '✨'}
-            </div>
-          </>
+          )
         )}
-        <Link
-          href={`${base}/games`}
-          className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
-          title="Scores"
-        >
-          {isOpen ? 'Scores' : '⚾'}
-        </Link>
         {isAdmin && (
           <Link
             href="/admin"
-            className="block px-4 py-2 rounded hover:bg-gray-200 transition text-sm"
+            className={navLinkClass('/admin')}
             title="Admin"
           >
             {isOpen ? 'Admin' : '⚙️'}

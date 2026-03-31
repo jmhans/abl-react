@@ -32,6 +32,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Optional gameType filter (e.g. 'R' = regular, 'D' = draft, 'P' = playoffs)
+    const gameTypeParam = searchParams.get('gameType');
+    if (gameTypeParam) {
+      pipeline.push({ $match: { gameType: gameTypeParam } });
+    }
+
     // Playoffs filter
     if (display === 'playoffs') {
       pipeline.push({
@@ -51,6 +57,10 @@ export async function GET(request: NextRequest) {
         }
       });
     }
+
+    // Optional limit (used for existence checks)
+    const limitParam = searchParams.get('limit');
+    if (limitParam) pipeline.push({ $limit: parseInt(limitParam, 10) });
 
     const games = await db.collection('games').aggregate(pipeline, { allowDiskUse: true }).toArray();
     
