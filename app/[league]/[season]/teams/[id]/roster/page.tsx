@@ -60,6 +60,12 @@ export default function TeamRosterPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
+  const [teamOwners, setTeamOwners] = useState<any[]>([]);
+  const [showCoOwnerModal, setShowCoOwnerModal] = useState(false);
+  const [allUsers, setAllUsers] = useState<{ userId: string; name: string; email: string }[]>([]);
+  const [coOwnerSearch, setCoOwnerSearch] = useState('');
+  const [addingCoOwner, setAddingCoOwner] = useState(false);
+  const [coOwnerError, setCoOwnerError] = useState('');
 
   useEffect(() => {
     fetchUserAndRoster();
@@ -79,6 +85,7 @@ export default function TeamRosterPage() {
           const team = await teamRes.json();
           const userOwnsTeam = team.owners?.some((o: any) => o.userId === userData?.user?.sub);
           setIsOwner(userOwnsTeam || false);
+          setTeamOwners(team.owners ?? []);
         }
       }
 
@@ -275,7 +282,7 @@ export default function TeamRosterPage() {
           </div>
         </div>
 
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-4 mb-6 flex-wrap">
           {isOwner && (
             <>
               {seasonStatus !== 'pre-draft' && (
@@ -286,6 +293,20 @@ export default function TeamRosterPage() {
                   Add Players
                 </Link>
               )}
+              <button
+                onClick={async () => {
+                  setCoOwnerError('');
+                  setCoOwnerSearch('');
+                  if (allUsers.length === 0) {
+                    const res = await fetch('/api/users');
+                    if (res.ok) setAllUsers(await res.json());
+                  }
+                  setShowCoOwnerModal(true);
+                }}
+                className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Add Co-owner
+              </button>
               {hasChanges && !roster.locked && (
                 <button
                   onClick={handleSave}
@@ -311,6 +332,87 @@ export default function TeamRosterPage() {
             </div>
           )}
         </div>
+
+        {/* Co-owner modal */}
+        {showCoOwnerModal && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Add Co-owner</h2>
+                <button onClick={() => setShowCoOwnerModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              </div>
+
+              {/* Current owners */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Current Owners</p>
+                <div className="space-y-1">
+                  {teamOwners.map((o: any) => (
+                    <div key={o.userId} className="flex items-center justify-between text-sm px-3 py-1.5 bg-gray-50 rounded-lg">
+                      <span className="font-medium text-gray-800">{o.name}</span>
+                      <span className="text-xs text-gray-400">{o.email}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Add from site users</p>
+              <input
+                type="text"
+                placeholder="Search by name or email…"
+                value={coOwnerSearch}
+                onChange={(e) => setCoOwnerSearch(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+
+              {coOwnerError && (
+                <p className="text-red-600 text-sm mb-3">{coOwnerError}</p>
+              )}
+
+              <div className="space-y-1 max-h-56 overflow-y-auto">
+                {allUsers
+                  .filter((u) => {
+                    if (teamOwners.some((o: any) => o.userId === u.userId)) return false;
+                    const q = coOwnerSearch.toLowerCase();
+                    return !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+                  })
+                  .map((u) => (
+                    <button
+                      key={u.userId}
+                      disabled={addingCoOwner}
+                      onClick={async () => {
+                        setAddingCoOwner(true);
+                        setCoOwnerError('');
+                        const res = await fetch(`/api/teams/${teamId}/co-owner`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ userId: u.userId, name: u.name, email: u.email }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setCoOwnerError(data.error ?? 'Failed to add co-owner');
+                        } else {
+                          setTeamOwners(data.owners ?? []);
+                          setShowCoOwnerModal(false);
+                        }
+                        setAddingCoOwner(false);
+                      }}
+                      className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left hover:bg-purple-50 transition-colors disabled:opacity-50"
+                    >
+                      <span className="font-medium text-gray-800">{u.name}</span>
+                      <span className="text-xs text-gray-400">{u.email}</span>
+                    </button>
+                  ))}
+                {allUsers.filter((u) => {
+                  if (teamOwners.some((o: any) => o.userId === u.userId)) return false;
+                  const q = coOwnerSearch.toLowerCase();
+                  return !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+                }).length === 0 && (
+                  <p className="text-sm text-gray-400 px-3 py-2">No matching users found.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <h3 className="font-semibold mb-2">Roster Rules:</h3>
