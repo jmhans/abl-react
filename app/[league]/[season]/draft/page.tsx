@@ -193,7 +193,9 @@ export default function DraftPage() {
         const res = await fetch('/api/draft/order', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: next, league, season }),
+          body: JSON.stringify({ orderIds: next, league, season }),
+        });
+        if (!res.ok) {
           throw new Error('Failed to save draft order');
         }
       } catch (err) {
