@@ -8,7 +8,16 @@ import { ObjectId } from 'mongodb';
 export async function GET(request: NextRequest) {
   try {
     const db = await connectToDatabase();
-    const players = await db.collection('players_view').find({}).toArray();
+    // Exclude pure pitchers: keep players who have at least one eligible position
+    // (position history from batting appearances) or who have at least 1 AB this
+    // season (covers two-way players whose eligible may not yet be populated).
+    // This prevents pitcher-only 40-man roster members from cluttering player lists.
+    const players = await db.collection('players_view').find({
+      $or: [
+        { 'eligible.0': { $exists: true } },       // has at least one eligible position
+        { 'stats.batting.atBats': { $gt: 0 } },    // or has at least 1 AB this season
+      ],
+    }).toArray();
     return NextResponse.json(players);
   } catch (error) {
     console.error('Error fetching players:', error);
