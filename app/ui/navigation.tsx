@@ -2,13 +2,18 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 /** Extract /[league]/[season] prefix from the current URL, fallback to /abl/2026 */
 function useLeagueSeasonBase(defaultBase = '/abl/2026'): string {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/|$)/);
   if (match) return `/${match[1]}/${match[2]}`;
+  // Fall back to query params (e.g. /admin?league=abml&season=2026)
+  const qLeague = searchParams.get('league');
+  const qSeason = searchParams.get('season');
+  if (qLeague && qSeason && /^\d{4}$/.test(qSeason)) return `/${qLeague}/${qSeason}`;
   return defaultBase;
 }
 
