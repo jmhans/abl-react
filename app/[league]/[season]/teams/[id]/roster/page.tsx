@@ -61,6 +61,11 @@ export default function TeamRosterPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [teamOwners, setTeamOwners] = useState<any[]>([]);
+  const [teamInfo, setTeamInfo] = useState<{ location: string; nickname: string; stadium: string }>({ location: '', nickname: '', stadium: '' });
+  const [editingTeamInfo, setEditingTeamInfo] = useState(false);
+  const [teamInfoDraft, setTeamInfoDraft] = useState<{ location: string; nickname: string; stadium: string }>({ location: '', nickname: '', stadium: '' });
+  const [savingTeamInfo, setSavingTeamInfo] = useState(false);
+  const [teamInfoError, setTeamInfoError] = useState('');
   const [showCoOwnerModal, setShowCoOwnerModal] = useState(false);
   const [allUsers, setAllUsers] = useState<{ userId: string; name: string; email: string }[]>([]);
   const [coOwnerSearch, setCoOwnerSearch] = useState('');
@@ -87,6 +92,9 @@ export default function TeamRosterPage() {
           const userOwnsTeam = team.owners?.some((o: any) => o.userId === userData?.user?.sub);
           setIsOwner(userOwnsTeam || false);
           setTeamOwners(team.owners ?? []);
+          const info = { location: team.location ?? '', nickname: team.nickname ?? '', stadium: team.stadium ?? '' };
+          setTeamInfo(info);
+          setTeamInfoDraft(info);
         }
       }
 
@@ -244,6 +252,103 @@ export default function TeamRosterPage() {
         <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-4 inline-block">
           ← Back to Home
         </Link>
+
+        {/* Team info header */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+          {editingTeamInfo ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">City / Location</label>
+                  <input
+                    type="text"
+                    value={teamInfoDraft.location}
+                    onChange={(e) => setTeamInfoDraft(d => ({ ...d, location: e.target.value }))}
+                    placeholder="e.g. New York"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Team Nickname</label>
+                  <input
+                    type="text"
+                    value={teamInfoDraft.nickname}
+                    onChange={(e) => setTeamInfoDraft(d => ({ ...d, nickname: e.target.value }))}
+                    placeholder="e.g. Yankees"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Stadium</label>
+                <input
+                  type="text"
+                  value={teamInfoDraft.stadium}
+                  onChange={(e) => setTeamInfoDraft(d => ({ ...d, stadium: e.target.value }))}
+                  placeholder="e.g. Yankee Stadium"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              </div>
+              {teamInfoError && <p className="text-red-600 text-sm">{teamInfoError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button
+                  disabled={savingTeamInfo}
+                  onClick={async () => {
+                    setSavingTeamInfo(true);
+                    setTeamInfoError('');
+                    const res = await fetch(`/api/teams/${teamId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(teamInfoDraft),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setTeamInfoError(data.error ?? 'Failed to save');
+                    } else {
+                      const info = { location: data.location ?? '', nickname: data.nickname ?? '', stadium: data.stadium ?? '' };
+                      setTeamInfo(info);
+                      setTeamInfoDraft(info);
+                      setEditingTeamInfo(false);
+                    }
+                    setSavingTeamInfo(false);
+                  }}
+                  className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingTeamInfo ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setTeamInfoDraft(teamInfo); setEditingTeamInfo(false); setTeamInfoError(''); }}
+                  className="text-sm px-4 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {teamInfo.location && <span className="text-gray-600 font-semibold">{teamInfo.location} </span>}
+                  {teamInfo.nickname || <span className="text-gray-400 italic">Unnamed Team</span>}
+                </h1>
+                {teamInfo.stadium && (
+                  <p className="text-sm text-gray-500 mt-1">🏟️ {teamInfo.stadium}</p>
+                )}
+                {!teamInfo.location && !teamInfo.nickname && !teamInfo.stadium && isOwner && (
+                  <p className="text-sm text-gray-400 italic mt-1">No team info set yet — click Edit to add your city, name, and stadium.</p>
+                )}
+              </div>
+              {isOwner && (
+                <button
+                  onClick={() => { setTeamInfoDraft(teamInfo); setEditingTeamInfo(true); setTeamInfoError(''); }}
+                  className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 whitespace-nowrap shrink-0"
+                >
+                  ✏️ Edit
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {!isOwner && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">

@@ -249,9 +249,9 @@ export default function Navigation() {
             <Link
               href={`${base}/teams/${userTeamId}/roster`}
               className={navLinkClass(`${base}/teams/${userTeamId}/roster`)}
-              title="My Roster"
+              title="My Team"
             >
-              {isOpen ? 'My Roster' : '👥'}
+              {isOpen ? 'My Team' : '👥'}
             </Link>
             <Link
               href={`${base}/teams/${userTeamId}/free-agents`}
