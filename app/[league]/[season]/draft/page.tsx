@@ -384,7 +384,6 @@ export default function DraftPage() {
         <div className="grid grid-cols-5 gap-2 md:grid-cols-10">
           {orderedTeams.map((team, index) => {
             const teamPicks = picks.filter((pick) => pick.pick.teamId === team._id);
-            const teamSlots = assignDraftSlots(teamPicks);
             const nextPickForTeam = draftBoard.find(
               (pick) => pick.teamId === team._id && picks.length <= pick.overallPick,
             );
@@ -406,16 +405,21 @@ export default function DraftPage() {
                 <div className="mt-2 text-xs text-gray-700">
                   {teamPicks.length > 0 ? (
                     <div className="space-y-0.5">
-                      {teamSlots.requiredSlots.map((slot) => (
-                        <div key={slot.label}>
-                          <span className="font-semibold">{slot.label}:</span> {slot.player ? '✓' : '−'}
-                        </div>
-                      ))}
-                      {teamSlots.extras.length > 0 && (
-                        <div>
-                          <span className="font-semibold">Extra:</span> {teamSlots.extras.length}
-                        </div>
-                      )}
+                      {(() => {
+                        const POS_ORDER = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH'];
+                        const counts = new Map<string, number>();
+                        for (const { player } of teamPicks) {
+                          const raw = (player.eligible?.[0] ?? 'DH');
+                          const pos = ['LF','CF','RF'].includes(raw.toUpperCase()) ? 'OF' : raw.toUpperCase();
+                          counts.set(pos, (counts.get(pos) ?? 0) + 1);
+                        }
+                        const allPos = [...new Set([...POS_ORDER, ...counts.keys()])].filter(p => counts.has(p));
+                        return allPos.map((pos) => (
+                          <div key={pos}>
+                            <span className="font-semibold">{pos}:</span> {counts.get(pos)}
+                          </div>
+                        ));
+                      })()}
                     </div>
                   ) : (
                     <span className="text-gray-500">No picks</span>
