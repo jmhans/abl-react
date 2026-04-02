@@ -139,3 +139,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create new draft' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { isAdmin } = await getAdminAuthState();
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    const db = await connectToDatabase();
+    const { league, season } = await resolveFromParams(db, request.nextUrl.searchParams);
+
+    const draft = await db.collection('drafts').findOne(
+      { leagueId: league._id.toString(), seasonId: season._id.toString() },
+      { sort: { createdAt: -1 } }
+    );
+
+    if (!draft) {
+      return NextResponse.json({ error: 'No draft found for this league/season' }, { status: 404 });
+    }
+
+    await db.collection('drafts').deleteOne({ _id: draft._id });
+    await db.collection('lineups').deleteMany({});
+
+    return NextResponse.json({ deleted: true, draftId: draft._id.toString() });
+  } catch (error) {
+    console.error('Error deleting draft:', error);
+    return NextResponse.json({ error: 'Failed to delete draft' }, { status: 500 });
+  }
+}

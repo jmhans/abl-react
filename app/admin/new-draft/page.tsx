@@ -26,8 +26,9 @@ export default function NewDraftPage() {
   const [order, setOrder] = useState<DraftTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [existingDraft, setExistingDraft] = useState(false);
+  const [existingDraft, setExistingDraft] = useState<{ status: string; picksCount: number } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -45,7 +46,8 @@ export default function NewDraftPage() {
 
       setTeams(teamsData);
       setOrder(shuffle(teamsData));
-      setExistingDraft(draftData.draft?.status === 'active');
+      const d = draftData.draft;
+      setExistingDraft(d ? { status: d.status, picksCount: (d.picks || []).length } : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -65,10 +67,33 @@ export default function NewDraftPage() {
     setOrder(next);
   };
 
+  const handleDeleteDraft = async () => {
+    const confirmed = confirm(
+      `This will permanently delete the ${existingDraft?.status} draft (${existingDraft?.picksCount} pick${existingDraft?.picksCount !== 1 ? 's' : ''}) and clear all lineups. This cannot be undone. Continue?`,
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(league && season ? `/api/draft?league=${league}&season=${season}` : '/api/draft', {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to delete draft');
+      }
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete draft');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleStartDraft = async () => {
     if (existingDraft) {
       const confirmed = confirm(
-        'There is already an active draft. Starting a new draft will clear all rosters and abandon the current draft. Continue?',
+        `There is already a ${existingDraft.status} draft. Starting a new draft will abandon it and clear all rosters. Continue?`,
       );
       if (!confirmed) return;
     }
@@ -118,8 +143,25 @@ export default function NewDraftPage() {
       </div>
 
       {existingDraft && (
-        <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          ⚠ An active draft already exists. Starting a new draft will abandon it and clear all rosters.
+        <div className="flex items-start justify-between gap-4 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div>
+            <span className="font-semibold">Existing draft:</span>{' '}
+            <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${
+              existingDraft.status === 'active' ? 'bg-green-100 text-green-800' :
+              existingDraft.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-700'
+            }`}>{existingDraft.status}</span>{' '}
+            · {existingDraft.picksCount} pick{existingDraft.picksCount !== 1 ? 's' : ''} made
+            <div className="mt-0.5 text-amber-700">Starting a new draft will abandon it and clear all rosters.</div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDeleteDraft}
+            disabled={deleting}
+            className="shrink-0 rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+          >
+            {deleting ? 'Deleting…' : '🗑 Delete Draft'}
+          </button>
         </div>
       )}
 
