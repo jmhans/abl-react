@@ -65,6 +65,7 @@ export default function TeamRosterPage() {
   const [allUsers, setAllUsers] = useState<{ userId: string; name: string; email: string }[]>([]);
   const [coOwnerSearch, setCoOwnerSearch] = useState('');
   const [addingCoOwner, setAddingCoOwner] = useState(false);
+  const [removingCoOwner, setRemovingCoOwner] = useState<string | null>(null);
   const [coOwnerError, setCoOwnerError] = useState('');
 
   useEffect(() => {
@@ -347,9 +348,33 @@ export default function TeamRosterPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Current Owners</p>
                 <div className="space-y-1">
                   {teamOwners.map((o: any) => (
-                    <div key={o.userId} className="flex items-center justify-between text-sm px-3 py-1.5 bg-gray-50 rounded-lg">
+                    <div key={o.userId} className="flex items-center justify-between text-sm px-3 py-1.5 bg-gray-50 rounded-lg gap-2">
                       <span className="font-medium text-gray-800">{o.name}</span>
-                      <span className="text-xs text-gray-400">{o.email}</span>
+                      <span className="text-xs text-gray-400 flex-1">{o.email}</span>
+                      {teamOwners.length > 1 && (
+                        <button
+                          disabled={removingCoOwner === o.userId}
+                          onClick={async () => {
+                            setRemovingCoOwner(o.userId);
+                            setCoOwnerError('');
+                            const res = await fetch(`/api/teams/${teamId}/co-owner`, {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ userId: o.userId }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                              setCoOwnerError(data.error ?? 'Failed to remove co-owner');
+                            } else {
+                              setTeamOwners(data.owners ?? []);
+                            }
+                            setRemovingCoOwner(null);
+                          }}
+                          className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40 whitespace-nowrap"
+                        >
+                          {removingCoOwner === o.userId ? 'Removing…' : 'Remove'}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
