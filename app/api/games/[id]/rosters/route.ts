@@ -144,6 +144,7 @@ export async function GET(
         eligible: p.player?.eligible || (p.position ? [p.position] : []),
         mlbTeam: p.player?.team || p.mlbTeam || null,
         playedPosition: p.playedPosition,
+        ablPlayedType: p.ablPlayedType ?? null,
         lineupOrder: p.lineupOrder,
         lineupPosition: p.lineupPosition,
         dailyStats: p.dailyStats

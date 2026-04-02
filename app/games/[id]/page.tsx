@@ -35,6 +35,7 @@ interface Player {
   position?: string;
   eligible?: string[];
   mlbTeam?: string | null;
+  ablPlayedType?: string | null;
   dailyStats?: PlayerStats;
   playedPosition?: string;
   lineupOrder?: number;
@@ -328,6 +329,13 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
                 </div>
                 <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>
                   {player.playedPosition || 'Inactive'}
+                  {player.ablPlayedType && (
+                    <span className={`ml-1 px-1 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                      player.ablPlayedType === 'STARTER' ? 'bg-green-100 text-green-700' :
+                      player.ablPlayedType === 'SUB'     ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-purple-100 text-purple-700'
+                    }`}>{player.ablPlayedType === 'SUB' ? 'Supp' : player.ablPlayedType === 'STARTER' ? 'Starter' : 'Xtra'}</span>
+                  )}
                 </div>
               </div>
             </div>
