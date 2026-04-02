@@ -33,36 +33,58 @@ export async function GET(
 
     // Populate team and player references
     const teamIds = [];
-    if (game.awayTeam) teamIds.push(new ObjectId(game.awayTeam));
-    if (game.homeTeam) teamIds.push(new ObjectId(game.homeTeam));
+    try {
+      if (game.awayTeam) teamIds.push(new ObjectId(game.awayTeam.toString()));
+      if (game.homeTeam) teamIds.push(new ObjectId(game.homeTeam.toString()));
+    } catch {
+      // awayTeam/homeTeam may already be populated objects — skip
+    }
 
-    const teams = await db.collection('ablteams')
-      .find({ _id: { $in: teamIds } })
-      .toArray();
+    const teams = teamIds.length > 0
+      ? await db.collection('ablteams').find({ _id: { $in: teamIds } }).toArray()
+      : [];
     
     const teamMap = new Map(teams.map(t => [t._id.toString(), t]));
 
-    // Populate teams
-    if (game.awayTeam) game.awayTeam = teamMap.get(game.awayTeam.toString());
-    if (game.homeTeam) game.homeTeam = teamMap.get(game.homeTeam.toString());
+    // Populate teams (only if still ObjectId references)
+    if (game.awayTeam && typeof game.awayTeam !== 'object') {
+      game.awayTeam = teamMap.get(game.awayTeam.toString()) ?? game.awayTeam;
+    } else if (game.awayTeam?._id) {
+      // already populated
+    } else if (game.awayTeam) {
+      game.awayTeam = teamMap.get(game.awayTeam.toString()) ?? game.awayTeam;
+    }
+    if (game.homeTeam && typeof game.homeTeam !== 'object') {
+      game.homeTeam = teamMap.get(game.homeTeam.toString()) ?? game.homeTeam;
+    } else if (game.homeTeam?._id) {
+      // already populated
+    } else if (game.homeTeam) {
+      game.homeTeam = teamMap.get(game.homeTeam.toString()) ?? game.homeTeam;
+    }
 
     // Populate players in rosters
     const playerIds = new Set<string>();
     [...(game.awayTeamRoster || []), ...(game.homeTeamRoster || [])]
       .forEach((p: any) => {
-        if (p.player) playerIds.add(p.player.toString());
+        if (p.player && typeof p.player !== 'object') playerIds.add(p.player.toString());
       });
 
     if (playerIds.size > 0) {
-      const players = await db.collection('players')
-        .find({ _id: { $in: Array.from(playerIds).map(id => new ObjectId(id)) } })
-        .toArray();
+      const playerObjectIds = [];
+      for (const pid of playerIds) {
+        try { playerObjectIds.push(new ObjectId(pid)); } catch { /* skip invalid */ }
+      }
+      const players = playerObjectIds.length > 0
+        ? await db.collection('players').find({ _id: { $in: playerObjectIds } }).toArray()
+        : [];
       
       const playerMap = new Map(players.map(p => [p._id.toString(), p]));
 
       [game.awayTeamRoster, game.homeTeamRoster].forEach(roster => {
         roster?.forEach((p: any) => {
-          if (p.player) p.player = playerMap.get(p.player.toString());
+          if (p.player && typeof p.player !== 'object') {
+            p.player = playerMap.get(p.player.toString()) ?? p.player;
+          }
         });
       });
     }
