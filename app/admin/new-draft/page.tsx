@@ -55,7 +55,7 @@ export default function NewDraftPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [league, season]);
 
   useEffect(() => {
     loadData();
