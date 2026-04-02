@@ -27,7 +27,10 @@ for (const line of readFileSync(resolve(__dirname, '..', '.env.local'), 'utf8').
 
 const SEASON_YEAR = 2026;
 const GAMES_FOR_ELIGIBLE = 10;  // games needed at a position to earn eligibility
-const EXCLUDED_FROM_ELIGIBLE = new Set(['PH', 'PR']); // these can be CommishPos but not eligibility slots
+// Positions excluded from ALL GP counting — they will never become CommishPos or eligibility slots.
+// P is excluded so two-way players (e.g. Ohtani) are classified by their fielding/DH role, not pitching.
+// PH and PR are also excluded — they're appearance types, not positions.
+const EXCLUDED_FROM_ELIGIBLE = new Set(['PH', 'PR', 'P']);
 
 // All outfield sub-positions collapse to a single OF slot for eligibility purposes.
 // If a player plays RF in the 1st inning and moves to CF in the 7th, that is still
@@ -87,7 +90,9 @@ const posLogUpserts = [];
 for (const [mlbId, posCounts] of Object.entries(playerPosCounts)) {
   // Sort positions by count desc
   const sorted = Object.entries(posCounts).sort((a, b) => b[1] - a[1]);
-  const maxPos = sorted[0]?.[0] ?? null;
+  // If all appearances were P/PH/PR (nothing counted), fall back to DH — the standard
+  // fantasy slot for two-way players who never fielded a position.
+  const maxPos = sorted[0]?.[0] ?? 'DH';
   const eligiblePositions = sorted
     .filter(([pos, ct]) => ct >= GAMES_FOR_ELIGIBLE && !EXCLUDED_FROM_ELIGIBLE.has(pos))
     .map(([pos]) => pos);
