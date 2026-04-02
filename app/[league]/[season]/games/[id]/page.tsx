@@ -101,8 +101,17 @@ export default function GameDetailPage() {
         fetch('/api/admin/me'),
       ]);
 
-      if (!gameRes.ok || !rostersRes.ok) {
-        throw new Error('Failed to fetch game details');
+      if (!gameRes.ok) {
+        const body = await gameRes.json().catch(() => ({}));
+        throw new Error(
+          gameRes.status === 404
+            ? 'Game not found'
+            : `Game request failed (${gameRes.status}): ${body?.error ?? 'unknown'}`
+        );
+      }
+      if (!rostersRes.ok) {
+        const body = await rostersRes.json().catch(() => ({}));
+        throw new Error(`Rosters request failed (${rostersRes.status}): ${body?.error ?? 'unknown'}`);
       }
 
       const gameData = await gameRes.json();
@@ -116,8 +125,9 @@ export default function GameDetailPage() {
       setGame(gameData);
       setRosters(rostersData);
     } catch (err) {
-      setError('Failed to load game details');
-      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Failed to load game details';
+      setError(msg);
+      console.error('fetchGame error:', err);
     } finally {
       setLoading(false);
     }

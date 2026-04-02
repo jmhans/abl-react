@@ -9,6 +9,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+
+    if (!id || !/^[a-f\d]{24}$/i.test(id)) {
+      return NextResponse.json({ error: 'Invalid game id' }, { status: 400 });
+    }
+
     const db = await connectToDatabase();
     
     const result = await db.collection('games').aggregate([
