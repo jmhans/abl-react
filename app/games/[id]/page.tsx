@@ -18,7 +18,13 @@ interface PlayerStats {
   '3b'?: number;
   hr?: number;
   bb?: number;
+  ibb?: number;
+  hbp?: number;
   sb?: number;
+  cs?: number;
+  sac?: number;
+  sf?: number;
+  po?: number;
   e?: number;
   abl_points?: number;
 }
@@ -27,6 +33,8 @@ interface Player {
   _id: string;
   name: string;
   position?: string;
+  eligible?: string[];
+  mlbTeam?: string | null;
   dailyStats?: PlayerStats;
   playedPosition?: string;
   lineupOrder?: number;
@@ -282,6 +290,19 @@ export default function GameDetailPage() {
   );
 }
 
+function statLine(s: PlayerStats): string {
+  const parts: string[] = [`${s.h ?? 0}-${s.ab ?? 0}`];
+  const add = (val: number | undefined, label: string) => {
+    if (!val) return;
+    parts.push(val === 1 ? label : `${val}${label}`);
+  };
+  add(s['2b'], '2B'); add(s['3b'], '3B'); add(s.hr, 'HR');
+  add(s.bb, 'BB'); add(s.hbp, 'HBP'); add(s.sb, 'SB');
+  add(s.cs, 'CS'); add(s.sac, 'SAC'); add(s.sf, 'SF');
+  add(s.po, 'PO'); add(s.e, 'E');
+  return parts.join(', ');
+}
+
 function RosterCard({ title, players }: { title: string; players: Player[] }) {
   const sortedPlayers = [...players]
     .sort((a, b) => (a.lineupOrder || 999) - (b.lineupOrder || 999));
@@ -292,6 +313,8 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
       <div className="space-y-2">
         {sortedPlayers.map((player, idx) => {
           const isInactive = !player.playedPosition;
+          const ablPositions = player.eligible?.join(',') || player.position || '';
+          const nameTag = [player.mlbTeam, ablPositions].filter(Boolean).join(' - ');
           return (
           <div
             key={player._id}
@@ -300,17 +323,18 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
             <div className="flex items-center gap-3">
               <span className={`font-mono w-6 ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>{idx + 1}</span>
               <div>
-                <div className={`font-semibold ${isInactive ? 'text-gray-400' : ''}`}>{player.name}</div>
+                <div className={`font-semibold ${isInactive ? 'text-gray-400' : ''}`}>
+                  {player.name}{nameTag ? <span className="font-normal text-gray-400"> ({nameTag})</span> : ''}
+                </div>
                 <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {player.playedPosition || 'Inactive'} | {player.position}
+                  {player.playedPosition || 'Inactive'}
                 </div>
               </div>
             </div>
             <div className="text-right">
               {player.dailyStats && (
                 <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {player.dailyStats.h}/{player.dailyStats.ab} 
-                  {player.dailyStats.hr! > 0 && ` ${player.dailyStats.hr}HR`}
+                  <div>{statLine(player.dailyStats)}</div>
                   <div className={`font-semibold ${isInactive ? 'text-gray-400' : 'text-blue-600'}`}>
                     {player.dailyStats.abl_points?.toFixed(1)} pts
                   </div>

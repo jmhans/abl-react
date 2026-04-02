@@ -136,6 +136,8 @@ export async function GET(
         _id: p.player?._id || p._id,
         name: p.player?.name || p.name,
         position: p.player?.eligible?.[0] || p.position,
+        eligible: p.player?.eligible || (p.position ? [p.position] : []),
+        mlbTeam: p.player?.team || p.mlbTeam || null,
         playedPosition: p.playedPosition,
         lineupOrder: p.lineupOrder,
         lineupPosition: p.lineupPosition,
