@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -49,7 +49,7 @@ export default function NewDraftPage() {
       setOrder(shuffle(teamsData));
       const d = draftData.draft;
       setExistingDraft(d ? { status: d.status, picksCount: (d.picks || []).length } : null);
-      setShowSetup(!d); // auto-open setup only if no draft exists
+      setShowSetup(!d);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -125,7 +125,7 @@ export default function NewDraftPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center text-xl text-gray-600">
-        Loadingâ€¦
+        Loading...
       </div>
     );
   }
@@ -138,10 +138,9 @@ export default function NewDraftPage() {
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-6">
-      {/* Header */}
       <div>
         <Link href={backHref} className="text-sm text-blue-600 hover:text-blue-800 inline-block mb-4">
-          â† Admin
+          &larr; Admin
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">Draft Management</h1>
         {league && season && (
@@ -155,7 +154,6 @@ export default function NewDraftPage() {
         </div>
       )}
 
-      {/* Existing draft card */}
       {existingDraft ? (
         <div className="rounded-xl bg-white shadow border border-gray-100 divide-y">
           <div className="px-5 py-4 flex items-center justify-between gap-4">
@@ -176,7 +174,7 @@ export default function NewDraftPage() {
                   href={draftHref}
                   className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                 >
-                  View Draft â†’
+                  View Draft &rarr;
                 </Link>
               )}
               <button
@@ -185,7 +183,7 @@ export default function NewDraftPage() {
                 disabled={deleting}
                 className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
               >
-                {deleting ? 'Deletingâ€¦' : 'ðŸ—‘ Delete'}
+                {deleting ? 'Deleting...' : 'Delete Draft'}
               </button>
             </div>
           </div>
@@ -195,7 +193,7 @@ export default function NewDraftPage() {
               onClick={() => setShowSetup((v) => !v)}
               className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
             >
-              {showSetup ? 'â–² Hide new draft setup' : 'â–¼ Start a new draft insteadâ€¦'}
+              {showSetup ? 'Hide setup' : 'Start a new draft instead...'}
             </button>
           </div>
         </div>
@@ -205,21 +203,20 @@ export default function NewDraftPage() {
         </div>
       )}
 
-      {/* New draft setup â€” shown automatically when no draft, or toggled when one exists */}
       {showSetup && (
         <>
           <div className="rounded-lg bg-white shadow">
             <div className="flex items-center justify-between border-b px-5 py-3">
               <div>
                 <h2 className="font-semibold text-gray-900">Round 1 Pick Order</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Snake format â€” round 2 reverses this order, and so on.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Snake format - round 2 reverses this order, and so on.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setOrder(shuffle(teams))}
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
               >
-                ðŸ”€ Re-randomize
+                Re-randomize
               </button>
             </div>
 
@@ -235,14 +232,18 @@ export default function NewDraftPage() {
                       disabled={index === 0}
                       aria-label="Move up"
                       className="rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                    >â–²</button>
+                    >
+                      up
+                    </button>
                     <button
                       type="button"
                       onClick={() => move(index, 1)}
                       disabled={index === order.length - 1}
                       aria-label="Move down"
                       className="rounded px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-                    >â–¼</button>
+                    >
+                      dn
+                    </button>
                   </div>
                 </li>
               ))}
@@ -256,7 +257,7 @@ export default function NewDraftPage() {
               disabled={starting || order.length === 0}
               className="rounded-lg bg-green-600 px-6 py-3 text-base font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              {starting ? 'Starting Draftâ€¦' : 'â–¶ Start Draft'}
+              {starting ? 'Starting Draft...' : 'Start Draft'}
             </button>
           </div>
         </>
@@ -264,4 +265,3 @@ export default function NewDraftPage() {
     </div>
   );
 }
-
