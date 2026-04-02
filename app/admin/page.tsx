@@ -55,6 +55,14 @@ export default function AdminPage() {
     icon: '🔄',
   },
   {
+    href: '/admin/player-sync',
+    title: 'Expand Player Pool',
+    description: 'Seed players + position eligibility from 40-man rosters, spring training stats, and early season ABs. Run before the draft.',
+    accent: 'border-l-cyan-500',
+    iconBg: 'bg-cyan-100',
+    icon: '👤',
+  },
+  {
     href: '/admin/stat-refresh',
     title: 'MLB Stat Download',
     description: 'Pull boxscore data into player and statline collections for a single date or a full date range.',
