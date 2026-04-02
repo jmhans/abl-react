@@ -29,6 +29,14 @@ const SEASON_YEAR = 2026;
 const GAMES_FOR_ELIGIBLE = 10;  // games needed at a position to earn eligibility
 const EXCLUDED_FROM_ELIGIBLE = new Set(['PH', 'PR']); // these can be CommishPos but not eligibility slots
 
+// All outfield sub-positions collapse to a single OF slot for eligibility purposes.
+// If a player plays RF in the 1st inning and moves to CF in the 7th, that is still
+// only 1 GP credit at OF for that game.
+const OF_POSITIONS = new Set(['RF', 'CF', 'LF']);
+function normalizePos(pos) {
+  return OF_POSITIONS.has(pos) ? 'OF' : pos;
+}
+
 const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
 const db = client.db('abl_dev');
@@ -57,9 +65,12 @@ for (const doc of statDates2026) {
   const entries = doc.p || {};
   for (const [key, val] of Object.entries(entries)) {
     const mlbId = key.split('_')[0];
-    const positions = val.pos || [];
+    const rawPositions = val.pos || [];
     if (!playerPosCounts[mlbId]) playerPosCounts[mlbId] = {};
-    for (const pos of positions) {
+    // Normalize RF/CF/LF → OF, then deduplicate so a player who moves from
+    // RF to CF within the same game only gets 1 GP credit at OF.
+    const normalizedPositions = [...new Set(rawPositions.map(normalizePos))];
+    for (const pos of normalizedPositions) {
       if (!EXCLUDED_FROM_ELIGIBLE.has(pos)) {
         playerPosCounts[mlbId][pos] = (playerPosCounts[mlbId][pos] || 0) + 1;
       }
