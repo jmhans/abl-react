@@ -35,14 +35,6 @@ const cards: AdminCard[] = [
     icon: '🏆',
   },
   {
-    href: '/draft',
-    title: 'Draft Room',
-    description: 'Open the live draft room.',
-    accent: 'border-l-teal-500',
-    iconBg: 'bg-teal-100',
-    icon: '🎯',
-  },
-  {
     href: '/admin/roster-sync',
     title: 'Sync Roster Statuses',
     description: "Fetch each team's 40-man roster from the MLB Stats API and update player statuses.",

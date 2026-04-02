@@ -16,18 +16,22 @@ export default function LeagueSeasonHome() {
 
   const [user, setUser] = useState<User | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
+  const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [userRes, draftCheck] = await Promise.all([
+        const [userRes, draftCheck, seasonRes] = await Promise.all([
           fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`/api/games?league=${league}&season=${season}&gameType=D&limit=1&view=summary`)
             .then(r => r.json()).catch(() => []),
+          fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []),
         ]);
         setUser(userRes?.user || null);
         setHasDraft(Array.isArray(draftCheck) && draftCheck.length > 0);
+        const s = Array.isArray(seasonRes) ? seasonRes[0] : null;
+        setSeasonStatus(s?.status ?? null);
       } catch (err) {
         console.error('Dashboard load error:', err);
       } finally {
@@ -82,11 +86,11 @@ export default function LeagueSeasonHome() {
           <p className="text-xs text-gray-500 mt-1">Browse all {leagueName} teams</p>
         </Link>
 
-        {hasDraft && (
-          <Link href={`${base}/draft`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
+        {(hasDraft || seasonStatus === 'pre-draft') && (
+          <Link href={`${base}/draft`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-teal-400 hover:shadow transition group">
             <div className="text-2xl mb-2">🎯</div>
-            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Draft Room</h2>
-            <p className="text-xs text-gray-500 mt-1">24-round grouped snake draft board</p>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-teal-700">Draft Room</h2>
+            <p className="text-xs text-gray-500 mt-1">{seasonStatus === 'pre-draft' && !hasDraft ? 'Draft coming soon — check the board' : '24-round grouped snake draft board'}</p>
           </Link>
         )}
       </div>
