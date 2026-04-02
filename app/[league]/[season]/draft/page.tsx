@@ -444,7 +444,7 @@ export default function DraftPage() {
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Available players</h2>
                 <p className="text-sm text-gray-600">Search and draft from the current board. Players are sorted by ABL score, then name.</p>
-                <p className="text-xs text-gray-400 mt-1">{filteredPlayers.length} player{filteredPlayers.length !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-gray-400 mt-1">{availablePlayers.length} player{availablePlayers.length !== 1 ? 's' : ''}</p>
               </div>
               <button
                 type="button"
