@@ -1,4 +1,7 @@
-﻿import Link from 'next/link';
+﻿'use client';
+
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 interface AdminCard {
   href: string;
@@ -9,7 +12,16 @@ interface AdminCard {
   icon: string;
 }
 
-const cards: AdminCard[] = [
+// Cards whose hrefs need league/season context forwarded
+const LEAGUE_SCOPED = new Set(['/admin/new-draft', '/admin/recalculate']);
+
+export default function AdminPage() {
+  const searchParams = useSearchParams();
+  const league = searchParams.get('league') ?? '';
+  const season = searchParams.get('season') ?? '';
+  const leagueQuery = league && season ? `?league=${league}&season=${season}` : '';
+
+  const cards: AdminCard[] = [
   {
     href: '/admin/leagues',
     title: 'League Management',
@@ -66,9 +78,8 @@ const cards: AdminCard[] = [
     iconBg: 'bg-blue-100',
     icon: '⚙️',
   },
-];
+  ];
 
-export default function AdminPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-8">
       <div>
@@ -77,13 +88,16 @@ export default function AdminPage() {
         </Link>
         <h1 className="text-3xl font-bold text-gray-900">Admin</h1>
         <p className="text-gray-500 mt-1 text-sm">Management tools and data operations.</p>
+        {league && season && (
+          <p className="text-xs text-blue-600 mt-1">League context: {league.toUpperCase()} {season}</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {cards.map((card) => (
           <Link
             key={card.href}
-            href={card.href}
+            href={LEAGUE_SCOPED.has(card.href) ? `${card.href}${leagueQuery}` : card.href}
             className={`group flex items-start gap-4 rounded-xl bg-white shadow-sm border border-gray-100 border-l-4 ${card.accent} px-5 py-4 hover:shadow-md hover:border-gray-200 transition-all`}
           >
             <div

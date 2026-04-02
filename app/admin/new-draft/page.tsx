@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DraftTeam, getTeamDisplayName } from '@/app/lib/draft-utils';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -16,6 +16,12 @@ function shuffle<T>(arr: T[]): T[] {
 
 export default function NewDraftPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const league = searchParams.get('league') ?? '';
+  const season = searchParams.get('season') ?? '';
+  const leagueQuery = league && season ? `?league=${league}&season=${season}` : '';
+  const backHref = `/admin${leagueQuery}`;
+  const draftHref = league && season ? `/${league}/${season}/draft` : '/draft';
   const [teams, setTeams] = useState<DraftTeam[]>([]);
   const [order, setOrder] = useState<DraftTeam[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,8 +34,8 @@ export default function NewDraftPage() {
     setError(null);
     try {
       const [teamsRes, draftRes] = await Promise.all([
-        fetch('/api/teams'),
-        fetch('/api/draft', { cache: 'no-store' }),
+        fetch(league && season ? `/api/teams?league=${league}&season=${season}` : '/api/teams'),
+        fetch(league && season ? `/api/draft?league=${league}&season=${season}` : '/api/draft', { cache: 'no-store' }),
       ]);
 
       if (!teamsRes.ok) throw new Error('Failed to load teams');
@@ -71,7 +77,7 @@ export default function NewDraftPage() {
     setError(null);
 
     try {
-      const res = await fetch('/api/draft', {
+      const res = await fetch(league && season ? `/api/draft?league=${league}&season=${season}` : '/api/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderIds: order.map((t) => t._id) }),
@@ -82,7 +88,7 @@ export default function NewDraftPage() {
         throw new Error(body.error || 'Failed to start draft');
       }
 
-      router.push('/draft');
+      router.push(draftHref);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start draft');
       setStarting(false);
@@ -101,7 +107,7 @@ export default function NewDraftPage() {
     <div className="container mx-auto max-w-2xl px-4 py-8 space-y-6">
       {/* Header */}
       <div>
-        <Link href="/admin" className="text-sm text-blue-600 hover:text-blue-800 inline-block mb-4">
+        <Link href={backHref} className="text-sm text-blue-600 hover:text-blue-800 inline-block mb-4">
           ← Admin
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">New Draft Setup</h1>

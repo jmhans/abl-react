@@ -270,7 +270,7 @@ export default function Navigation() {
         )}
         {isAdmin && (
           <Link
-            href="/admin"
+            href={`/admin${currentLeagueSlug && currentSeasonYear ? `?league=${currentLeagueSlug}&season=${currentSeasonYear}` : ''}`}
             className={navLinkClass('/admin')}
             title="Admin"
           >

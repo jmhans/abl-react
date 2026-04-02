@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 interface Team {
   _id: string;
@@ -39,6 +40,9 @@ interface GameLineupDiff {
 }
 
 export default function RecalculatePage() {
+  const searchParams = useSearchParams();
+  const league = searchParams.get('league') ?? '';
+  const season = searchParams.get('season') ?? '';
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -50,12 +54,15 @@ export default function RecalculatePage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    fetch('/api/games?view=summary')
+    const url = league && season
+      ? `/api/games?view=summary&league=${league}&season=${season}`
+      : '/api/games?view=summary';
+    fetch(url)
       .then((r) => r.json())
       .then((data) => setGames(data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [league, season]);
 
   const filteredGames = useMemo(() => {
     return games.filter((game) => {
