@@ -63,6 +63,14 @@ export default function AdminPage() {
     icon: '👤',
   },
   {
+    href: '/admin/projections',
+    title: 'Season Projections',
+    description: 'Import Fangraphs projection CSVs (Steamer, ZiPS, etc.) to show projected ABL scores on the draft page.',
+    accent: 'border-l-orange-500',
+    iconBg: 'bg-orange-100',
+    icon: '📊',
+  },
+  {
     href: '/admin/stat-refresh',
     title: 'MLB Stat Download',
     description: 'Pull boxscore data into player and statline collections for a single date or a full date range.',

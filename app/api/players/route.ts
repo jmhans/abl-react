@@ -2,22 +2,53 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
-// GET /api/players - Get all players from players_view.
-// players_view computes status from the mlbrosters collection via $lookup,
-// so no additional overlay is needed here.
+const CURRENT_SEASON = 2026;
+
+// GET /api/players - Get all players from players_view, enriched with
+// projections (ablProjected) where available.
 export async function GET(request: NextRequest) {
   try {
     const db = await connectToDatabase();
-    // Exclude pure pitchers: keep players who have at least one eligible position
-    // (position history from batting appearances) or who have at least 1 AB this
-    // season (covers two-way players whose eligible may not yet be populated).
-    // This prevents pitcher-only 40-man roster members from cluttering player lists.
-    const players = await db.collection('players_view').find({
-      $or: [
-        { 'eligible.0': { $exists: true } },       // has at least one eligible position
-        { 'stats.batting.atBats': { $gt: 0 } },    // or has at least 1 AB this season
-      ],
-    }).toArray();
+    // Exclude pure pitchers and join latest projection for each player.
+    const players = await db.collection('players_view').aggregate([
+      {
+        $match: {
+          $or: [
+            { 'eligible.0': { $exists: true } },
+            { 'stats.batting.atBats': { $gt: 0 } },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: 'projections',
+          let: { pid: '$mlbID' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$mlbId', '$$pid'] },
+                    { $eq: ['$season', CURRENT_SEASON] },
+                  ],
+                },
+              },
+            },
+            { $sort: { importedAt: -1 } },
+            { $limit: 1 },
+          ],
+          as: 'proj',
+        },
+      },
+      {
+        $addFields: {
+          ablProjected: { $ifNull: [{ $first: '$proj.ablProjected' }, null] },
+          projSystem: { $ifNull: [{ $first: '$proj.projSystem' }, null] },
+          projStats: { $ifNull: [{ $first: '$proj.stats' }, null] },
+        },
+      },
+      { $project: { proj: 0 } },
+    ]).toArray();
     return NextResponse.json(players);
   } catch (error) {
     console.error('Error fetching players:', error);

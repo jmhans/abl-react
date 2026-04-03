@@ -17,6 +17,8 @@ import { useLeagueSeason } from '@/app/lib/league-season-context';
 
 type PlayerForDraft = DraftPlayer & {
   abl: number;
+  ablProjected: number | null;
+  projSystem: string | null;
   eligible: string[];
 };
 
@@ -48,6 +50,7 @@ export default function DraftPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPlayers, setShowPlayers] = useState(true);
   const [activeOnly, setActiveOnly] = useState(true);
+  const [sortBy, setSortBy] = useState<'abl' | 'proj'>('proj');
 
   const applyDraftState = (sortedTeams: DraftTeam[], draft: DraftApiState | null) => {
     const defaultOrderIds = sortedTeams.map((team) => team._id);
@@ -97,13 +100,17 @@ export default function DraftPage() {
 
         const sortedTeams = [...teamsData].sort((a, b) => getTeamDisplayName(a).localeCompare(getTeamDisplayName(b)));
         const enrichedPlayers = playersData
-          .map((player) => ({
+          .map((player: any) => ({
             ...player,
             eligible: getDraftEligiblePositions(player),
             abl: calculateDraftAblScore(player.stats),
+            ablProjected: player.ablProjected ?? null,
+            projSystem: player.projSystem ?? null,
           }))
           .sort((a, b) => {
-            if (b.abl !== a.abl) return b.abl - a.abl;
+            const aScore = a.ablProjected ?? a.abl;
+            const bScore = b.ablProjected ?? b.abl;
+            if (bScore !== aScore) return bScore - aScore;
             return a.name.localeCompare(b.name);
           });
 
@@ -132,8 +139,17 @@ export default function DraftPage() {
 
   const currentTeam = currentPick ? orderedTeams.find((team) => team._id === currentPick.teamId) || null : null;
 
+  const sortedPlayers = useMemo(() => {
+    return [...players].sort((a, b) => {
+      const aScore = sortBy === 'proj' ? (a.ablProjected ?? a.abl) : a.abl;
+      const bScore = sortBy === 'proj' ? (b.ablProjected ?? b.abl) : b.abl;
+      if (bScore !== aScore) return bScore - aScore;
+      return a.name.localeCompare(b.name);
+    });
+  }, [players, sortBy]);
+
   const availablePlayers = useMemo(() => {
-    return players.filter((player) => {
+    return sortedPlayers.filter((player) => {
       if (draftedPlayerIds.has(player._id)) return false;
 
       if (activeOnly) {
@@ -150,7 +166,7 @@ export default function DraftPage() {
 
       return matchesSearch && matchesPosition;
     });
-  }, [players, draftedPlayerIds, search, positionFilter, activeOnly]);
+  }, [sortedPlayers, draftedPlayerIds, search, positionFilter, activeOnly]);
 
   const selectedTeam = useMemo(() => {
     return orderedTeams.find((team) => team._id === selectedTeamId) || orderedTeams[0] || null;
@@ -485,13 +501,22 @@ export default function DraftPage() {
               >
                 {activeOnly ? 'Include players not on active rosters' : 'Active roster players only'}
               </button>
+              <button
+                type="button"
+                onClick={() => setSortBy((v) => v === 'abl' ? 'proj' : 'abl')}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm whitespace-nowrap hover:bg-gray-50"
+                title={sortBy === 'proj' ? 'Currently sorting by projected ABL' : 'Currently sorting by actual YTD ABL'}
+              >
+                Sort: {sortBy === 'proj' ? 'Projected' : 'Actual (YTD)'}
+              </button>
             </div>
 
             <div className="rounded-lg border border-gray-200">
-              <div className="grid grid-cols-[minmax(0,1.5fr)_7rem_8rem_7rem_9rem] gap-3 border-b bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <div className="grid grid-cols-[minmax(0,1.5fr)_7rem_8rem_7rem_7rem_9rem] gap-3 border-b bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <div>Player</div>
                 <div>MLB</div>
                 <div>Eligible</div>
+                <div className="text-blue-600">Proj</div>
                 <div>ABL</div>
                 <div>Action</div>
               </div>
@@ -499,7 +524,7 @@ export default function DraftPage() {
                 {availablePlayers.map((player) => (
                   <div
                     key={player._id}
-                    className="grid grid-cols-[minmax(0,1.5fr)_7rem_8rem_7rem_9rem] gap-3 border-b px-4 py-3 text-sm last:border-b-0"
+                    className="grid grid-cols-[minmax(0,1.5fr)_7rem_8rem_7rem_7rem_9rem] gap-3 border-b px-4 py-3 text-sm last:border-b-0"
                   >
                     <div>
                       <div className="font-medium text-gray-900">{player.name}</div>
@@ -507,6 +532,12 @@ export default function DraftPage() {
                     </div>
                     <div className="text-gray-700">{player.team || 'FA'}</div>
                     <div className="text-gray-700">{player.eligible.join(', ')}</div>
+                    <div className={`font-medium ${
+                      player.ablProjected === null ? 'text-gray-300' :
+                      player.ablProjected >= 0 ? 'text-blue-700' : 'text-red-500'
+                    }`}>
+                      {player.ablProjected !== null ? player.ablProjected.toFixed(2) : '—'}
+                    </div>
                     <div className={`${player.abl >= 0 ? 'text-green-700' : 'text-red-700'} font-medium`}>
                       {player.abl.toFixed(2)}
                     </div>
