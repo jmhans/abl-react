@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { toggleNav } from '@/app/ui/navigation';
 
 interface User {
   name?: string;
@@ -20,15 +21,24 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="bg-blue-600 text-white px-4 py-3 shadow-md">
+    <header className="bg-blue-600 text-white px-4 py-3 shadow-md sticky top-0 z-20">
       <div className="flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold tracking-tight">
-          ABL
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleNav}
+            className="text-white/80 hover:text-white p-1.5 rounded transition text-xl leading-none"
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+          <Link href="/" className="text-xl font-bold tracking-tight">
+            ABL
+          </Link>
+        </div>
         <div>
           {user ? (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-blue-100">{user.name}</span>
+              <span className="text-sm text-blue-100 hidden sm:inline">{user.name}</span>
               <a href="/api/auth/logout" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
                 Sign out
               </a>

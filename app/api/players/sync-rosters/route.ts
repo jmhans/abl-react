@@ -28,12 +28,13 @@ export async function POST() {
       return NextResponse.json({ error: 'No MLB teams returned from API' }, { status: 502 });
     }
 
-    // 2. For each team fetch 40-man roster and upsert into mlbrosters
-    //    players_view is defined to $lookup from mlbrosters and derive status
-    //    from roster[].status.description — so we write here, not to players.
+    // 2. For each team fetch 40-man roster and upsert into mlbrosters,
+    //    then bulk-update players.team so the draft page shows correct MLB team.
     let totalPlayers = 0;
     let teamsUpdated = 0;
     const errors: string[] = [];
+    // Collect mlbID → abbreviation for the players bulk update
+    const playerTeamOps: any[] = [];
 
     for (const team of teams) {
       try {
@@ -61,11 +62,28 @@ export async function POST() {
           { upsert: true },
         );
 
+        // Queue a players.team update for every person on this roster
+        for (const entry of roster) {
+          const mlbId = String(entry.person?.id ?? '');
+          if (!mlbId) continue;
+          playerTeamOps.push({
+            updateOne: {
+              filter: { mlbID: mlbId },
+              update: { $set: { team: team.abbreviation } },
+            },
+          });
+        }
+
         teamsUpdated++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`Team ${team.abbreviation} (${team.id}): ${msg}`);
       }
+    }
+
+    // Bulk-update team abbreviation on all known players
+    if (playerTeamOps.length > 0) {
+      await db.collection('players').bulkWrite(playerTeamOps, { ordered: false });
     }
 
     return NextResponse.json({

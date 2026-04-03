@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 interface StatRefreshResponse {
@@ -36,6 +36,26 @@ export default function StatRefreshPage() {
 
   const [error, setError] = useState<string | null>(null);
 
+  const [coverage, setCoverage] = useState<{
+    lastDate: string | null;
+    missingDates: string[];
+    coveredCount: number;
+    yesterday: string;
+  } | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(true);
+
+  const loadCoverage = useCallback(async () => {
+    setCoverageLoading(true);
+    try {
+      const res = await fetch('/api/jobs/stat-coverage');
+      if (res.ok) setCoverage(await res.json());
+    } finally {
+      setCoverageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadCoverage(); }, [loadCoverage]);
+
   const runSingle = async () => {
     setSingleBusy(true);
     setSingleResult(null);
@@ -51,6 +71,7 @@ export default function StatRefreshPage() {
       const data: StatRefreshResponse = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'Stat refresh failed');
       setSingleResult(data);
+      await loadCoverage();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Stat refresh failed');
     } finally {
@@ -75,6 +96,7 @@ export default function StatRefreshPage() {
       const data: StatRefreshResponse = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'Bulk refresh failed');
       setBulkResult(data);
+      await loadCoverage();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Bulk refresh failed');
     } finally {
@@ -93,6 +115,65 @@ export default function StatRefreshPage() {
           Pull MLB boxscore data into player and statline collections, then optionally recalculate ABL game results.
           The nightly cron also runs this job automatically.
         </p>
+      </div>
+
+      {/* Coverage summary */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-gray-900">Coverage</h2>
+          <button
+            onClick={loadCoverage}
+            disabled={coverageLoading}
+            className="text-xs text-emerald-700 hover:text-emerald-900 disabled:text-gray-400"
+          >
+            {coverageLoading ? 'Loading…' : '↻ Refresh'}
+          </button>
+        </div>
+        {coverageLoading && !coverage ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : coverage ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-6 text-sm">
+              <div>
+                <span className="text-gray-500">Last downloaded:</span>{' '}
+                <span className="font-medium text-gray-900">
+                  {coverage.lastDate ?? <span className="text-gray-400">none</span>}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500">Covered since 2026-03-26:</span>{' '}
+                <span className="font-medium text-gray-900">{coverage.coveredCount} days</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Missing through {coverage.yesterday}:</span>{' '}
+                <span className={`font-medium ${
+                  coverage.missingDates.length === 0 ? 'text-emerald-700' : 'text-amber-700'
+                }`}>
+                  {coverage.missingDates.length === 0 ? 'none ✓' : `${coverage.missingDates.length} day${coverage.missingDates.length !== 1 ? 's' : ''}`}
+                </span>
+              </div>
+            </div>
+            {coverage.missingDates.length > 0 && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+                <p className="text-xs font-semibold text-amber-800 mb-2">Missing dates:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {coverage.missingDates.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setSingleDate(d)}
+                      className="rounded bg-amber-100 px-2 py-0.5 text-xs font-mono text-amber-900 hover:bg-amber-200 transition-colors"
+                      title={`Click to populate single-date field`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-amber-600 mt-2">Click a date to pre-fill the single-date field below.</p>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {error && (

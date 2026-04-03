@@ -42,10 +42,14 @@ export async function POST(
       );
     }
 
-    // Check if player already on a roster
-    if (player.ablstatus?.onRoster && player.ablstatus?.ablTeam) {
+    // Check if player is already on any lineup (league-scoped source of truth for roster state)
+    const existingLineup = await db.collection('lineups').findOne(
+      { roster: { $elemMatch: { player: new ObjectId(playerId) } } },
+      { projection: { ablTeam: 1 } }
+    );
+    if (existingLineup) {
       return NextResponse.json(
-        { error: 'Player is already on a roster', team: player.ablstatus.ablTeam },
+        { error: 'Player is already on a roster', team: existingLineup.ablTeam },
         { status: 409 }
       );
     }
@@ -135,7 +139,8 @@ export async function POST(
     lineup.roster.push({
       player: new ObjectId(playerId),
       lineupPosition: lineupPosition,
-      rosterOrder: nextRosterOrder
+      rosterOrder: nextRosterOrder,
+      acqType: acqType || 'fa',
     });
     lineup.updatedAt = new Date();
 
@@ -156,18 +161,6 @@ export async function POST(
         }
       },
       { upsert: true }
-    );
-
-    // Update player ownership
-    await db.collection('players').updateOne(
-      { _id: new ObjectId(playerId) },
-      {
-        $set: {
-          'ablstatus.ablTeam': new ObjectId(teamId),
-          'ablstatus.onRoster': true,
-          'ablstatus.acqType': acqType || 'fa' // 'draft', 'fa', 'trade', etc.
-        }
-      }
     );
 
     // Populate player data for response

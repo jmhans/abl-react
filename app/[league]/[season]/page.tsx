@@ -17,21 +17,38 @@ export default function LeagueSeasonHome() {
   const [user, setUser] = useState<User | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [userRes, draftCheck, seasonRes] = await Promise.all([
+        const [userRes, adminRes, draftCheck, seasonRes, myLeaguesRes] = await Promise.all([
           fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/admin/me').then(r => r.ok ? r.json() : {}).catch(() => ({})),
           fetch(`/api/games?league=${league}&season=${season}&gameType=D&limit=1&view=summary`)
             .then(r => r.json()).catch(() => []),
           fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []),
+          fetch('/api/auth/my-leagues').then(r => r.json()).catch(() => []),
         ]);
-        setUser(userRes?.user || null);
+        
+        const sessionUser = userRes?.user || null;
+        setUser(sessionUser);
+        setIsAdmin(adminRes?.isAdmin ?? false);
         setHasDraft(Array.isArray(draftCheck) && draftCheck.length > 0);
         const s = Array.isArray(seasonRes) ? seasonRes[0] : null;
         setSeasonStatus(s?.status ?? null);
+
+        // Find user's team in current league/season
+        if (sessionUser?.sub) {
+          const currentEntry = (Array.isArray(myLeaguesRes) ? myLeaguesRes : []).find(
+            (e: any) => e.league?.slug === league && String(e.season?.year) === String(season)
+          );
+          if (currentEntry?.team?._id) {
+            setUserTeamId(currentEntry.team._id);
+          }
+        }
       } catch (err) {
         console.error('Dashboard load error:', err);
       } finally {
@@ -75,13 +92,13 @@ export default function LeagueSeasonHome() {
         </Link>
 
         <Link href={`${base}/games`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
-          <div className="text-2xl mb-2">⚾</div>
+          <div className="text-2xl mb-2">📅</div>
           <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Scores</h2>
           <p className="text-xs text-gray-500 mt-1">Game schedule and results</p>
         </Link>
 
         <Link href={`${base}/teams`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
-          <div className="text-2xl mb-2">🏟️</div>
+          <div className="text-2xl mb-2">👥</div>
           <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Teams</h2>
           <p className="text-xs text-gray-500 mt-1">Browse all {leagueName} teams</p>
         </Link>
@@ -91,6 +108,30 @@ export default function LeagueSeasonHome() {
             <div className="text-2xl mb-2">🎯</div>
             <h2 className="text-sm font-semibold text-gray-900 group-hover:text-teal-700">Draft Room</h2>
             <p className="text-xs text-gray-500 mt-1">{seasonStatus === 'pre-draft' && !hasDraft ? 'Draft coming soon — check the board' : '24-round grouped snake draft board'}</p>
+          </Link>
+        )}
+
+        {userTeamId && (
+          <Link href={`${base}/teams/${userTeamId}/roster`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-purple-400 hover:shadow transition group">
+            <div className="text-2xl mb-2">🏢</div>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-purple-700">My Team</h2>
+            <p className="text-xs text-gray-500 mt-1">Your roster, lineups, and settings</p>
+          </Link>
+        )}
+
+        {userTeamId && seasonStatus !== 'pre-draft' && (
+          <Link href={`${base}/teams/${userTeamId}/free-agents`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
+            <div className="text-2xl mb-2">👤</div>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Free Agents</h2>
+            <p className="text-xs text-gray-500 mt-1">Add and manage pickups</p>
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link href={`/admin?league=${league}&season=${season}`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-red-400 hover:shadow transition group">
+            <div className="text-2xl mb-2">⚙️</div>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-red-700">Admin</h2>
+            <p className="text-xs text-gray-500 mt-1">League and season management</p>
           </Link>
         )}
       </div>

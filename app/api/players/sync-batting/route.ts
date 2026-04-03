@@ -72,7 +72,6 @@ function makePlayerStatOp(mlbId: string, split: any) {
         $setOnInsert: {
           mlbID: mlbId,
           lastUpdate: new Date(),
-          'ablstatus.onRoster': false,
         },
       },
       upsert: true,
@@ -138,7 +137,6 @@ export async function POST(request: NextRequest) {
                   mlbID: mlbId,
                   name: entry.person?.fullName ?? '',
                   lastUpdate: new Date(),
-                  'ablstatus.onRoster': false,
                 },
               },
               upsert: true,

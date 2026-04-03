@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
 
@@ -47,7 +47,6 @@ interface RosterData {
 
 export default function TeamRosterPage() {
   const params = useParams();
-  const router = useRouter();
   const teamId = params.id as string;
   const { league, season } = useLeagueSeason();
 
@@ -72,6 +71,7 @@ export default function TeamRosterPage() {
   const [addingCoOwner, setAddingCoOwner] = useState(false);
   const [removingCoOwner, setRemovingCoOwner] = useState<string | null>(null);
   const [coOwnerError, setCoOwnerError] = useState('');
+  const [showRulesPopover, setShowRulesPopover] = useState(false);
 
   useEffect(() => {
     fetchUserAndRoster();
@@ -339,12 +339,28 @@ export default function TeamRosterPage() {
                 )}
               </div>
               {isOwner && (
-                <button
-                  onClick={() => { setTeamInfoDraft(teamInfo); setEditingTeamInfo(true); setTeamInfoError(''); }}
-                  className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 whitespace-nowrap shrink-0"
-                >
-                  ✏️ Edit
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={async () => {
+                      setCoOwnerError('');
+                      setCoOwnerSearch('');
+                      if (allUsers.length === 0) {
+                        const res = await fetch('/api/users');
+                        if (res.ok) setAllUsers(await res.json());
+                      }
+                      setShowCoOwnerModal(true);
+                    }}
+                    className="text-xs text-purple-600 hover:text-purple-800 underline underline-offset-2"
+                  >
+                    + Co-owner
+                  </button>
+                  <button
+                    onClick={() => { setTeamInfoDraft(teamInfo); setEditingTeamInfo(true); setTeamInfoError(''); }}
+                    className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 whitespace-nowrap"
+                  >
+                    ✏️ Edit
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -358,86 +374,39 @@ export default function TeamRosterPage() {
           </div>
         )}
 
-        <div
-          className={`p-4 rounded-lg mb-6 ${
-            roster.locked ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'
-          }`}
-        >
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="font-semibold text-lg">
-                {roster.locked ? '🔒 Roster Locked' : '✏️ Roster Editable'}
-              </h2>
-              {roster.nextGame && (
-                <p className="text-sm text-gray-700">
-                  Next Game: {new Date(roster.nextGame.gameDate).toLocaleString()}
-                </p>
-              )}
-              {roster.effectiveDate && (
-                <p className="text-sm text-gray-600">
-                  Lock Time: {new Date(roster.effectiveDate).toLocaleString()}
-                </p>
-              )}
-            </div>
-            {!roster.locked && roster.timeUntilLock && (
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Time Remaining:</p>
-                <p className="text-2xl font-bold text-green-700">{formatTimeRemaining(roster.timeUntilLock)}</p>
-              </div>
-            )}
-          </div>
+        <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg mb-4 text-sm ${roster.locked ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+          <span className="font-semibold">{roster.locked ? '🔒 Roster Locked' : '🟢 Roster Open'}</span>
+          {!roster.locked && roster.timeUntilLock && (
+            <span className="text-gray-700">
+              Time remaining to next lock: <strong className="text-green-700">{formatTimeRemaining(roster.timeUntilLock)}</strong>
+            </span>
+          )}
         </div>
 
-        <div className="flex gap-4 mb-6 flex-wrap">
-          {isOwner && (
-            <>
-              {seasonStatus !== 'pre-draft' && (
-                <Link
-                  href={`/${league}/${season}/teams/${teamId}/free-agents`}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Add Players
-                </Link>
-              )}
+        {isOwner && hasChanges && (
+          <div className="flex gap-3 mb-4">
+            {!roster.locked && (
               <button
-                onClick={async () => {
-                  setCoOwnerError('');
-                  setCoOwnerSearch('');
-                  if (allUsers.length === 0) {
-                    const res = await fetch('/api/users');
-                    if (res.ok) setAllUsers(await res.json());
-                  }
-                  setShowCoOwnerModal(true);
-                }}
-                className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm"
               >
-                Add Co-owner
+                {saving ? 'Saving...' : 'Save Changes'}
               </button>
-              {hasChanges && !roster.locked && (
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              )}
-              {hasChanges && (
-                <button
-                  onClick={fetchRoster}
-                  className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  Discard Changes
-                </button>
-              )}
-            </>
-          )}
-          {seasonStatus === 'pre-draft' && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 text-yellow-800 text-sm">
-              ⏳ Season hasn&apos;t drafted yet — player adds will be available after the draft.
-            </div>
-          )}
-        </div>
+            )}
+            <button
+              onClick={fetchRoster}
+              className="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+            >
+              Discard
+            </button>
+          </div>
+        )}
+        {seasonStatus === 'pre-draft' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 text-yellow-800 text-sm mb-4">
+            ⏳ Season hasn&apos;t drafted yet — player adds will be available after the draft.
+          </div>
+        )}
 
         {/* Co-owner modal */}
         {showCoOwnerModal && (
@@ -544,14 +513,29 @@ export default function TeamRosterPage() {
           </div>
         )}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold mb-2">Roster Rules:</h3>
-          <ul className="text-sm text-gray-700 space-y-1">
-            <li>• Drafted players cannot be dropped</li>
-            <li>• Drafted players must appear first in roster order</li>
-            <li>• Pickups can only be placed after all drafted players</li>
-            <li>• Drag and drop to reorder (within rules)</li>
-          </ul>
+        <div className="relative inline-block mb-6">
+          <button
+            onClick={() => setShowRulesPopover(v => !v)}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+            aria-label="Roster rules"
+          >
+            <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center font-bold text-[10px] leading-none">i</span>
+            Roster Rules
+          </button>
+          {showRulesPopover && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowRulesPopover(false)} aria-hidden />
+              <div className="absolute left-0 top-6 z-20 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-4">
+                <h4 className="font-semibold text-sm text-gray-800 mb-2">Roster Rules</h4>
+                <ul className="text-sm text-gray-600 space-y-1.5">
+                  <li>• Drafted players cannot be dropped</li>
+                  <li>• Drafted players must appear first in roster order</li>
+                  <li>• Pickups can only be placed after all drafted players</li>
+                  <li>• Drag and drop rows to reorder (within rules)</li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -561,12 +545,16 @@ export default function TeamRosterPage() {
             <tr>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
-              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">MLB Team</th>
-              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pos</th>
-              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Eligible</th>
-              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL Runs</th>
+              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pos</th>
+              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">G</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">AB</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">H</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HR</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">BB</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">SB(net)</th>
+              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HBP</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -577,6 +565,10 @@ export default function TeamRosterPage() {
                 item.player.ablstatus?.acqType === 'supp_draft';
               const canDrag = !roster.locked && isOwner;
               const canDrop = !roster.locked && !isDrafted && isOwner;
+              const b = item.player.stats?.batting;
+              const sb = b?.stolenBases ?? null;
+              const cs = b?.caughtStealing ?? null;
+              const netSb = (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null;
 
               return (
                 <tr
@@ -592,9 +584,29 @@ export default function TeamRosterPage() {
                   <td className="px-3 py-4 text-sm font-medium text-gray-900">{item.rosterOrder}</td>
                   <td className="px-3 py-4 text-sm">
                     <div className="font-medium text-gray-900">{item.player.name}</div>
-                    <div className="text-xs text-gray-500">#{item.player.mlbID}</div>
+                    <div className="text-xs text-gray-500">
+                      {item.player.team} {item.player.eligible ? `- ${item.player.eligible.join(', ')}` : ''}
+                    </div>
                   </td>
-                  <td className="px-3 py-4 text-center text-sm text-gray-900">{item.player.team}</td>
+                  <td className="px-3 py-4 text-center">
+                    <div className="flex gap-1 justify-center items-center">
+                      {item.player.status ? (
+                        <>
+                          {item.player.status.includes('Injured') && (
+                            <span className="px-2 py-1 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
+                          )}
+                          {item.player.status.includes('Minors') && (
+                            <span className="px-2 py-1 text-xs rounded bg-orange-200 text-orange-800 font-medium">MIN</span>
+                          )}
+                          {!item.player.status.includes('Injured') && !item.player.status.includes('Minors') && (
+                            <span className="text-xs text-gray-600">{item.player.status}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-3 py-4 text-center">
                     {!roster.locked && isOwner ? (
                       <select
@@ -611,40 +623,16 @@ export default function TeamRosterPage() {
                       <span className="text-sm">{item.lineupPosition || '--'}</span>
                     )}
                   </td>
-                  <td className="px-3 py-4 text-center text-xs text-gray-600">
-                    {item.player.eligible?.join(', ') || '--'}
+                  <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                    {item.player.abl?.toFixed(2) ?? '—'}
                   </td>
-                  <td className="px-3 py-4 text-center">
-                    <span
-                      className={`px-2 py-1 text-xs rounded ${
-                        isDrafted ? 'bg-yellow-200 text-yellow-800' : 'bg-blue-200 text-blue-800'
-                      }`}
-                    >
-                      {isDrafted ? 'Draft' : 'Pickup'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-4 text-center">
-                    <div className="flex gap-1 justify-center items-center">
-                      {item.player.status ? (
-                        <>
-                          {item.player.status.includes('Injured') && (
-                            <span className="px-2 py-1 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
-                          )}
-                          {item.player.status.includes('Minors') && (
-                            <span className="px-2 py-1 text-xs rounded bg-orange-200 text-orange-800 font-medium">MINORS</span>
-                          )}
-                          {!item.player.status.includes('Injured') && !item.player.status.includes('Minors') && (
-                            <span className="text-xs text-gray-600">{item.player.status}</span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-800">N/A</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-4 text-center text-sm text-gray-900">
-                    {item.player.abl?.toFixed(2) || '0.00'}
-                  </td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
+                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
                   <td className="px-3 py-4 text-center">
                     {canDrop ? (
                       <button
@@ -656,7 +644,7 @@ export default function TeamRosterPage() {
                         Drop
                       </button>
                     ) : (
-                      <span className="text-gray-400 text-sm">--</span>
+                      <span className="text-gray-400 text-sm">—</span>
                     )}
                   </td>
                 </tr>

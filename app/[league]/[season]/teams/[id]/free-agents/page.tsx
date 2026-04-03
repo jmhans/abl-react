@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
+import type { ProjectionStats } from '@/app/lib/projection-utils';
 
 interface Player {
   _id: string;
@@ -13,6 +14,9 @@ interface Player {
   position?: string;
   status?: string;
   abl?: number;
+  ablProjected?: number | null;
+  projSystem?: string | null;
+  projStats?: ProjectionStats | null;
   stats?: any;
 }
 
@@ -23,6 +27,61 @@ interface SearchResult {
   position?: string;
 }
 
+type DisplayStats = {
+  g: number | null;
+  ab: number | null;
+  h: number | null;
+  hr: number | null;
+  bb: number | null;
+  netSb: number | null;
+  hbp: number | null;
+  ablScore: number | null;
+};
+
+function getDisplayStats(player: Player, view: string): DisplayStats {
+  if (view === 'actual') {
+    const b = player.stats?.batting;
+    const ab = b?.atBats ?? 0;
+    const bb = b?.baseOnBalls ?? 0;
+    const hbp = b?.hitByPitch ?? 0;
+    const sb = b?.stolenBases ?? null;
+    const cs = b?.caughtStealing ?? null;
+    return {
+      g: (b?.gamesPlayed || null),
+      ab: ab > 0 ? ab : null,
+      h: b?.hits ?? null,
+      hr: b?.homeRuns ?? null,
+      bb: bb > 0 ? bb : null,
+      netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
+      hbp: hbp > 0 ? hbp : null,
+      ablScore: player.abl ?? null,
+    };
+  }
+  const p = player.projStats;
+  const sb = p?.sb ?? null;
+  const cs = p?.cs ?? null;
+  return {
+    g: p?.g ?? null,
+    ab: p?.ab ?? null,
+    h: p?.h ?? null,
+    hr: p?.hr ?? null,
+    bb: p?.bb ?? null,
+    netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
+    hbp: p?.hbp ?? null,
+    ablScore: player.ablProjected ?? null,
+  };
+}
+
+type SortColKey = 'g' | 'ab' | 'h' | 'hr' | 'bb' | 'netSb' | 'hbp' | 'abl';
+const STAT_COL_KEYS: SortColKey[] = ['g', 'ab', 'h', 'hr', 'bb', 'netSb', 'hbp'];
+
+const STAT_COLS = ['G', 'AB', 'H', 'HR', 'BB', 'SB(net)', 'HBP'] as const;
+// xs: Player | ABL | Action
+// sm: Player | AB | ABL | Action
+// md+: Player | G AB H HR BB NB HBP | ABL | Action (10 cols)
+const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3.5rem_3rem_3rem_3rem_3.5rem_3rem_4.5rem_4rem]';
+const STAT_VIS = ['hidden md:block', 'hidden sm:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block'] as const;
+
 export default function FreeAgentsPage() {
   const params = useParams();
   const teamId = params.id as string;
@@ -30,13 +89,12 @@ export default function FreeAgentsPage() {
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(25);
+  const [pageSize] = useState(500);
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ilPositions, setIlPositions] = useState<string[]>([]);
-  const [selectedPosition, setSelectedPosition] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,6 +102,12 @@ export default function FreeAgentsPage() {
   const [message, setMessage] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
+  const [statView, setStatView] = useState<string>('actual');
+  const [projSystems, setProjSystems] = useState<string[]>([]);
+  const [projLoading, setProjLoading] = useState(false);
+  const [sortCol, setSortCol] = useState<SortColKey | null>(null);
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
+  const fetchIdRef = useRef(0);
 
   useEffect(() => {
     fetch(`/api/seasons?league=${league}&year=${season}`)
@@ -68,19 +132,36 @@ export default function FreeAgentsPage() {
     fetchILPositions();
   }, [teamId]);
 
+  // Load available projection systems — identical pattern to draft page
   useEffect(() => {
-    fetchPlayers();
-  }, [page, search, showAll]);
+    fetch('/api/projections')
+      .then(r => r.json())
+      .then((data: any) => {
+        const seasonNum = Number(season);
+        const systems: string[] = (data.summary as Array<{ _id: { season: number; projSystem: string } }>)
+          .filter(s => s._id.season === seasonNum)
+          .map(s => s._id.projSystem);
+        setProjSystems(systems);
+        // Do NOT auto-switch statView here — actual stats should be the default.
+        // The dropdown lets the user switch when they want projections.
+      })
+      .catch(err => console.error('Failed to load projection systems:', err));
+  }, [season]);
 
-  const fetchPlayers = async () => {
+  const fetchPlayers = useCallback(async (view?: string) => {
+    const myId = ++fetchIdRef.current;
     try {
       setLoading(true);
       setError('');
+      const currentView = view ?? statView;
       const query = new URLSearchParams();
       query.append('page', page.toString());
       query.append('limit', pageSize.toString());
       if (search) query.append('search', search);
       if (showAll) query.append('showAll', 'true');
+      if (currentView !== 'actual') query.append('projSystem', currentView);
+      if (league) query.append('league', league);
+      if (season) query.append('season', season);
 
       const res = await fetch(`/api/free-agents?${query}`);
       const data = await res.json();
@@ -89,6 +170,8 @@ export default function FreeAgentsPage() {
         throw new Error(data.error || 'Failed to fetch free agents');
       }
 
+      if (myId !== fetchIdRef.current) return; // stale response — a newer fetch is in flight
+
       setPlayers(data.players);
       setTotalPages(data.pagination.pages);
     } catch (err) {
@@ -96,6 +179,53 @@ export default function FreeAgentsPage() {
     } finally {
       setLoading(false);
     }
+  }, [page, search, showAll, statView, pageSize]);
+
+  useEffect(() => {
+    fetchPlayers();
+  }, [page, search, showAll, statView]);
+
+  const handleStatViewChange = (newView: string) => {
+    setStatView(newView);
+    setSortCol(null);
+    setSortDir('desc');
+    setPage(1);
+  };
+
+  const handleColSort = (col: SortColKey) => {
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir('desc');
+    } else if (sortDir === 'desc') {
+      setSortDir('asc');
+    } else {
+      setSortCol(null);
+      setSortDir('desc');
+    }
+  };
+
+  const sortedPlayers = useMemo(() => {
+    const getVal = (player: Player, col: SortColKey): number | null => {
+      const ds = getDisplayStats(player, statView);
+      return col === 'abl' ? ds.ablScore : ds[col];
+    };
+    return [...players].sort((a, b) => {
+      if (!sortCol) {
+        // Default: ABL descending
+        const av = (statView === 'actual' ? a.abl : a.ablProjected) ?? -Infinity;
+        const bv = (statView === 'actual' ? b.abl : b.ablProjected) ?? -Infinity;
+        return bv - av;
+      }
+      const nullVal = sortDir === 'desc' ? -Infinity : Infinity;
+      const av = getVal(a, sortCol) ?? nullVal;
+      const bv = getVal(b, sortCol) ?? nullVal;
+      return sortDir === 'desc' ? bv - av : av - bv;
+    });
+  }, [players, sortCol, sortDir, statView]);
+
+  const sortIcon = (col: SortColKey) => {
+    if (sortCol !== col) return <span className="ml-0.5 opacity-20">↕</span>;
+    return <span className="ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>;
   };
 
   const handleSearch = (value: string) => {
@@ -198,14 +328,15 @@ export default function FreeAgentsPage() {
           </div>
         )}
 
-        <div className="mb-6">
-          <div className="relative mb-4">
+        {/* Filters */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center mb-4">
+          <div className="relative">
             <input
               type="text"
-              placeholder="Search players by name or MLB ID..."
+              placeholder="Search players by name..."
               value={search}
               onChange={e => handleSearch(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64"
             />
             {showSuggestions && suggestions.length > 0 && (
               <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg mt-1 z-10">
@@ -222,120 +353,113 @@ export default function FreeAgentsPage() {
               </div>
             )}
           </div>
-        </div>
 
-        <div className="mb-6 flex items-center gap-3">
           <button
             onClick={() => { setShowAll(!showAll); setPage(1); }}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
               showAll ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-gray-200 text-gray-900 hover:bg-gray-300'
             }`}
           >
-            {showAll ? '✓ Showing all players' : 'Show active only'}
+            {showAll ? '✓ Showing all players' : 'Active only'}
           </button>
-          <span className="text-sm text-gray-600">
-            {showAll ? 'Showing all players (Active, Injured, Minors)' : 'Showing Active players only'}
-          </span>
+
+          <select
+            value={statView}
+            onChange={e => handleStatViewChange(e.target.value)}
+            disabled={projLoading}
+            className="rounded border px-3 py-2 text-sm disabled:opacity-50"
+          >
+            <option value="actual">Actual (YTD)</option>
+            {projSystems.map(sys => (
+              <option key={sys} value={sys}>Proj: {sys}</option>
+            ))}
+          </select>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <p className="text-red-800">{error}</p>
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">MLB Team</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Eligible</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Action</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-600">Loading...</td>
-              </tr>
-            ) : players.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-600">No free agents found</td>
-              </tr>
-            ) : (
-              players.map(player => (
-                <tr key={player._id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4 text-sm">
-                    <div className="font-medium text-gray-900">{player.name}</div>
-                    <div className="text-xs text-gray-500">#{player._id?.slice(-6)}</div>
-                  </td>
-                  <td className="px-4 py-4 text-center text-sm text-gray-900">{player.team}</td>
-                  <td className="px-4 py-4 text-center text-sm text-gray-600">
-                    {player.eligible?.join(', ') || '--'}
-                  </td>
-                  <td className="px-4 py-4 text-center text-sm">
-                    {player.status ? (
-                      <>
-                        {player.status.includes('Injured') && (
-                          <span className="px-2 py-1 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
-                        )}
-                        {player.status.includes('Minors') && (
-                          <span className="px-2 py-1 text-xs rounded bg-orange-200 text-orange-800 font-medium">MINORS</span>
-                        )}
-                        {!player.status.includes('Injured') && !player.status.includes('Minors') && (
-                          <span className="text-xs text-gray-600">{player.status}</span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-800">N/A</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-center text-sm font-medium text-gray-900">
-                    {player.abl?.toFixed(2) || '0.00'}
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    {seasonStatus === 'pre-draft' ? (
-                      <span className="text-xs text-yellow-700 font-medium">Pre-Draft</span>
-                    ) : (
-                      <button
-                        onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
-                        disabled={adding === player._id || ilPositions.length === 0}
-                        className="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {adding === player._id ? 'Adding...' : 'Add'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      {/* Player grid */}
+      <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow">
+        {/* Header */}
+        <div className={`${GRID} gap-x-2 sticky top-0 z-10 border-b bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500`}>
+          <div>Player</div>
+          {STAT_COLS.map((col, i) => (
+            <button
+              key={col}
+              onClick={() => handleColSort(STAT_COL_KEYS[i])}
+              className={`text-center cursor-pointer hover:text-gray-800 select-none ${STAT_VIS[i]}`}
+            >
+              {col}{sortIcon(STAT_COL_KEYS[i])}
+            </button>
+          ))}
+          <button
+            onClick={() => handleColSort('abl')}
+            className={`text-center cursor-pointer hover:opacity-80 select-none ${statView !== 'actual' ? 'text-blue-600' : 'text-green-700'}`}
+          >
+            {statView !== 'actual' ? 'ABL★' : 'ABL'}{sortIcon('abl')}
+          </button>
+          <div />
+        </div>
+
+        {/* Rows */}
+        {loading ? (
+          <div className="px-4 py-10 text-center text-gray-500">Loading...</div>
+        ) : sortedPlayers.length === 0 ? (
+          <div className="px-4 py-10 text-center text-gray-500">No free agents found</div>
+        ) : (
+          sortedPlayers.map(player => {
+            const ds = getDisplayStats(player, statView);
+            const fmt = (v: number | null) => v === null ? '—' : String(Math.round(v));
+            const ablColor = ds.ablScore === null ? 'text-gray-300'
+              : ds.ablScore >= 0
+                ? (statView !== 'actual' ? 'text-blue-700' : 'text-green-700')
+                : 'text-red-500';
+            const statC = (v: number | null) => v === null ? 'text-gray-300' : 'text-gray-700';
+            return (
+              <div
+                key={player._id}
+                className={`${GRID} gap-x-2 items-center border-b px-4 py-2 text-sm last:border-b-0 hover:bg-gray-50`}
+              >
+                <div>
+                  <div className="font-medium text-gray-900 leading-tight">{player.name}</div>
+                  <div className="text-xs text-gray-500">{player.team || 'FA'} – {player.eligible?.join(', ') || '—'}</div>
+                  {player.status && <div className="text-xs text-gray-400">{player.status}</div>}
+                </div>
+                <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                <div className={`text-center text-xs font-medium ${ablColor}`}>
+                  {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
+                </div>
+                <div className="flex justify-end">
+                  {seasonStatus === 'pre-draft' ? (
+                    <span className="text-xs text-yellow-700 font-medium">Pre-Draft</span>
+                  ) : (
+                    <button
+                      onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
+                      disabled={adding === player._id || ilPositions.length === 0}
+                      className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {adding === player._id ? '…' : 'Add'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-4 mt-6">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-          <span className="text-gray-600">Page {page} of {totalPages}</span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }

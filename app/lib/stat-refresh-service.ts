@@ -195,7 +195,7 @@ function shortenBoxscoreStats(stats: any) {
 // Only keep the batting fields needed by calculateAblScore / calculateDraftAblScore.
 // Drops pitching, fielding, and unused batting fields from the full MLB seasonStats blob.
 const SEASON_STAT_BATTING_FIELDS = [
-  'atBats', 'hits', 'doubles', 'triples', 'homeRuns',
+  'gamesPlayed', 'atBats', 'hits', 'doubles', 'triples', 'homeRuns',
   'baseOnBalls', 'hitByPitch', 'stolenBases', 'caughtStealing',
   'pickoffs', 'sacBunts', 'sacFlies',
 ] as const;

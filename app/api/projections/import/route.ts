@@ -41,6 +41,12 @@ export async function POST(request: NextRequest) {
 
     const db = await connectToDatabase();
 
+    // Ensure index exists for fast season+system lookups (createIndex is a no-op if already present)
+    await db.collection('projections').createIndex(
+      { mlbId: 1, season: 1, projSystem: 1, importedAt: -1 },
+      { background: true },
+    );
+
     // Parse CSV rows
     const rows = parseFangraphsCsv(csvText);
     if (rows.length === 0) {

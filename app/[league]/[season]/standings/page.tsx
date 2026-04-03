@@ -92,15 +92,15 @@ export default function StandingsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-4xl font-bold text-gray-900 mb-8">Standings</h1>
+    <div className="max-w-5xl mx-auto px-3 py-6 md:px-4 md:py-8">
+      <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">Standings</h1>
 
       {/* Tabs */}
-      <div className="mb-6 border-b border-gray-200">
+      <div className="mb-4 md:mb-6 border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           <button
             onClick={() => setActiveTab('standard')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'standard'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -110,7 +110,7 @@ export default function StandingsPage() {
           </button>
           <button
             onClick={() => setActiveTab('advanced')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'advanced'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -121,7 +121,60 @@ export default function StandingsPage() {
         </nav>
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+      {/* Mobile card list */}
+      <div className="block md:hidden space-y-2 mb-6">
+        {activeTab === 'standard'
+          ? standings.map((team, index) => (
+              <div key={team._id} className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs text-gray-400 w-5 shrink-0">#{index + 1}</span>
+                    <Link
+                      href={`/${league}/${season}/teams/${team.tm._id}`}
+                      className="text-blue-600 hover:text-blue-800 font-semibold text-sm truncate"
+                    >
+                      {team.tm.location} {team.tm.nickname}
+                    </Link>
+                  </div>
+                  <span className={`text-sm font-semibold ml-2 shrink-0 ${team.streak?.startsWith('W') ? 'text-green-600' : 'text-red-600'}`}>
+                    {team.streak || '–'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 mt-1.5 pl-7 text-xs text-gray-600">
+                  <span className="font-medium text-gray-900">{team.w}–{team.l}</span>
+                  <span>{team.wpct}</span>
+                  <span>GB: {index === 0 ? '–' : team.gb}</span>
+                  {team.l10 && <span>L10: {team.l10}</span>}
+                  {team.abl_runs != null && <span>{team.abl_runs.toFixed(1)} R/G</span>}
+                </div>
+              </div>
+            ))
+          : standings.map((team) => (
+              <div key={team._id} className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <Link
+                    href={`/${league}/${season}/teams/${team.tm._id}`}
+                    className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
+                  >
+                    {team.tm.location} {team.tm.nickname}
+                  </Link>
+                  <span className="text-xs text-gray-600 font-medium">{team.w}–{team.l}</span>
+                </div>
+                <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                  <span>DougLuck: {team.dougluckw?.toFixed(1) ?? '–'}–{team.dougluckl?.toFixed(1) ?? '–'}</span>
+                  <span className={`font-semibold ${(team.dougluckExcessW || 0) > 0 ? 'text-green-600' : (team.dougluckExcessW || 0) < 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                    Lucky: {team.dougluckExcessW != null ? (team.dougluckExcessW > 0 ? '+' : '') + team.dougluckExcessW.toFixed(1) : '–'}
+                  </span>
+                  {team.homeRecord && <span>H: {team.homeRecord}</span>}
+                  {team.awayRecord && <span>A: {team.awayRecord}</span>}
+                  {team.xtrasRecord && <span>X: {team.xtrasRecord}</span>}
+                </div>
+              </div>
+            ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white rounded-lg shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           {activeTab === 'standard' ? (
             <StandardStandingsTable standings={standings} league={league} season={season} />
@@ -131,7 +184,7 @@ export default function StandingsPage() {
         </div>
       </div>
 
-      <div className="mt-8 text-sm text-gray-600">
+      <div className="mt-6 md:mt-8 text-sm text-gray-600">
         {activeTab === 'standard' ? (
           <>
             <p className="mb-2">

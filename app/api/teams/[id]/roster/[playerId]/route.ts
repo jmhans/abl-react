@@ -60,25 +60,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Failed to prepare roster' }, { status: 500 });
     }
 
-    // Get player to check acqType
-    const player = await db.collection('players').findOne({ _id: new ObjectId(playerId) });
-    if (!player) {
-      return NextResponse.json(
-        { error: 'Player not found' },
-        { status: 404 }
-      );
-    }
+    // Get the lineup entry for this player to check acqType (league-scoped, lives in lineups)
+    const playerObjId = new ObjectId(playerId);
+    const rosterEntry = lineup.roster.find((r: any) => r.player.equals(playerObjId));
 
     // RULE: Cannot drop drafted players (only pickups)
-    if (player.ablstatus?.acqType === 'draft' || player.ablstatus?.acqType === 'supp_draft') {
+    if (rosterEntry?.acqType === 'draft' || rosterEntry?.acqType === 'supp_draft') {
       return NextResponse.json(
-        { error: 'Cannot drop drafted players', acqType: player.ablstatus.acqType },
+        { error: 'Cannot drop drafted players', acqType: rosterEntry.acqType },
         { status: 403 }
       );
     }
 
     // Find and remove player from roster
-    const playerObjId = new ObjectId(playerId);
     const originalLength = lineup.roster.length;
     lineup.roster = lineup.roster.filter((r: any) => 
       !r.player.equals(playerObjId)
@@ -119,17 +113,6 @@ export async function DELETE(
         }
       },
       { upsert: true }
-    );
-
-    // Update player ownership - clear team assignment
-    await db.collection('players').updateOne(
-      { _id: new ObjectId(playerId) },
-      {
-        $set: {
-          'ablstatus.ablTeam': null,
-          'ablstatus.onRoster': false
-        }
-      }
     );
 
     // Get dropped player info for response

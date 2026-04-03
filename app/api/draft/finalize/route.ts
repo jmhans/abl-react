@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
         player: toObjectId(entry.playerId),
         lineupPosition: null,
         rosterOrder: index + 1,
+        acqType: 'draft',
       }));
 
       lineupOps.push({
@@ -77,34 +78,6 @@ export async function POST(request: NextRequest) {
 
     if (lineupOps.length > 0) {
       await db.collection('lineups').bulkWrite(lineupOps);
-    }
-
-    await db.collection('players').updateMany(
-      {},
-      {
-        $set: {
-          'ablstatus.ablTeam': null,
-          'ablstatus.onRoster': false,
-          'ablstatus.acqType': null,
-        },
-      }
-    );
-
-    const playerOps = picks.map((entry: any) => ({
-      updateOne: {
-        filter: { _id: toObjectId(entry.playerId) },
-        update: {
-          $set: {
-            'ablstatus.ablTeam': toObjectId(entry.pick.teamId),
-            'ablstatus.onRoster': true,
-            'ablstatus.acqType': 'draft',
-          },
-        },
-      },
-    }));
-
-    if (playerOps.length > 0) {
-      await db.collection('players').bulkWrite(playerOps);
     }
 
     await db.collection('drafts').updateOne(

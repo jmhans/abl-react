@@ -17,10 +17,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} antialiased`}>
         <Header />
-        <div className="flex">
-          <Navigation />
-          <main className="flex-1 p-6">{children}</main>
-        </div>
+        <Navigation />
+        <main className="p-4 md:p-6">{children}</main>
       </body>
     </html>
   );

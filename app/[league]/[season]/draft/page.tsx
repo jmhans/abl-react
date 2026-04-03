@@ -14,11 +14,13 @@ import {
   getTeamDisplayName,
 } from '@/app/lib/draft-utils';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
+import type { ProjectionStats } from '@/app/lib/projection-utils';
 
 type PlayerForDraft = DraftPlayer & {
   abl: number;
   ablProjected: number | null;
   projSystem: string | null;
+  projStats: ProjectionStats | null;
   eligible: string[];
 };
 
@@ -31,6 +33,61 @@ type DraftApiState = {
   completedAt: string | null;
   effectiveDate?: string | null;
 };
+
+type DisplayStats = {
+  g: number | null;
+  ab: number | null;
+  h: number | null;
+  hr: number | null;
+  bb: number | null;
+  netSb: number | null;
+  hbp: number | null;
+  ablScore: number | null;
+};
+
+function getDisplayStats(player: PlayerForDraft, view: string): DisplayStats {
+  if (view === 'actual') {
+    const b = player.stats?.batting;
+    const ab = b?.atBats ?? 0;
+    const bb = b?.baseOnBalls ?? 0;
+    const hbp = b?.hitByPitch ?? 0;
+    const sb = b?.stolenBases ?? null;
+    const cs = b?.caughtStealing ?? null;
+    return {
+      g: (b?.gamesPlayed || null),
+      ab: ab > 0 ? ab : null,
+      h: b?.hits ?? null,
+      hr: b?.homeRuns ?? null,
+      bb: bb > 0 ? bb : null,
+      netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
+      hbp: hbp > 0 ? hbp : null,
+      ablScore: player.abl,
+    };
+  }
+  const p = player.projStats;
+  const sb = p?.sb ?? null;
+  const cs = p?.cs ?? null;
+  return {
+    g: p?.g ?? null,
+    ab: p?.ab ?? null,
+    h: p?.h ?? null,
+    hr: p?.hr ?? null,
+    bb: p?.bb ?? null,
+    netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
+    hbp: p?.hbp ?? null,
+    ablScore: player.ablProjected,
+  };
+}
+
+const STAT_COLS = ['G','AB','H','HR','BB','SB(net)','HBP'] as const;
+// xs: Player | ABL | Action (3 cols)
+// sm: Player | AB | ABL | Action (4 cols)
+// md+: Player | G AB H HR BB NB HBP | ABL | Action (10 cols)
+const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3.5rem_3rem_3rem_3rem_3.5rem_3rem_4.5rem_4rem]';
+// Visibility per stat column (matches DOM order: G AB H HR BB NB HBP)
+const STAT_VIS = ['hidden md:block','hidden sm:block','hidden md:block','hidden md:block','hidden md:block','hidden md:block','hidden md:block'] as const;
+
+
 
 export default function DraftPage() {
   const { league, season } = useLeagueSeason();
@@ -50,7 +107,9 @@ export default function DraftPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPlayers, setShowPlayers] = useState(true);
   const [activeOnly, setActiveOnly] = useState(true);
-  const [sortBy, setSortBy] = useState<'abl' | 'proj'>('proj');
+  const [statView, setStatView] = useState<string>('actual');
+  const [projSystems, setProjSystems] = useState<string[]>([]);
+  const [projLoading, setProjLoading] = useState(false);
 
   const applyDraftState = (sortedTeams: DraftTeam[], draft: DraftApiState | null) => {
     const defaultOrderIds = sortedTeams.map((team) => team._id);
@@ -82,21 +141,37 @@ export default function DraftPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [teamsRes, playersRes, draftRes, adminRes] = await Promise.all([
+        const [teamsRes, draftRes, adminRes, projSummaryRes] = await Promise.all([
           fetch(`/api/teams?league=${league}&season=${season}`),
-          fetch('/api/players'),
           fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
           fetch('/api/admin/me', { cache: 'no-store' }),
+          fetch('/api/projections'),
         ]);
 
         if (!teamsRes.ok) throw new Error('Failed to load teams');
-        if (!playersRes.ok) throw new Error('Failed to load players');
         if (!draftRes.ok) throw new Error('Failed to load draft');
 
         const teamsData = (await teamsRes.json()) as DraftTeam[];
-        const playersData = (await playersRes.json()) as DraftPlayer[];
         const draftData = (await draftRes.json()) as { draft: DraftApiState | null };
         const adminData = adminRes.ok ? await adminRes.json() : { isAdmin: false };
+
+        // Determine available projection systems for this season
+        const projSummaryData = projSummaryRes.ok ? await projSummaryRes.json() : { summary: [] };
+        const seasonNum = Number(season);
+        const systems: string[] = (projSummaryData.summary as Array<{ _id: { season: number; projSystem: string } }>)
+          .filter((s) => s._id.season === seasonNum)
+          .map((s) => s._id.projSystem);
+        setProjSystems(systems);
+        const defaultView = systems.length > 0 ? systems[0] : 'actual';
+        setStatView(defaultView);
+
+        // Fetch players filtered to the default projection system
+        const playersUrl = defaultView !== 'actual'
+          ? `/api/players?projSystem=${encodeURIComponent(defaultView)}`
+          : '/api/players';
+        const playersRes = await fetch(playersUrl);
+        if (!playersRes.ok) throw new Error('Failed to load players');
+        const playersData = (await playersRes.json()) as DraftPlayer[];
 
         const sortedTeams = [...teamsData].sort((a, b) => getTeamDisplayName(a).localeCompare(getTeamDisplayName(b)));
         const enrichedPlayers = playersData
@@ -108,9 +183,7 @@ export default function DraftPage() {
             projSystem: player.projSystem ?? null,
           }))
           .sort((a, b) => {
-            const aScore = a.ablProjected ?? a.abl;
-            const bScore = b.ablProjected ?? b.abl;
-            if (bScore !== aScore) return bScore - aScore;
+            if (b.abl !== a.abl) return b.abl - a.abl;
             return a.name.localeCompare(b.name);
           });
 
@@ -128,6 +201,35 @@ export default function DraftPage() {
     loadData();
   }, []);
 
+  const handleStatViewChange = async (newView: string) => {
+    setStatView(newView);
+    setProjLoading(true);
+    try {
+      const url = newView !== 'actual'
+        ? `/api/players?projSystem=${encodeURIComponent(newView)}`
+        : '/api/players';
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const playersData = (await res.json()) as DraftPlayer[];
+      setPlayers(
+        playersData
+          .map((player: any) => ({
+            ...player,
+            eligible: getDraftEligiblePositions(player),
+            abl: calculateDraftAblScore(player.stats),
+            ablProjected: player.ablProjected ?? null,
+            projSystem: player.projSystem ?? null,
+          }))
+          .sort((a, b) => {
+            if (b.abl !== a.abl) return b.abl - a.abl;
+            return a.name.localeCompare(b.name);
+          }),
+      );
+    } finally {
+      setProjLoading(false);
+    }
+  };
+
   const orderedTeams = useMemo(() => {
     const teamMap = new Map(teams.map((team) => [team._id, team]));
     return orderIds.map((id) => teamMap.get(id)).filter(Boolean) as DraftTeam[];
@@ -141,12 +243,19 @@ export default function DraftPage() {
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
-      const aScore = sortBy === 'proj' ? (a.ablProjected ?? a.abl) : a.abl;
-      const bScore = sortBy === 'proj' ? (b.ablProjected ?? b.abl) : b.abl;
-      if (bScore !== aScore) return bScore - aScore;
+      if (statView !== 'actual') {
+        const aHas = a.ablProjected !== null;
+        const bHas = b.ablProjected !== null;
+        if (!aHas && !bHas) return a.name.localeCompare(b.name);
+        if (!aHas) return 1;
+        if (!bHas) return -1;
+        if (b.ablProjected !== a.ablProjected) return b.ablProjected! - a.ablProjected!;
+        return a.name.localeCompare(b.name);
+      }
+      if (b.abl !== a.abl) return b.abl - a.abl;
       return a.name.localeCompare(b.name);
     });
-  }, [players, sortBy]);
+  }, [players, statView]);
 
   const availablePlayers = useMemo(() => {
     return sortedPlayers.filter((player) => {
@@ -459,7 +568,7 @@ export default function DraftPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">Available players</h2>
-                <p className="text-sm text-gray-600">Search and draft from the current board. Players are sorted by ABL score, then name.</p>
+                <p className="text-sm text-gray-600">Players sorted by {statView === 'actual' ? 'actual YTD ABL score' : `${statView} projected ABL`}.</p>
                 <p className="text-xs text-gray-400 mt-1">{availablePlayers.length} player{availablePlayers.length !== 1 ? 's' : ''}</p>
               </div>
               <button
@@ -501,63 +610,74 @@ export default function DraftPage() {
               >
                 {activeOnly ? 'Include players not on active rosters' : 'Active roster players only'}
               </button>
-              <button
-                type="button"
-                onClick={() => setSortBy((v) => v === 'abl' ? 'proj' : 'abl')}
-                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm whitespace-nowrap hover:bg-gray-50"
-                title={sortBy === 'proj' ? 'Currently sorting by projected ABL' : 'Currently sorting by actual YTD ABL'}
+              <select
+                value={statView}
+                onChange={(e) => handleStatViewChange(e.target.value)}
+                disabled={projLoading}
+                className="rounded border px-3 py-2 text-sm disabled:opacity-50"
               >
-                Sort: {sortBy === 'proj' ? 'Projected' : 'Actual (YTD)'}
-              </button>
+                <option value="actual">Actual (YTD)</option>
+                {projSystems.map((sys) => (
+                  <option key={sys} value={sys}>Proj: {sys}</option>
+                ))}
+              </select>
             </div>
 
-            <div className="rounded-lg border border-gray-200">
-              <div className="grid grid-cols-[minmax(0,1.5fr)_7rem_8rem_7rem_7rem_9rem] gap-3 border-b bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <div className="overflow-auto rounded-lg border border-gray-200 max-h-[70vh]">
+              <div className={`${GRID} gap-x-2 sticky top-0 z-10 border-b bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500`}>
                 <div>Player</div>
-                <div>MLB</div>
-                <div>Eligible</div>
-                <div className="text-blue-600">Proj</div>
-                <div>ABL</div>
+                {STAT_COLS.map((col, i) => (
+                  <div key={col} className={`text-center ${STAT_VIS[i]}`}>{col}</div>
+                ))}
+                <div className={`text-center ${statView !== 'actual' ? 'text-blue-600' : 'text-green-700'}`}>
+                  {projLoading ? '…' : (statView !== 'actual' ? 'ABL★' : 'ABL')}
+                </div>
                 <div>Action</div>
               </div>
-              <div className="max-h-[70vh] overflow-auto">
-                {availablePlayers.map((player) => (
+              {availablePlayers.map((player) => {
+                const ds = getDisplayStats(player, statView);
+                const fmt = (v: number | null) => v === null ? '—' : String(Math.round(v));
+                const ablColor = ds.ablScore === null ? 'text-gray-300'
+                  : ds.ablScore >= 0
+                    ? (statView !== 'actual' ? 'text-blue-700' : 'text-green-700')
+                    : 'text-red-500';
+                const statC = (v: number | null) => v === null ? 'text-gray-300' : 'text-gray-700';
+                return (
                   <div
                     key={player._id}
-                    className="grid grid-cols-[minmax(0,1.5fr)_7rem_8rem_7rem_7rem_9rem] gap-3 border-b px-4 py-3 text-sm last:border-b-0"
+                    className={`${GRID} gap-x-2 items-center border-b px-4 py-2 text-sm last:border-b-0`}
                   >
                     <div>
-                      <div className="font-medium text-gray-900">{player.name}</div>
-                      <div className="text-xs text-gray-500">{player.status || '—'}</div>
+                      <div className="font-medium text-gray-900 leading-tight">{player.name}</div>
+                      <div className="text-xs text-gray-500">{player.team || 'FA'} – {player.eligible.join(', ')}</div>
+                      {player.status && <div className="text-xs text-gray-400">{player.status}</div>}
                     </div>
-                    <div className="text-gray-700">{player.team || 'FA'}</div>
-                    <div className="text-gray-700">{player.eligible.join(', ')}</div>
-                    <div className={`font-medium ${
-                      player.ablProjected === null ? 'text-gray-300' :
-                      player.ablProjected >= 0 ? 'text-blue-700' : 'text-red-500'
-                    }`}>
-                      {player.ablProjected !== null ? player.ablProjected.toFixed(2) : '—'}
+                    <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                    <div className={`text-center text-xs font-medium ${ablColor}`}>
+                      {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
                     </div>
-                    <div className={`${player.abl >= 0 ? 'text-green-700' : 'text-red-700'} font-medium`}>
-                      {player.abl.toFixed(2)}
-                    </div>
-                    <div>
+                    <div className="flex justify-end">
                       <button
                         type="button"
                         onClick={() => handleDraftPlayer(player)}
                         disabled={!activeDraft || !currentPick || isWorking}
-                        className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                       >
                         Draft
                       </button>
                     </div>
                   </div>
-                ))}
-
-                {availablePlayers.length === 0 && (
-                  <div className="px-4 py-10 text-center text-gray-500">No available players match the current filters.</div>
-                )}
-              </div>
+                );
+              })}
+              {availablePlayers.length === 0 && (
+                <div className="px-4 py-10 text-center text-gray-500">No available players match the current filters.</div>
+              )}
             </div>
           </section>
         ) : (

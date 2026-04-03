@@ -169,7 +169,7 @@ export async function PUT(
       .toArray();
     
     const playerAcqMap = new Map(
-      players.map((p: any) => [p._id.toString(), p.ablstatus?.acqType])
+      lineup.roster.map((r: any) => [r.player.toString(), r.acqType])
     );
 
     // Find the highest drafted player position and lowest pickup position
