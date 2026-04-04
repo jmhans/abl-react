@@ -59,9 +59,9 @@ export async function calculateAndStoreLiveGameResult(db: Db, game: any, options
   let homeSourceRoster = game?.homeTeamRoster || [];
   let awaySourceRoster = game?.awayTeamRoster || [];
 
-  if ((!homeSourceRoster.length || !awaySourceRoster.length) && game?.result) {
-    // Handle both: result as object (abl_dev format) or result as array (heroku_wm40bx9r format)
-    let legacyResult = game.result;
+  if ((!homeSourceRoster.length || !awaySourceRoster.length) && (game?.result || game?.results)) {
+    // Handle both: result (singular, abl_dev) and results (plural, prod heroku)
+    let legacyResult = game.result || game.results;
     if (Array.isArray(legacyResult)) {
       legacyResult = legacyResult[0];
     }
