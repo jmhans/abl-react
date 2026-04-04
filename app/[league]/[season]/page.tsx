@@ -10,6 +10,10 @@ interface User {
   picture?: string;
 }
 
+interface AdminResponse {
+  isAdmin?: boolean;
+}
+
 export default function LeagueSeasonHome() {
   const { league, season } = useLeagueSeason();
   const base = `/${league}/${season}`;
@@ -26,7 +30,7 @@ export default function LeagueSeasonHome() {
       try {
         const [userRes, adminRes, draftCheck, seasonRes, myLeaguesRes] = await Promise.all([
           fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch('/api/admin/me').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+          fetch('/api/admin/me').then(r => r.ok ? r.json() : {} as AdminResponse).catch(() => ({} as AdminResponse)),
           fetch(`/api/games?league=${league}&season=${season}&gameType=D&limit=1&view=summary`)
             .then(r => r.json()).catch(() => []),
           fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []),

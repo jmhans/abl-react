@@ -63,7 +63,7 @@ export async function POST(
 
     await db.collection('ablteams').updateOne(
       { _id: new ObjectId(id) },
-      { $push: { owners: newOwner } }
+      { $push: { owners: newOwner } } as any
     );
 
     const updated = await db.collection('ablteams').findOne({ _id: new ObjectId(id) });
@@ -115,7 +115,7 @@ export async function DELETE(
 
     await db.collection('ablteams').updateOne(
       { _id: new ObjectId(id) },
-      { $pull: { owners: { userId } } }
+      { $pull: { owners: { userId } } } as any
     );
 
     const updated = await db.collection('ablteams').findOne({ _id: new ObjectId(id) });

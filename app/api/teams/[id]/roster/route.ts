@@ -162,6 +162,12 @@ export async function PUT(
     }));
 
     // RULE VALIDATION: Pickups must stay below all drafted players
+    // Fetch existing lineup to get acqTypes
+    const existingLineup = await db.collection('lineups').findOne({ 
+      ablTeam: new ObjectId(teamId),
+      effectiveDate: effectiveDate
+    });
+
     // Get all players to check acqType
     const playerIds = roster.map((r: any) => r.player);
     const players = await db.collection('players')
@@ -169,7 +175,7 @@ export async function PUT(
       .toArray();
     
     const playerAcqMap = new Map(
-      lineup.roster.map((r: any) => [r.player.toString(), r.acqType])
+      (existingLineup?.roster || []).map((r: any) => [r.player.toString(), r.acqType])
     );
 
     // Find the highest drafted player position and lowest pickup position
