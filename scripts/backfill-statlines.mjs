@@ -91,7 +91,8 @@ function isPositionPlayer(p) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
-const db = client.db('abl_dev');
+const dbName = process.env.MONGODB_DB || 'abl_dev';
+const db = client.db(dbName);
 
 const dates = dateRange(startStr, endStr);
 console.log(`📅 Date range: ${startStr} → ${endStr}  (${dates.length} days)${DRY ? '  [DRY RUN]' : ''}`);

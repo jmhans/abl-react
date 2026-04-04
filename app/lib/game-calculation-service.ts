@@ -60,7 +60,12 @@ export async function calculateAndStoreLiveGameResult(db: Db, game: any, options
   let awaySourceRoster = game?.awayTeamRoster || [];
 
   if ((!homeSourceRoster.length || !awaySourceRoster.length) && game?.result) {
-    const legacyResult = game.result;
+    // Handle both: result as object (abl_dev format) or result as array (heroku_wm40bx9r format)
+    let legacyResult = game.result;
+    if (Array.isArray(legacyResult)) {
+      legacyResult = legacyResult[0];
+    }
+    
     const legacyHome = legacyResult?.scores?.find((s: any) => s.location === 'H' || s.team?.toString() === game.homeTeam?.toString()) || legacyResult?.scores?.[0];
     const legacyAway = legacyResult?.scores?.find((s: any) => s.location === 'A' || s.team?.toString() === game.awayTeam?.toString()) || legacyResult?.scores?.[1];
 

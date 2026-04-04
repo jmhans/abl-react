@@ -12,7 +12,8 @@ for (const line of readFileSync(resolve(__dirname, '..', '.env.local'), 'utf8').
 
 const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
-const db = client.db('abl_dev');
+const dbName = process.env.MONGODB_DB || 'abl_dev';
+const db = client.db(dbName);
 
 // Set isActive true where status='active' and isActive is not yet set
 const toActivate = await db.collection('seasons')
