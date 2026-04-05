@@ -559,7 +559,6 @@ export default function AdminSeasonDetailPage() {
                 </tbody>
               </table>
             </div>
-            </div>
           </div>
         )}
       </section>
