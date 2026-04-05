@@ -47,12 +47,12 @@ export default function AdminSeasonDetailPage() {
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
-  // CSV import state
+  // schedule import state
   const [csvContent, setCsvContent] = useState('');
-  const [importing, setImporting] = useState(false);
+  const [previewGames, setPreviewGames] = useState<Array<{ homeTeam: string; awayTeam: string; gameDate: string; parsedDate: string }>>([]);
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
-  const [previewGames, setPreviewGames] = useState<any[]>([]);
+  const [importing, setImporting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -165,6 +165,7 @@ export default function AdminSeasonDetailPage() {
     setPreviewGames([]);
 
     const lines = csvContent.trim().split('\n');
+<<<<<<< HEAD
     const preview: any[] = [];
 
     for (let i = 0; i < lines.length; i++) {
@@ -199,11 +200,58 @@ export default function AdminSeasonDetailPage() {
       }
 
       const gameDate = new Date(dateName);
+=======
+    const preview: Array<{ homeTeam: string; awayTeam: string; gameDate: string; parsedDate: string }> = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue; // Skip empty lines
+
+      const parts = line.split(',').map(p => p.trim());
+
+      if (parts.length < 3) {
+        setImportError(`Line ${i + 1}: Invalid format (expected homeTeam, awayTeam, date)`);
+        return;
+      }
+
+      const homeTeamName = parts[0];
+      const awayTeamName = parts[1];
+      const dateName = parts[2];
+
+      // Find teams by nickname or location
+      const homeTeam = allTeams.find(t => 
+        t.nickname?.toLowerCase() === homeTeamName.toLowerCase() || 
+        t.location?.toLowerCase() === homeTeamName.toLowerCase()
+      );
+      const awayTeam = allTeams.find(t => 
+        t.nickname?.toLowerCase() === awayTeamName.toLowerCase() || 
+        t.location?.toLowerCase() === awayTeamName.toLowerCase()
+      );
+
+      if (!homeTeam) {
+        setImportError(`Line ${i + 1}: Home team "${homeTeamName}" not found`);
+        return;
+      }
+      if (!awayTeam) {
+        setImportError(`Line ${i + 1}: Away team "${awayTeamName}" not found`);
+        return;
+      }
+
+      // Validate date format YYYY-MM-DD
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(dateName)) {
+        setImportError(`Line ${i + 1}: Invalid date format "${dateName}" (use YYYY-MM-DD)`);
+        return;
+      }
+
+      const gameDate = new Date(dateName + 'T00:00:00Z');
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
       if (isNaN(gameDate.getTime())) {
         setImportError(`Line ${i + 1}: Invalid date "${dateName}"`);
         return;
       }
 
+<<<<<<< HEAD
       preview.push({
         awayTeam: team1Name,
         homeTeam: team2Name,
@@ -215,13 +263,78 @@ export default function AdminSeasonDetailPage() {
     setPreviewGames(preview);
   };
 
+=======
+      // Convert to noon CT UTC for display
+      const utcNoonCT = convertToNoonCT(dateName);
+      const utcDate = new Date(utcNoonCT);
+
+      preview.push({
+        homeTeam: homeTeamName,
+        awayTeam: awayTeamName,
+        gameDate: dateName,
+        parsedDate: utcDate.toUTCString(), // Show UTC time
+      });
+    }
+
+    if (preview.length === 0) {
+      setImportError('No valid games found in CSV');
+      return;
+    }
+
+    setPreviewGames(preview);
+  };
+
+  const convertToNoonCT = (dateStr: string): string => {
+    // Parse YYYY-MM-DD and create a date for noon CT
+    const [year, month, day] = dateStr.split('-').map(Number);
+    
+    // Create a date in CT timezone for noon on that date
+    // We'll use Intl API to handle timezone conversion reliably
+    const date = new Date(year, month - 1, day, 12, 0, 0); // 12:00 PM in local timezone
+    
+    // Get the offset between UTC and CT for this date
+    // Create a formatter for CT timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(date);
+    const partMap = new Map(parts.map(p => [p.type, p.value]));
+    
+    // Create UTC date from local date components
+    const localDate = new Date(
+      parseInt(partMap.get('year')!),
+      parseInt(partMap.get('month')!) - 1,
+      parseInt(partMap.get('day')!),
+      parseInt(partMap.get('hour')!),
+      parseInt(partMap.get('minute')!),
+      parseInt(partMap.get('second')!)
+    );
+    
+    // Calculate offset
+    const utcDate = new Date(date.getTime() - (date.getTime() - localDate.getTime()));
+    return utcDate.toISOString();
+  };
+
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
   const handleImport = async () => {
     if (previewGames.length === 0) {
       setImportError('Please preview the CSV first');
       return;
     }
 
+<<<<<<< HEAD
     if (!season || !season.league) {
+=======
+    if (!season) {
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
       setImportError('Season not loaded');
       return;
     }
@@ -231,6 +344,7 @@ export default function AdminSeasonDetailPage() {
     setImportSuccess('');
 
     try {
+<<<<<<< HEAD
       const res = await fetch(
         `/api/games/import-schedule?league=${season.league.slug}&season=${season.year}`,
         {
@@ -239,17 +353,52 @@ export default function AdminSeasonDetailPage() {
           body: JSON.stringify({ csv: csvContent }),
         }
       );
+=======
+      // Convert preview games to API format
+      const gamesToCreate = previewGames.map(previewGame => {
+        // Find the teams again to get their ObjectIds
+        const homeTeam = allTeams.find(t => 
+          t.nickname?.toLowerCase() === previewGame.homeTeam.toLowerCase() || 
+          t.location?.toLowerCase() === previewGame.homeTeam.toLowerCase()
+        );
+        const awayTeam = allTeams.find(t => 
+          t.nickname?.toLowerCase() === previewGame.awayTeam.toLowerCase() || 
+          t.location?.toLowerCase() === previewGame.awayTeam.toLowerCase()
+        );
+
+        return {
+          homeTeam: homeTeam?._id,
+          awayTeam: awayTeam?._id,
+          gameDate: convertToNoonCT(previewGame.gameDate),
+          gameType: 'R',
+          seasonId: season._id,
+          leagueId: season.leagueId
+        };
+      });
+
+      const res = await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gamesToCreate),
+      });
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
 
       const data = await res.json();
 
       if (!res.ok) {
         const errorMsg = data.error || 'Import failed';
+<<<<<<< HEAD
         const details = data.errors || data.duplicates || [];
         setImportError(
           errorMsg + (details.length > 0 ? ': ' + details.join(', ') : '')
         );
       } else {
         setImportSuccess(`✓ Imported ${data.created} games successfully`);
+=======
+        setImportError(errorMsg);
+      } else {
+        setImportSuccess(`✓ Imported ${previewGames.length} games successfully`);
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
         setCsvContent('');
         setPreviewGames([]);
       }
@@ -429,16 +578,26 @@ export default function AdminSeasonDetailPage() {
         </button>
       </section>
 
+<<<<<<< HEAD
       {/* Import Schedule Section */}
+=======
+      {/* Schedule import */}
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
       <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
         <h2 className="text-lg font-semibold text-gray-800">Import Game Schedule</h2>
         
         <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-900 space-y-2">
           <p className="font-medium">CSV Format</p>
           <p className="font-mono text-xs bg-blue-100 px-2 py-1 rounded">
+<<<<<<< HEAD
             Team 1 | Team 2 | YYYY-MM-DD
           </p>
           <p>Use team names or locations. One game per line.</p>
+=======
+            homeTeam, awayTeam, YYYY-MM-DD
+          </p>
+          <p>Use team nicknames or locations. Games will start at <strong>12:00 PM CT (UTC)</strong>. One game per line.</p>
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
         </div>
 
         <div className="space-y-3">
@@ -449,7 +608,11 @@ export default function AdminSeasonDetailPage() {
             <textarea
               value={csvContent}
               onChange={(e) => handleCsvChange(e.target.value)}
+<<<<<<< HEAD
               placeholder="Team1 | Team2 | 2026-04-01&#10;Team3 | Team4 | 2026-04-02"
+=======
+              placeholder="Team A, Team B, 2026-04-01&#10;Team C, Team D, 2026-04-02"
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
               className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </label>
@@ -489,6 +652,7 @@ export default function AdminSeasonDetailPage() {
             <p className="text-sm font-medium text-gray-700">
               Preview: {previewGames.length} games
             </p>
+<<<<<<< HEAD
             <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 divide-y">
               {previewGames.map((game, idx) => (
                 <div
@@ -503,6 +667,27 @@ export default function AdminSeasonDetailPage() {
                   <span className="text-gray-500 text-xs">{game.parsedDate}</span>
                 </div>
               ))}
+=======
+            <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
+              <table className="w-full text-sm text-gray-700">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium">Home Team</th>
+                    <th className="text-left px-4 py-2 font-medium">Away Team</th>
+                    <th className="text-left px-4 py-2 font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {previewGames.map((game, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">{game.homeTeam}</td>
+                      <td className="px-4 py-2">{game.awayTeam}</td>
+                      <td className="px-4 py-2 text-gray-500">{game.parsedDate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+>>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
             </div>
           </div>
         )}
