@@ -539,22 +539,6 @@ export default function AdminSeasonDetailPage() {
             <p className="text-sm font-medium text-gray-700">
               Preview: {previewGames.length} games
             </p>
-<<<<<<< HEAD
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 divide-y">
-              {previewGames.map((game, idx) => (
-                <div
-                  key={idx}
-                  className="px-4 py-3 text-sm flex items-center justify-between"
-                >
-                  <div className="font-mono">
-                    <span className="font-medium">{game.awayTeam}</span>
-                    <span className="text-gray-400"> @ </span>
-                    <span className="font-medium">{game.homeTeam}</span>
-                  </div>
-                  <span className="text-gray-500 text-xs">{game.parsedDate}</span>
-                </div>
-              ))}
-=======
             <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
               <table className="w-full text-sm text-gray-700">
                 <thead className="bg-gray-50 sticky top-0">
@@ -574,7 +558,7 @@ export default function AdminSeasonDetailPage() {
                   ))}
                 </tbody>
               </table>
->>>>>>> c3c5300 (feat: add schedule import with timezone conversion and season/league scoping)
+            </div>
             </div>
           </div>
         )}
