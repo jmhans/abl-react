@@ -119,8 +119,8 @@ async function main() {
     console.log(`  - ${lineupCount} lineups`);
     console.log(`  - ${draftCount} drafts`);
     console.log(`  - ${gameCount} games`);
-    console.log(`  - ${teamCount} teams`);
-    if (seasonCount > 0) console.log(`  - ${seasonCount} season`);
+    console.log(`  - ${seasonCount} season (teams WILL BE PRESERVED)`);
+    console.log(`  - ${teamCount} teams will remain in database`);
 
     if (!confirmed) {
       console.log('\nRun with --confirm to actually delete');
@@ -152,10 +152,8 @@ async function main() {
     });
     console.log(`✓ Deleted ${r3.deletedCount} games`);
 
-    const r4 = await db.collection('ablteams').deleteMany({
-      _id: { $in: teamObjectIds },
-    });
-    console.log(`✓ Deleted ${r4.deletedCount} teams`);
+    // DO NOT delete teams — they persist independently
+    console.log(`✓ Preserved ${teamCount} teams (they remain in ablteams collection)`);
 
     if (season) {
       const r5 = await db.collection('seasons').deleteOne({

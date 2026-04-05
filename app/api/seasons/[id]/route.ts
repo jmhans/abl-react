@@ -162,7 +162,7 @@ export async function DELETE(
       typeof id === 'string' ? new ObjectId(id) : id
     );
 
-    // Cascade delete all related data
+    // Cascade delete season-specific data only (NOT teams — they persist)
     // 1. Delete lineups for teams in this season
     await db.collection('lineups').deleteMany({
       ablTeam: { $in: teamIds }
@@ -178,12 +178,7 @@ export async function DELETE(
       seasonId: seasonObjectId.toString()
     });
 
-    // 4. Delete teams for this season
-    await db.collection('ablteams').deleteMany({
-      _id: { $in: teamIds }
-    });
-
-    // 5. Finally delete the season
+    // 4. Delete the season (teams remain in ablteams collection)
     const result = await db.collection('seasons').deleteOne({ _id: seasonObjectId });
 
     if (result.deletedCount === 0) {
@@ -194,7 +189,7 @@ export async function DELETE(
       success: true, 
       deleted: {
         season: 1,
-        teams: teamIds.length,
+        teams: 'PRESERVED',
         lineups: 'all for teams',
         drafts: 'all for season',
         games: 'all for season'
