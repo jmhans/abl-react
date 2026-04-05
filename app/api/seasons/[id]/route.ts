@@ -119,8 +119,9 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/seasons/[id] — delete a season
+// DELETE /api/seasons/[id] — delete a season and all associated data
 // [id] can be an ObjectId or "abl-2025" slug
+// Cascade deletes: teams, lineups, drafts, games for this season
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -151,13 +152,54 @@ export async function DELETE(
       return NextResponse.json({ error: 'Season not found' }, { status: 404 });
     }
 
+    // Fetch the season to get teamIds for cascade delete
+    const season = await db.collection('seasons').findOne({ _id: seasonObjectId });
+    if (!season) {
+      return NextResponse.json({ error: 'Season not found' }, { status: 404 });
+    }
+
+    const teamIds = (season.teamIds || []).map((id: any) => 
+      typeof id === 'string' ? new ObjectId(id) : id
+    );
+
+    // Cascade delete all related data
+    // 1. Delete lineups for teams in this season
+    await db.collection('lineups').deleteMany({
+      ablTeam: { $in: teamIds }
+    });
+
+    // 2. Delete drafts for this season
+    await db.collection('drafts').deleteMany({
+      seasonId: seasonObjectId.toString()
+    });
+
+    // 3. Delete games for this season
+    await db.collection('games').deleteMany({
+      seasonId: seasonObjectId.toString()
+    });
+
+    // 4. Delete teams for this season
+    await db.collection('ablteams').deleteMany({
+      _id: { $in: teamIds }
+    });
+
+    // 5. Finally delete the season
     const result = await db.collection('seasons').deleteOne({ _id: seasonObjectId });
 
     if (result.deletedCount === 0) {
       return NextResponse.json({ error: 'Season not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
+    return NextResponse.json({ 
+      success: true, 
+      deleted: {
+        season: 1,
+        teams: teamIds.length,
+        lineups: 'all for teams',
+        drafts: 'all for season',
+        games: 'all for season'
+      }
+    });
   } catch (error) {
     console.error('Error deleting season:', error);
     return NextResponse.json({ error: 'Failed to delete season' }, { status: 500 });
