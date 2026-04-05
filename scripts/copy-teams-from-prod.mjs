@@ -4,28 +4,23 @@
  * Upsert all teams from production database to development database.
  * Teams are global objects referenced by league-seasons, not tied to any specific season.
  * Usage: node scripts/copy-teams-from-prod.mjs
+ * 
+ * Uses MONGODB_DB_URL (same connection for both prod and dev, just different DB names).
  */
 
 import { MongoClient } from 'mongodb';
 import process from 'process';
 
-const DEV_MONGODB_URL = process.env.MONGODB_DB_URL || 'mongodb://localhost:27017';
+const MONGODB_URL = process.env.MONGODB_DB_URL || 'mongodb://localhost:27017';
 const DEV_DB_NAME = process.env.MONGODB_DB || 'abl_dev';
-
-const PROD_MONGODB_URL = process.env.PROD_MONGODB_URL;
 const PROD_DB_NAME = process.env.PROD_MONGODB_DB || 'heroku_wm40bx9r';
 
 async function main() {
-  if (!PROD_MONGODB_URL) {
-    console.error('Error: PROD_MONGODB_URL environment variable not set');
-    process.exit(1);
-  }
-
-  const prodClient = new MongoClient(PROD_MONGODB_URL);
-  const devClient = new MongoClient(DEV_MONGODB_URL);
+  const prodClient = new MongoClient(MONGODB_URL);
+  const devClient = new MongoClient(MONGODB_URL);
 
   try {
-    console.log(`\nCopying all teams from prod to dev (upsert)...`);
+    console.log(`\nCopying all teams from prod (${PROD_DB_NAME}) to dev (${DEV_DB_NAME})...`);
 
     await prodClient.connect();
     const prodDb = prodClient.db(PROD_DB_NAME);

@@ -4,6 +4,7 @@
  * Backup all collections from production MongoDB database.
  * Usage: node scripts/backup-prod-db.mjs
  * 
+ * Uses MONGODB_DB_URL (same connection as dev, just different DB name).
  * Exports to backup/ directory with timestamp.
  */
 
@@ -16,16 +17,11 @@ import process from 'process';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backupDir = path.join(__dirname, '..', 'backup');
 
-const PROD_MONGODB_URL = process.env.PROD_MONGODB_URL || 'mongodb://localhost:27017';
+const MONGODB_URL = process.env.MONGODB_DB_URL || 'mongodb://localhost:27017';
 const PROD_DB_NAME = process.env.PROD_MONGODB_DB || 'heroku_wm40bx9r';
 
 async function main() {
-  if (!process.env.PROD_MONGODB_URL) {
-    console.error('Error: PROD_MONGODB_URL environment variable not set');
-    process.exit(1);
-  }
-
-  const client = new MongoClient(PROD_MONGODB_URL);
+  const client = new MongoClient(MONGODB_URL);
 
   try {
     await client.connect();
