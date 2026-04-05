@@ -25,36 +25,17 @@ export async function GET(
       effectiveDate: effectiveDate
     });
 
-    // If no roster exists for next game, get most recent roster to copy from
+    // If no roster exists for next game, return empty roster
+    // Don't fallback to previous season's roster - that causes cross-season pollution
     if (!lineup) {
-      const previousLineups = await db.collection('lineups')
-        .find({ 
-          ablTeam: new ObjectId(teamId),
-          effectiveDate: { $lt: effectiveDate }
-        })
-        .sort({ effectiveDate: -1 })
-        .limit(1)
-        .toArray();
-
-      if (previousLineups.length > 0) {
-        // Create placeholder with copied roster
-        lineup = {
-          _id: new ObjectId(),
-          ablTeam: new ObjectId(teamId),
-          effectiveDate: effectiveDate,
-          roster: previousLineups[0].roster,
-          updatedAt: new Date()
-        } as any;
-      } else {
-        // Brand new team, empty roster
-        lineup = {
-          _id: new ObjectId(),
-          ablTeam: new ObjectId(teamId),
-          effectiveDate: effectiveDate,
-          roster: [],
-          updatedAt: new Date()
-        } as any;
-      }
+      // Return empty roster for this effectiveDate
+      lineup = {
+        _id: new ObjectId(),
+        ablTeam: new ObjectId(teamId),
+        effectiveDate: effectiveDate,
+        roster: [],
+        updatedAt: new Date()
+      } as any;
     }
 
     // Populate player details
