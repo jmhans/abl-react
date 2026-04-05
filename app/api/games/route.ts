@@ -118,13 +118,16 @@ export async function POST(request: NextRequest) {
         throw new Error('Game already exists with those details');
       }
 
-      const game = {
+      const game: any = {
         awayTeam: new ObjectId(gameDetails.awayTeam),
         homeTeam: new ObjectId(gameDetails.homeTeam),
         gameDate: new Date(gameDetails.gameDate),
-        description: gameDetails.description,
         gameType: gameDetails.gameType || 'R'
       };
+
+      if (gameDetails.description) game.description = gameDetails.description;
+      if (gameDetails.seasonId) game.seasonId = new ObjectId(gameDetails.seasonId);
+      if (gameDetails.leagueId) game.leagueId = new ObjectId(gameDetails.leagueId);
 
       const result = await db.collection('games').insertOne(game);
       const createdGame = await db.collection('games').findOne({ _id: result.insertedId });

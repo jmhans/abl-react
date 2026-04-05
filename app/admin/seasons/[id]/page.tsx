@@ -47,6 +47,13 @@ export default function AdminSeasonDetailPage() {
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
+  // schedule import state
+  const [csvContent, setCsvContent] = useState('');
+  const [previewGames, setPreviewGames] = useState<Array<{ homeTeam: string; awayTeam: string; gameDate: string; parsedDate: string }>>([]);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+  const [importing, setImporting] = useState(false);
+
   const load = async () => {
     setLoading(true);
     const [seasonRes, teamsRes] = await Promise.all([
@@ -145,6 +152,164 @@ export default function AdminSeasonDetailPage() {
       : t.nickname ?? t.location ?? '(unnamed)';
     const ownerNames = (t.owners ?? []).map(o => o.name).filter(Boolean).join(', ');
     return ownerNames ? `${name} — ${ownerNames}` : name;
+  };
+
+  const handleCsvChange = (content: string) => {
+    setCsvContent(content);
+    setPreviewGames([]);
+    setImportError('');
+  };
+
+  const convertToNoonCT = (dateStr: string): string => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    const partMap = new Map(parts.map(p => [p.type, p.value]));
+    const localDate = new Date(
+      parseInt(partMap.get('year')!),
+      parseInt(partMap.get('month')!) - 1,
+      parseInt(partMap.get('day')!),
+      parseInt(partMap.get('hour')!),
+      parseInt(partMap.get('minute')!),
+      parseInt(partMap.get('second')!)
+    );
+    const utcDate = new Date(date.getTime() - (date.getTime() - localDate.getTime()));
+    return utcDate.toISOString();
+  };
+
+  const previewCsv = () => {
+    setImportError('');
+    setPreviewGames([]);
+
+    const lines = csvContent.trim().split('\n');
+    const preview: Array<{ homeTeam: string; awayTeam: string; gameDate: string; parsedDate: string }> = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const parts = line.split(',').map(p => p.trim());
+
+      if (parts.length < 3) {
+        setImportError(`Line ${i + 1}: Invalid format (expected homeTeam, awayTeam, date)`);
+        return;
+      }
+
+      const homeTeamName = parts[0];
+      const awayTeamName = parts[1];
+      const dateName = parts[2];
+
+      const homeTeam = allTeams.find(t => 
+        t.nickname?.toLowerCase() === homeTeamName.toLowerCase() || 
+        t.location?.toLowerCase() === homeTeamName.toLowerCase()
+      );
+      const awayTeam = allTeams.find(t => 
+        t.nickname?.toLowerCase() === awayTeamName.toLowerCase() || 
+        t.location?.toLowerCase() === awayTeamName.toLowerCase()
+      );
+
+      if (!homeTeam) {
+        setImportError(`Line ${i + 1}: Home team "${homeTeamName}" not found`);
+        return;
+      }
+      if (!awayTeam) {
+        setImportError(`Line ${i + 1}: Away team "${awayTeamName}" not found`);
+        return;
+      }
+
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(dateName)) {
+        setImportError(`Line ${i + 1}: Invalid date format "${dateName}" (use YYYY-MM-DD)`);
+        return;
+      }
+
+      const utcNoonCT = convertToNoonCT(dateName);
+      const utcDate = new Date(utcNoonCT);
+
+      preview.push({
+        homeTeam: homeTeamName,
+        awayTeam: awayTeamName,
+        gameDate: dateName,
+        parsedDate: utcDate.toUTCString(),
+      });
+    }
+
+    if (preview.length === 0) {
+      setImportError('No valid games found in CSV');
+      return;
+    }
+
+    setPreviewGames(preview);
+  };
+  const handleImport = async () => {
+    if (previewGames.length === 0) {
+      setImportError('Please preview the CSV first');
+      return;
+    }
+
+    if (!season) {
+      setImportError('Season not loaded');
+      return;
+    }
+
+    setImporting(true);
+    setImportError('');
+    setImportSuccess('');
+
+    try {
+      const gamesToCreate = previewGames.map(previewGame => {
+        const homeTeam = allTeams.find(t => 
+          t.nickname?.toLowerCase() === previewGame.homeTeam.toLowerCase() || 
+          t.location?.toLowerCase() === previewGame.homeTeam.toLowerCase()
+        );
+        const awayTeam = allTeams.find(t => 
+          t.nickname?.toLowerCase() === previewGame.awayTeam.toLowerCase() || 
+          t.location?.toLowerCase() === previewGame.awayTeam.toLowerCase()
+        );
+
+        return {
+          homeTeam: homeTeam?._id,
+          awayTeam: awayTeam?._id,
+          gameDate: convertToNoonCT(previewGame.gameDate),
+          gameType: 'R',
+          seasonId: season._id,
+          leagueId: season.leagueId
+        };
+      });
+
+      const res = await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gamesToCreate),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errorMsg = data.error || 'Import failed';
+        setImportError(errorMsg);
+      } else {
+        setImportSuccess(`✓ Imported ${previewGames.length} games successfully`);
+        setCsvContent('');
+        setPreviewGames([]);
+      }
+    } catch (error) {
+      setImportError(
+        error instanceof Error ? error.message : 'Network error'
+      );
+    } finally {
+      setImporting(false);
+    }
   };
 
   if (loading) {
@@ -312,6 +477,90 @@ export default function AdminSeasonDetailPage() {
         >
           {teamsSaving ? 'Saving…' : 'Save Team Roster'}
         </button>
+      </section>
+
+      {/* Schedule import */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
+        <h2 className="text-lg font-semibold text-gray-800">Import Game Schedule</h2>
+        
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-900 space-y-2">
+          <p className="font-medium">CSV Format</p>
+          <p className="font-mono text-xs bg-blue-100 px-2 py-1 rounded">
+            homeTeam, awayTeam, YYYY-MM-DD
+          </p>
+          <p>Use team nicknames or locations. Games will start at <strong>12:00 PM CT (UTC)</strong>. One game per line.</p>
+        </div>
+
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700 mb-2 block">
+              Paste CSV data
+            </span>
+            <textarea
+              value={csvContent}
+              onChange={(e) => handleCsvChange(e.target.value)}
+              placeholder="Team A, Team B, 2026-04-01&#10;Team C, Team D, 2026-04-02"
+              className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </label>
+
+          <div className="flex gap-3">
+            <button
+              onClick={previewCsv}
+              disabled={!csvContent.trim()}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Preview
+            </button>
+            <button
+              onClick={handleImport}
+              disabled={importing || previewGames.length === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          </div>
+        </div>
+
+        {importError && (
+          <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-900">
+            {importError}
+          </div>
+        )}
+
+        {importSuccess && (
+          <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 text-sm text-green-900">
+            {importSuccess}
+          </div>
+        )}
+
+        {previewGames.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700">
+              Preview: {previewGames.length} games
+            </p>
+            <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
+              <table className="w-full text-sm text-gray-700">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium">Home Team</th>
+                    <th className="text-left px-4 py-2 font-medium">Away Team</th>
+                    <th className="text-left px-4 py-2 font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {previewGames.map((game, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">{game.homeTeam}</td>
+                      <td className="px-4 py-2">{game.awayTeam}</td>
+                      <td className="px-4 py-2 text-gray-500">{game.parsedDate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
