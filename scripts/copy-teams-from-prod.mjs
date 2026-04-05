@@ -20,6 +20,13 @@ async function main() {
   const devClient = new MongoClient(MONGODB_URL);
 
   try {
+    // Safety check: prevent copying from a DB to itself
+    if (PROD_DB_NAME === DEV_DB_NAME) {
+      console.error(`Error: PROD_MONGODB_DB and MONGODB_DB are both "${PROD_DB_NAME}"`);
+      console.error('Set MONGODB_DB to your dev database name (e.g., abl_dev)');
+      process.exit(1);
+    }
+
     console.log(`\nCopying all teams from prod (${PROD_DB_NAME}) to dev (${DEV_DB_NAME})...`);
 
     await prodClient.connect();
