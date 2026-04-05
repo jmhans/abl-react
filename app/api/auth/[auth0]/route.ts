@@ -41,6 +41,9 @@ export async function GET(
   const { auth0: route } = await params;
   const url = new URL(request.url);
 
+  // Dynamically compute base URL from request host (supports preview and production deployments)
+  const origin = url.origin;
+
   if (route === 'login') {
     // Support ?returnTo=/some/path — encoded into OAuth state so it survives the redirect round-trip
     const returnTo = url.searchParams.get('returnTo') || '/';
@@ -50,7 +53,7 @@ export async function GET(
     const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
       `response_type=code&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}&` +
-      `redirect_uri=${encodeURIComponent(`${process.env.AUTH0_BASE_URL}/api/auth/callback`)}&` +
+      `redirect_uri=${encodeURIComponent(`${origin}/api/auth/callback`)}&` +
       `scope=openid profile email&` +
       `state=${encodeURIComponent(state)}`;
     return redirect(loginUrl);
@@ -59,7 +62,7 @@ export async function GET(
   if (route === 'logout') {
     const response = NextResponse.redirect(
       `${process.env.AUTH0_ISSUER_BASE_URL}/v2/logout?` +
-      `returnTo=${encodeURIComponent(process.env.AUTH0_BASE_URL || '')}&` +
+      `returnTo=${encodeURIComponent(origin || '')}&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}`
     );
     response.cookies.delete('appSession');
@@ -73,7 +76,7 @@ export async function GET(
     }
 
     try {
-      const redirectUri = `${process.env.AUTH0_BASE_URL}/api/auth/callback`;
+      const redirectUri = `${origin}/api/auth/callback`;
 
       // Exchange code for tokens using form-urlencoded
       const params = new URLSearchParams({
@@ -121,13 +124,13 @@ export async function GET(
 
       // Set session cookie
       // Decode state to find returnTo destination (from login ?returnTo= param)
-      let redirectTo = process.env.AUTH0_BASE_URL!;
+      let redirectTo = origin;
       const stateParam = url.searchParams.get('state');
       if (stateParam) {
         try {
           const decoded = JSON.parse(Buffer.from(stateParam, 'base64url').toString('utf8'));
           if (typeof decoded.returnTo === 'string' && decoded.returnTo.startsWith('/')) {
-            redirectTo = `${process.env.AUTH0_BASE_URL}${decoded.returnTo}`;
+            redirectTo = `${origin}${decoded.returnTo}`;
           }
         } catch {
           // malformed state — fall back to base URL
