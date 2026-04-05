@@ -118,3 +118,48 @@ export async function PATCH(
     return NextResponse.json({ error: 'Failed to update season' }, { status: 500 });
   }
 }
+
+// DELETE /api/seasons/[id] — delete a season
+// [id] can be an ObjectId or "abl-2025" slug
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const db = await connectToDatabase();
+
+    // Resolve the season _id from ObjectId or slug
+    let seasonObjectId: ObjectId | null = null;
+    if (ObjectId.isValid(id)) {
+      seasonObjectId = new ObjectId(id);
+    } else {
+      const match = id.match(/^(.+)-(\d{4})$/);
+      if (match) {
+        const [, leagueSlug, yearStr] = match;
+        const league = await db.collection('leagues').findOne({ slug: leagueSlug });
+        if (league) {
+          const found = await db.collection('seasons').findOne({
+            leagueId: league._id,
+            year: Number(yearStr),
+          });
+          if (found) seasonObjectId = found._id;
+        }
+      }
+    }
+    if (!seasonObjectId) {
+      return NextResponse.json({ error: 'Season not found' }, { status: 404 });
+    }
+
+    const result = await db.collection('seasons').deleteOne({ _id: seasonObjectId });
+
+    if (result.deletedCount === 0) {
+      return NextResponse.json({ error: 'Season not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, deletedCount: result.deletedCount });
+  } catch (error) {
+    console.error('Error deleting season:', error);
+    return NextResponse.json({ error: 'Failed to delete season' }, { status: 500 });
+  }
+}

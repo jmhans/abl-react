@@ -28,6 +28,7 @@ export default function AdminSeasonsPage() {
   const [leagueSlug, setLeagueSlug] = useState('');
   const [year, setYear] = useState(String(new Date().getFullYear()));
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -70,6 +71,31 @@ export default function AdminSeasonsPage() {
       setError('Network error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (seasonId: string, league: League | undefined, season: Season) => {
+    if (!confirm(`Are you sure you want to delete ${season.year} season${league ? ` for ${league.name}` : ''}? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(seasonId);
+    setError('');
+    setSuccess('');
+
+    try {
+      const res = await fetch(`/api/seasons/${seasonId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to delete season');
+      } else {
+        setSuccess(`Season ${season.year} deleted successfully`);
+        load();
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -142,6 +168,13 @@ export default function AdminSeasonsPage() {
                           >
                             Manage →
                           </Link>
+                          <button
+                            onClick={() => handleDelete(season._id, league, season)}
+                            disabled={deleting === season._id}
+                            className="text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {deleting === season._id ? 'Deleting…' : 'Delete'}
+                          </button>
                         </div>
                       </div>
                     ))}
