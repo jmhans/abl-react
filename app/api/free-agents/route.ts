@@ -89,6 +89,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Filter by positions (if any selected)
+    const positionsParam = searchParams.get('positions');
+    if (positionsParam) {
+      const selectedPositions = positionsParam.split(',').filter(p => p.trim());
+      if (selectedPositions.length > 0) {
+        // Match players that have ANY of the selected positions in their eligible array
+        query.$and.push({
+          eligible: { $in: selectedPositions }
+        });
+      }
+    }
+
     // Fetch projections for this system (if requested)
     let projMap = new Map<string, any>();
     if (projSystem) {

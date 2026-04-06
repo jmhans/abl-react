@@ -31,10 +31,14 @@ type DisplayStats = {
   g: number | null;
   ab: number | null;
   h: number | null;
+  doubles: number | null;
+  triples: number | null;
   hr: number | null;
   bb: number | null;
-  netSb: number | null;
   hbp: number | null;
+  netSb: number | null;
+  sh: number | null;
+  sf: number | null;
   ablScore: number | null;
 };
 
@@ -50,10 +54,14 @@ function getDisplayStats(player: Player, view: string): DisplayStats {
       g: (b?.gamesPlayed || null),
       ab: ab > 0 ? ab : null,
       h: b?.hits ?? null,
+      doubles: b?.doubles ?? null,
+      triples: b?.triples ?? null,
       hr: b?.homeRuns ?? null,
       bb: bb > 0 ? bb : null,
-      netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
       hbp: hbp > 0 ? hbp : null,
+      netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
+      sh: b?.sacrificeBunts ?? null,
+      sf: b?.sacrificeFlies ?? null,
       ablScore: player.abl ?? null,
     };
   }
@@ -64,23 +72,27 @@ function getDisplayStats(player: Player, view: string): DisplayStats {
     g: p?.g ?? null,
     ab: p?.ab ?? null,
     h: p?.h ?? null,
+    doubles: p?.doubles ?? null,
+    triples: p?.triples ?? null,
     hr: p?.hr ?? null,
     bb: p?.bb ?? null,
-    netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
     hbp: p?.hbp ?? null,
+    netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
+    sh: p?.sacBunts ?? null,
+    sf: p?.sacFlies ?? null,
     ablScore: player.ablProjected ?? null,
   };
 }
 
-type SortColKey = 'g' | 'ab' | 'h' | 'hr' | 'bb' | 'netSb' | 'hbp' | 'abl';
-const STAT_COL_KEYS: SortColKey[] = ['g', 'ab', 'h', 'hr', 'bb', 'netSb', 'hbp'];
+type SortColKey = 'g' | 'ab' | 'h' | 'doubles' | 'triples' | 'hr' | 'bb' | 'hbp' | 'netSb' | 'sh' | 'sf' | 'abl';
+const STAT_COL_KEYS: SortColKey[] = ['g', 'ab', 'h', 'doubles', 'triples', 'hr', 'bb', 'hbp', 'netSb', 'sh', 'sf'];
 
-const STAT_COLS = ['G', 'AB', 'H', 'HR', 'BB', 'SB(net)', 'HBP'] as const;
+const STAT_COLS = ['G', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'HBP', 'SB(net)', 'SH', 'SF'] as const;
 // xs: Player | ABL | Action
 // sm: Player | AB | ABL | Action
-// md+: Player | G AB H HR BB NB HBP | ABL | Action (10 cols)
-const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3.5rem_3rem_3rem_3rem_3.5rem_3rem_4.5rem_4rem]';
-const STAT_VIS = ['hidden md:block', 'hidden sm:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block'] as const;
+// md+: Player | G AB H 2B 3B HR BB HBP SB NB SH SF | ABL | Action (14 cols)
+const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_4rem]';
+const STAT_VIS = ['hidden md:block', 'hidden sm:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden lg:block', 'hidden lg:block'] as const;
 
 export default function FreeAgentsPage() {
   const params = useParams();
@@ -107,6 +119,7 @@ export default function FreeAgentsPage() {
   const [projLoading, setProjLoading] = useState(false);
   const [sortCol, setSortCol] = useState<SortColKey | null>(null);
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
+  const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
   const fetchIdRef = useRef(0);
 
   useEffect(() => {
@@ -162,6 +175,7 @@ export default function FreeAgentsPage() {
       if (currentView !== 'actual') query.append('projSystem', currentView);
       if (league) query.append('league', league);
       if (season) query.append('season', season);
+      if (selectedPositions.length > 0) query.append('positions', selectedPositions.join(','));
 
       const res = await fetch(`/api/free-agents?${query}`);
       const data = await res.json();
@@ -179,11 +193,11 @@ export default function FreeAgentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, showAll, statView, pageSize]);
+  }, [page, search, showAll, statView, pageSize, selectedPositions]);
 
   useEffect(() => {
     fetchPlayers();
-  }, [page, search, showAll, statView]);
+  }, [page, search, showAll, statView, selectedPositions]);
 
   const handleStatViewChange = (newView: string) => {
     setStatView(newView);
@@ -202,6 +216,21 @@ export default function FreeAgentsPage() {
       setSortCol(null);
       setSortDir('desc');
     }
+  };
+
+  const togglePosition = (position: string) => {
+    setSelectedPositions(prev => {
+      const newPositions = prev.includes(position)
+        ? prev.filter(p => p !== position)
+        : [...prev, position];
+      setPage(1); // Reset to page 1 when filter changes
+      return newPositions;
+    });
+  };
+
+  const clearPositions = () => {
+    setSelectedPositions([]);
+    setPage(1);
   };
 
   const sortedPlayers = useMemo(() => {
@@ -308,10 +337,10 @@ export default function FreeAgentsPage() {
 
         <div
           className={`p-4 rounded-lg mb-6 ${
-            ilPositions.length > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+            ilPositions.length > 0 ? 'bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700'
           }`}
         >
-          <p className="font-semibold text-lg">
+          <p className={`font-semibold text-lg ${ilPositions.length > 0 ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'}`}>
             {ilPositions.length > 0
               ? `✅ Available IL Positions: ${ilPositions.join(', ')}`
               : '❌ No IL players on roster - Cannot add free agents'}
@@ -321,7 +350,7 @@ export default function FreeAgentsPage() {
         {message && (
           <div
             className={`p-3 rounded-lg mb-6 ${
-              message.includes('✅') ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+              message.includes('✅') ? 'bg-green-50 dark:bg-green-900 text-green-900 dark:text-green-100 border border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900 text-red-900 dark:text-red-100 border border-red-200 dark:border-red-700'
             }`}
           >
             {message}
@@ -374,6 +403,34 @@ export default function FreeAgentsPage() {
               <option key={sys} value={sys}>Proj: {sys}</option>
             ))}
           </select>
+        </div>
+
+        {/* Position Filter */}
+        <div className="mb-4">
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-sm font-medium text-gray-600">Positions:</span>
+            {['C', '1B', '2B', '3B', 'SS', 'OF', 'DH'].map(pos => (
+              <button
+                key={pos}
+                onClick={() => togglePosition(pos)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  selectedPositions.includes(pos)
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {pos}
+              </button>
+            ))}
+            {selectedPositions.length > 0 && (
+              <button
+                onClick={clearPositions}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 transition-colors ml-auto"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -433,10 +490,14 @@ export default function FreeAgentsPage() {
                 <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
                 <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
                 <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.doubles)}`}>{fmt(ds.doubles)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.triples)}`}>{fmt(ds.triples)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[7]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[8]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[9]} ${statC(ds.sh)}`}>{fmt(ds.sh)}</div>
+                <div className={`text-center text-xs ${STAT_VIS[10]} ${statC(ds.sf)}`}>{fmt(ds.sf)}</div>
                 <div className={`text-center text-xs font-medium ${ablColor}`}>
                   {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
                 </div>

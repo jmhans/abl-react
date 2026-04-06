@@ -140,6 +140,17 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Header links use their Tailwind classes */
+header a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+header a:hover {
+  color: inherit;
+  text-decoration: inherit;
+}
+
 /* ===========================
    Buttons
    =========================== */

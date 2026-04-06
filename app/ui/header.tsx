@@ -39,12 +39,12 @@ export default function Header() {
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-blue-50 hidden sm:inline">{user.name}</span>
-              <a href="/api/auth/logout" className="text-xs bg-white text-blue-600 hover:bg-blue-50 font-semibold px-3 py-1.5 rounded transition">
+              <a href="/api/auth/logout" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
                 Sign out
               </a>
             </div>
           ) : (
-            <a href="/api/auth/login" className="text-xs bg-white text-blue-600 hover:bg-blue-50 font-semibold px-3 py-1.5 rounded transition">
+            <a href="/api/auth/login" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
               Sign in
             </a>
           )}
