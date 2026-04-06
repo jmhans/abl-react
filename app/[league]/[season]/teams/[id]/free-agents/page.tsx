@@ -252,6 +252,36 @@ export default function FreeAgentsPage() {
     });
   }, [players, sortCol, sortDir, statView]);
 
+  const downloadCsv = () => {
+    const fmt = (v: number | null) => v === null ? '' : String(Math.round(v));
+    const fmtAbl = (v: number | null) => v === null ? '' : v.toFixed(2);
+    const escape = (s: string) => s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+
+    const statLabel = statView !== 'actual' ? `ABL(${statView})` : 'ABL';
+    const headers = ['Name', 'Team', 'Eligible', 'Status', 'G', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'HBP', 'SB(net)', 'SH', 'SF', statLabel];
+    const rows = sortedPlayers.map(player => {
+      const ds = getDisplayStats(player, statView);
+      return [
+        escape(player.name),
+        escape(player.team || 'FA'),
+        escape(player.eligible?.join(';') || ''),
+        escape(player.status || ''),
+        fmt(ds.g), fmt(ds.ab), fmt(ds.h), fmt(ds.doubles), fmt(ds.triples),
+        fmt(ds.hr), fmt(ds.bb), fmt(ds.hbp), fmt(ds.netSb), fmt(ds.sh), fmt(ds.sf),
+        fmtAbl(ds.ablScore),
+      ];
+    });
+
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `free-agents-${statView}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const sortIcon = (col: SortColKey) => {
     if (sortCol !== col) return <span className="ml-0.5 opacity-20">↕</span>;
     return <span className="ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>;
@@ -430,6 +460,15 @@ export default function FreeAgentsPage() {
                 Clear
               </button>
             )}
+          </div>
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={downloadCsv}
+              disabled={sortedPlayers.length === 0}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              ⬇ Download CSV ({sortedPlayers.length})
+            </button>
           </div>
         </div>
 
