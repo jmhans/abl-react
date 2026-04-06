@@ -66,7 +66,7 @@ export default function TeamRosterPage() {
   const [savingTeamInfo, setSavingTeamInfo] = useState(false);
   const [teamInfoError, setTeamInfoError] = useState('');
   const [showCoOwnerModal, setShowCoOwnerModal] = useState(false);
-  const [allUsers, setAllUsers] = useState<{ userId: string; name: string; email: string }[]>([]);
+  const [allUsers, setAllUsers] = useState<{ userId: string; name: string }[]>([]);
   const [coOwnerSearch, setCoOwnerSearch] = useState('');
   const [addingCoOwner, setAddingCoOwner] = useState(false);
   const [removingCoOwner, setRemovingCoOwner] = useState<string | null>(null);
@@ -411,20 +411,19 @@ export default function TeamRosterPage() {
         {/* Co-owner modal */}
         {showCoOwnerModal && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold text-gray-900">Add Co-owner</h2>
-                <button onClick={() => setShowCoOwnerModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Add Co-owner</h2>
+                <button onClick={() => setShowCoOwnerModal(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl">✕</button>
               </div>
 
               {/* Current owners */}
               <div className="mb-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Current Owners</p>
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Current Owners</p>
                 <div className="space-y-1">
                   {teamOwners.map((o: any) => (
-                    <div key={o.userId} className="flex items-center justify-between text-sm px-3 py-1.5 bg-gray-50 rounded-lg gap-2">
-                      <span className="font-medium text-gray-800">{o.name}</span>
-                      <span className="text-xs text-gray-400 flex-1">{o.email}</span>
+                    <div key={o.userId} className="flex items-center justify-between text-sm px-3 py-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg gap-2">
+                      <span className="font-medium text-gray-800 dark:text-gray-100">{o.name}</span>
                       {teamOwners.length > 1 && (
                         <button
                           disabled={removingCoOwner === o.userId}
@@ -454,17 +453,17 @@ export default function TeamRosterPage() {
                 </div>
               </div>
 
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Add from site users</p>
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Add from site users</p>
               <input
                 type="text"
-                placeholder="Search by name or email…"
+                placeholder="Search by name…"
                 value={coOwnerSearch}
                 onChange={(e) => setCoOwnerSearch(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
               />
 
               {coOwnerError && (
-                <p className="text-red-600 text-sm mb-3">{coOwnerError}</p>
+                <p className="text-red-600 dark:text-red-400 text-sm mb-3">{coOwnerError}</p>
               )}
 
               <div className="space-y-1 max-h-56 overflow-y-auto">
@@ -472,7 +471,7 @@ export default function TeamRosterPage() {
                   .filter((u) => {
                     if (teamOwners.some((o: any) => o.userId === u.userId)) return false;
                     const q = coOwnerSearch.toLowerCase();
-                    return !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+                    return !q || u.name.toLowerCase().includes(q);
                   })
                   .map((u) => (
                     <button
@@ -484,7 +483,7 @@ export default function TeamRosterPage() {
                         const res = await fetch(`/api/teams/${teamId}/co-owner`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ userId: u.userId, name: u.name, email: u.email }),
+                          body: JSON.stringify({ userId: u.userId, name: u.name }),
                         });
                         const data = await res.json();
                         if (!res.ok) {
@@ -495,18 +494,17 @@ export default function TeamRosterPage() {
                         }
                         setAddingCoOwner(false);
                       }}
-                      className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left hover:bg-purple-50 transition-colors disabled:opacity-50"
+                      className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left bg-transparent hover:bg-purple-50 dark:hover:bg-purple-900/40 transition-colors disabled:opacity-50"
                     >
-                      <span className="font-medium text-gray-800">{u.name}</span>
-                      <span className="text-xs text-gray-400">{u.email}</span>
+                      <span className="font-medium text-gray-800 dark:text-gray-100">{u.name}</span>
                     </button>
                   ))}
                 {allUsers.filter((u) => {
                   if (teamOwners.some((o: any) => o.userId === u.userId)) return false;
                   const q = coOwnerSearch.toLowerCase();
-                  return !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+                  return !q || u.name.toLowerCase().includes(q);
                 }).length === 0 && (
-                  <p className="text-sm text-gray-400 px-3 py-2">No matching users found.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-300 px-3 py-2">No matching users found.</p>
                 )}
               </div>
             </div>
