@@ -79,7 +79,7 @@ export default function LeagueSeasonHome() {
           {leagueName} — {season} Season
         </h1>
         {user ? (
-          <p className="text-gray-500 text-sm">Welcome back, {user.name || user.email}!</p>
+          <p className="text-gray-500 text-sm">Welcome back, {user.name || 'ABL User'}!</p>
         ) : (
           <p className="text-gray-500 text-sm">
             <a href="/api/auth/login" className="text-blue-600 hover:text-blue-800">Sign in</a>{' '}

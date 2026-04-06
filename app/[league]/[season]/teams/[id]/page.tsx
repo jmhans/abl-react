@@ -95,7 +95,6 @@ export default function TeamDetailPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{owner.name || 'Unknown Owner'}</p>
-                      {owner.email && <p className="text-sm text-gray-600 dark:text-gray-400">{owner.email}</p>}
                     </div>
                     {owner.verified && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
                   </div>

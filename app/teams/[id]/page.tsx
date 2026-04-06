@@ -97,9 +97,6 @@ export default function TeamDetailPage() {
                       <p className="font-medium text-gray-900">
                         {owner.name || 'Unknown Owner'}
                       </p>
-                      {owner.email && (
-                        <p className="text-sm text-gray-600">{owner.email}</p>
-                      )}
                     </div>
                     {owner.verified && (
                       <span className="text-green-600 text-xl">✓</span>

@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import {
+  getUserProfileDisplayName,
+  sanitizeDisplayName,
+  upsertUserProfileDisplayName,
+} from '@/app/lib/display-name';
 
 // POST /api/join/[leagueSlug]
 // Requires: logged-in session cookie
@@ -50,6 +55,10 @@ export async function POST(
     }
 
     const db = await connectToDatabase();
+    const ownerDisplayName =
+      (await getUserProfileDisplayName(db, sessionUser.sub)) ||
+      sanitizeDisplayName(sessionUser.name || '', sessionUser.sub);
+    await upsertUserProfileDisplayName(db, sessionUser.sub, ownerDisplayName);
 
     // Resolve league
     const league = await db.collection('leagues').findOne({ slug: leagueSlug });
@@ -99,7 +108,7 @@ export async function POST(
         {
           _id: new ObjectId(),
           userId: sessionUser.sub,
-          name: sessionUser.name,
+          name: ownerDisplayName,
           email: sessionUser.email ?? '',
           verified: true,
         },

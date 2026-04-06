@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { getUserProfileDisplayName, sanitizeDisplayName } from '@/app/lib/display-name';
 
 // POST /api/teams/[id]/co-owner
 // Body: { userId, name }
@@ -53,10 +54,13 @@ export async function POST(
       return NextResponse.json({ error: 'This user is already an owner of this team' }, { status: 409 });
     }
 
+    const ownerDisplayName =
+      (await getUserProfileDisplayName(db, userId)) || sanitizeDisplayName(name, userId);
+
     const newOwner = {
       _id: new ObjectId(),
       userId,
-      name,
+      name: ownerDisplayName,
       email: '',
       verified: true,
     };

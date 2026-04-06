@@ -17,6 +17,14 @@ const LEAGUE_SCOPED = new Set(['/admin/new-draft', '/admin/recalculate']);
 
 const SITE_CARDS: AdminCard[] = [
   {
+    href: '/admin/co-owner-users',
+    title: 'Co-owner User Access',
+    description: 'Choose which Auth0 users are selectable in the Add Co-owner workflow.',
+    accent: 'border-l-rose-500',
+    iconBg: 'bg-rose-100',
+    icon: '👥',
+  },
+  {
     href: '/admin/stat-refresh',
     title: 'MLB Stat Download',
     description: 'Pull boxscore data into player and statline collections for a single date or a full date range.',
