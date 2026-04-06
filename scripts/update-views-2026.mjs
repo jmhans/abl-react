@@ -90,7 +90,9 @@ function buildEligiblePipeline() {
     {
       $addFields: {
         allPos: {
-          $concatArrays: [
+          $cond: [
+            { $gt: [{ $size: { $ifNull: ['$newPosLog.curr', []] } }, 0] },
+            { $ifNull: ['$newPosLog.curr', []] },
             [
               {
                 $ifNull: [
@@ -99,7 +101,6 @@ function buildEligiblePipeline() {
                 ],
               },
             ],
-            { $ifNull: ['$newPosLog.curr', []] },
           ],
         },
       },
