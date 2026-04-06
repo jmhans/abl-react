@@ -50,48 +50,50 @@
 /* ===========================
    Dark Mode
    =========================== */
-:root.dark {
-  /* Primary Brand Color (lighter blue for dark mode) */
-  --color-primary-50: 15 23 42;
-  --color-primary-100: 30 41 59;
-  --color-primary-200: 59 130 246;
-  --color-primary-400: 96 165 250;
-  --color-primary-500: 147 197 253;
-  --color-primary-600: 191 219 254;
-  --color-primary-700: 219 234 254;
-  --color-primary-900: 239 246 255;
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Primary Brand Color (lighter blue for dark mode) */
+    --color-primary-50: 15 23 42;
+    --color-primary-100: 30 41 59;
+    --color-primary-200: 59 130 246;
+    --color-primary-400: 96 165 250;
+    --color-primary-500: 147 197 253;
+    --color-primary-600: 191 219 254;
+    --color-primary-700: 219 234 254;
+    --color-primary-900: 239 246 255;
 
-  /* Surface Colors (Dark backgrounds) */
-  --color-surface-0: 9 9 11;
-  --color-surface-50: 24 24 27;
-  --color-surface-100: 39 39 42;
-  --color-surface-200: 63 63 70;
-  --color-surface-700: 212 212 216;
-  --color-surface-800: 228 228 231;
-  --color-surface-900: 244 244 245;
+    /* Surface Colors (Dark backgrounds) */
+    --color-surface-0: 9 9 11;
+    --color-surface-50: 24 24 27;
+    --color-surface-100: 39 39 42;
+    --color-surface-200: 63 63 70;
+    --color-surface-700: 212 212 216;
+    --color-surface-800: 228 228 231;
+    --color-surface-900: 244 244 245;
 
-  /* Text Colors */
-  --color-text-primary: 244 244 245;
-  --color-text-secondary: 212 212 216;
-  --color-text-tertiary: 161 161 170;
-  --color-text-inverse: 17 24 39;
+    /* Text Colors */
+    --color-text-primary: 244 244 245;
+    --color-text-secondary: 212 212 216;
+    --color-text-tertiary: 161 161 170;
+    --color-text-inverse: 17 24 39;
 
-  /* Border Colors */
-  --color-border-light: 39 39 42;
-  --color-border-default: 63 63 70;
-  --color-border-dark: 82 82 91;
+    /* Border Colors */
+    --color-border-light: 39 39 42;
+    --color-border-default: 63 63 70;
+    --color-border-dark: 82 82 91;
 
-  /* Status Colors */
-  --color-status-success: 74 222 128;
-  --color-status-warning: 254 215 170;
-  --color-status-error: 248 113 113;
-  --color-status-info: 147 197 253;
+    /* Status Colors */
+    --color-status-success: 74 222 128;
+    --color-status-warning: 254 215 170;
+    --color-status-error: 248 113 113;
+    --color-status-info: 147 197 253;
 
-  /* Background Colors */
-  --color-bg-page: 9 9 11;
-  --color-bg-surface: 24 24 27;
-  --color-bg-surface-alt: 39 39 42;
-  --color-bg-elevated: 63 63 70;
+    /* Background Colors */
+    --color-bg-page: 9 9 11;
+    --color-bg-surface: 24 24 27;
+    --color-bg-surface-alt: 39 39 42;
+    --color-bg-elevated: 63 63 70;
+  }
 }
 
 /* ===========================
