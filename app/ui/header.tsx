@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { toggleNav } from '@/app/ui/navigation';
+import ThemeToggle from './theme-toggle';
 
 interface User {
   name?: string;
@@ -21,7 +22,7 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="bg-blue-600 text-white px-4 py-3 shadow-md sticky top-0 z-20">
+    <header className="bg-primary-600 text-white px-4 py-3 shadow-md sticky top-0 z-20">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button
@@ -35,19 +36,20 @@ export default function Header() {
             ABL
           </Link>
         </div>
-        <div>
+        <div className="flex items-center gap-4">
           {user ? (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-blue-100 hidden sm:inline">{user.name}</span>
-              <a href="/api/auth/logout" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
+              <span className="text-sm text-primary-100 hidden sm:inline">{user.name}</span>
+              <a href="/api/auth/logout" className="text-xs bg-primary-700 hover:bg-primary-800 px-3 py-1.5 rounded transition">
                 Sign out
               </a>
             </div>
           ) : (
-            <a href="/api/auth/login" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
+            <a href="/api/auth/login" className="text-xs bg-primary-700 hover:bg-primary-800 px-3 py-1.5 rounded transition">
               Sign in
             </a>
           )}
+          <ThemeToggle />
         </div>
       </div>
     </header>

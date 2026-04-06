@@ -1,42 +1,146 @@
 @import "tailwindcss";
 
+/* ===========================
+   Light Mode (Default)
+   =========================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Primary Brand Color (Blue) */
+  --color-primary-50: 239 246 255;
+  --color-primary-100: 219 234 254;
+  --color-primary-200: 191 219 254;
+  --color-primary-400: 96 165 250;
+  --color-primary-500: 59 130 246;
+  --color-primary-600: 37 99 235;
+  --color-primary-700: 29 78 216;
+  --color-primary-900: 15 23 42;
+
+  /* Surface Colors (Light backgrounds) */
+  --color-surface-0: 255 255 255;
+  --color-surface-50: 249 250 251;
+  --color-surface-100: 243 244 246;
+  --color-surface-200: 229 231 235;
+  --color-surface-700: 55 65 81;
+  --color-surface-800: 31 41 55;
+  --color-surface-900: 17 24 39;
+
+  /* Text Colors */
+  --color-text-primary: 17 24 39;
+  --color-text-secondary: 75 85 99;
+  --color-text-tertiary: 107 114 128;
+  --color-text-inverse: 255 255 255;
+
+  /* Border Colors */
+  --color-border-light: 243 244 246;
+  --color-border-default: 229 231 235;
+  --color-border-dark: 209 213 219;
+
+  /* Status Colors */
+  --color-status-success: 34 197 94;
+  --color-status-warning: 251 146 60;
+  --color-status-error: 239 68 68;
+  --color-status-info: 59 130 246;
+
+  /* Background Colors */
+  --color-bg-page: 255 255 255;
+  --color-bg-surface: 255 255 255;
+  --color-bg-surface-alt: 249 250 251;
+  --color-bg-elevated: 255 255 255;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ===========================
+   Dark Mode
+   =========================== */
+:root.dark {
+  /* Primary Brand Color (lighter blue for dark mode) */
+  --color-primary-50: 15 23 42;
+  --color-primary-100: 30 41 59;
+  --color-primary-200: 59 130 246;
+  --color-primary-400: 96 165 250;
+  --color-primary-500: 147 197 253;
+  --color-primary-600: 191 219 254;
+  --color-primary-700: 219 234 254;
+  --color-primary-900: 239 246 255;
+
+  /* Surface Colors (Dark backgrounds) */
+  --color-surface-0: 9 9 11;
+  --color-surface-50: 24 24 27;
+  --color-surface-100: 39 39 42;
+  --color-surface-200: 63 63 70;
+  --color-surface-700: 212 212 216;
+  --color-surface-800: 228 228 231;
+  --color-surface-900: 244 244 245;
+
+  /* Text Colors */
+  --color-text-primary: 244 244 245;
+  --color-text-secondary: 212 212 216;
+  --color-text-tertiary: 161 161 170;
+  --color-text-inverse: 17 24 39;
+
+  /* Border Colors */
+  --color-border-light: 39 39 42;
+  --color-border-default: 63 63 70;
+  --color-border-dark: 82 82 91;
+
+  /* Status Colors */
+  --color-status-success: 74 222 128;
+  --color-status-warning: 254 215 170;
+  --color-status-error: 248 113 113;
+  --color-status-info: 147 197 253;
+
+  /* Background Colors */
+  --color-bg-page: 9 9 11;
+  --color-bg-surface: 24 24 27;
+  --color-bg-surface-alt: 39 39 42;
+  --color-bg-elevated: 63 63 70;
 }
 
+/* ===========================
+   Base Styles
+   =========================== */
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: rgb(var(--color-bg-page));
+  color: rgb(var(--color-text-primary));
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   margin: 0;
   padding: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Base typography */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===========================
+   Typography
+   =========================== */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
   line-height: 1.2;
+  color: rgb(var(--color-text-primary));
 }
 
-/* Link styles */
+p {
+  color: rgb(var(--color-text-secondary));
+}
+
+/* ===========================
+   Links
+   =========================== */
 a {
+  color: rgb(var(--color-primary-600));
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 a:hover {
-  opacity: 0.8;
+  color: rgb(var(--color-primary-700));
+  text-decoration: underline;
 }
 
-/* Button styles */
+/* ===========================
+   Buttons
+   =========================== */
 .btn {
   display: inline-block;
   padding: 0.5rem 1rem;
@@ -46,6 +150,111 @@ a:hover {
   transition: all 0.2s ease;
   border: none;
   cursor: pointer;
+  background: rgb(var(--color-primary-600));
+  color: rgb(var(--color-text-inverse));
+}
+
+.btn:hover {
+  background: rgb(var(--color-primary-700));
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: rgb(var(--color-surface-100));
+  color: rgb(var(--color-text-primary));
+  border: 1px solid rgb(var(--color-border-default));
+}
+
+.btn-secondary:hover {
+  background: rgb(var(--color-surface-200));
+}
+
+/* ===========================
+   Cards & Surfaces
+   =========================== */
+.card {
+  background: rgb(var(--color-bg-surface));
+  border: 1px solid rgb(var(--color-border-default));
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgb(var(--color-border-dark));
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* ===========================
+   Tables
+   =========================== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  background: rgb(var(--color-surface-100));
+  border-bottom: 2px solid rgb(var(--color-border-default));
+}
+
+th {
+  color: rgb(var(--color-text-primary));
+  font-weight: 600;
+  padding: 1rem;
+  text-align: left;
+}
+
+td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgb(var(--color-border-light));
+  color: rgb(var(--color-text-secondary));
+}
+
+tbody tr:hover {
+  background: rgb(var(--color-surface-alt));
+}
+
+/* ===========================
+   Inputs & Forms
+   =========================== */
+input, textarea, select {
+  background: rgb(var(--color-bg-surface));
+  border: 1px solid rgb(var(--color-border-default));
+  color: rgb(var(--color-text-primary));
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: rgb(var(--color-primary-500));
+  box-shadow: 0 0 0 3px rgb(var(--color-primary-500) / 0.1);
+}
+
+input::placeholder {
+  color: rgb(var(--color-text-tertiary));
+}
+
+/* ===========================
+   Utility Classes
+   =========================== */
+.text-muted {
+  color: rgb(var(--color-text-tertiary));
+}
+
+.bg-subtle {
+  background: rgb(var(--color-surface-alt));
+}
+
+.border-subtle {
+  border-color: rgb(var(--color-border-light));
 }
 
 .btn-primary {
