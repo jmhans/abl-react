@@ -271,11 +271,6 @@ input::placeholder {
   .bg-gray-100 { @apply bg-gray-800; }
   .bg-gray-200 { @apply bg-gray-700; }
   
-  /* Ensure text is readable on adapted backgrounds */
-  .bg-white, .bg-gray-50, .bg-gray-100, .bg-gray-200 {
-    @apply text-white;
-  }
-  
   /* Light color backgrounds need darker variants */
   .bg-emerald-100 { @apply bg-emerald-900; }
   .bg-indigo-100 { @apply bg-indigo-900; }
@@ -304,6 +299,20 @@ input::placeholder {
   /* Accent colors for links and text */
   .text-blue-600 { @apply text-blue-400; }
   .text-blue-700 { @apply text-blue-300; }
+  
+  /* Warning and alert message visibility */
+  .text-yellow-800 { @apply text-yellow-200; }
+  .text-yellow-900 { @apply text-yellow-100; }
+  .bg-yellow-50 { @apply bg-yellow-900; }
+  .border-yellow-200 { @apply border-yellow-700; }
+  
+  .text-amber-800 { @apply text-amber-200; }
+  .bg-amber-50 { @apply bg-amber-900; }
+  .border-amber-300 { @apply border-amber-600; }
+  
+  .text-orange-700 { @apply text-orange-300; }
+  .bg-orange-50 { @apply bg-orange-900; }
+  .border-orange-200 { @apply border-orange-700; }
 }
 
 .btn-primary {
