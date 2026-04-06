@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { toggleNav } from '@/app/ui/navigation';
-import ThemeToggle from './theme-toggle';
 
 interface User {
   name?: string;
@@ -36,7 +35,7 @@ export default function Header() {
             ABL
           </Link>
         </div>
-        <div className="flex items-center gap-4">
+        <div>
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-primary-100 hidden sm:inline">{user.name}</span>
@@ -49,7 +48,6 @@ export default function Header() {
               Sign in
             </a>
           )}
-          <ThemeToggle />
         </div>
       </div>
     </header>

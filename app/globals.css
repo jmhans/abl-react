@@ -258,68 +258,51 @@ input::placeholder {
 }
 
 /* ===========================
-   Dark Mode Adaptations
+   Dark Mode Color Adjustments
+   Only override colors that don't work well in dark mode
    =========================== */
 
-/* White backgrounds adapt to dark surfaces */
-.bg-white { @apply dark:bg-gray-800; }
-
-/* Light gray backgrounds adapt to dark surface variants */
-.bg-gray-50 { @apply dark:bg-gray-900; }
-.bg-gray-100 { @apply dark:bg-gray-800; }
-.bg-gray-200 { @apply dark:bg-gray-700; }
-
-/* Light color backgrounds with dark mode variants */
-.bg-emerald-100 { @apply dark:bg-emerald-900; }
-.bg-indigo-100 { @apply dark:bg-indigo-900; }
-.bg-teal-100 { @apply dark:bg-teal-900; }
-.bg-cyan-100 { @apply dark:bg-cyan-900; }
-.bg-purple-100 { @apply dark:bg-purple-900; }
-.bg-orange-100 { @apply dark:bg-orange-900; }
-.bg-green-100 { @apply dark:bg-green-900; }
-.bg-red-100 { @apply dark:bg-red-900; }
-.bg-blue-100 { @apply dark:bg-blue-900; }
-.bg-rose-100 { @apply dark:bg-rose-900; }
-.bg-sky-100 { @apply dark:bg-sky-900; }
-.bg-pink-100 { @apply dark:bg-pink-900; }
-.bg-amber-100 { @apply dark:bg-amber-900; }
-.bg-lime-100 { @apply dark:bg-lime-900; }
-.bg-fuchsia-100 { @apply dark:bg-fuchsia-900; }
-.bg-violet-100 { @apply dark:bg-violet-900; }
-
-/* Text colors that need dark mode adjustments */
-.text-gray-900 { @apply dark:text-gray-100; }
-.text-gray-500 { @apply dark:text-gray-400; }
-.text-gray-300 { @apply dark:text-gray-600; }
-
-/* Border colors that need dark mode adjustments */
-.border-gray-100 { @apply dark:border-gray-700; }
-.border-gray-200 { @apply dark:border-gray-600; }
-.border-gray-300 { @apply dark:border-gray-500; }
-
-/* Hover states for backgrounds */
-.hover\:bg-gray-50:hover { @apply dark:hover:bg-gray-900; }
-.hover\:bg-gray-100:hover { @apply dark:hover:bg-gray-800; }
-
-/* Ensure accent text remains visible */
-.text-blue-600 { @apply dark:text-blue-400; }
-.text-blue-700 { @apply dark:text-blue-300; }
-.text-blue-800 { @apply dark:text-blue-200; }
-.text-emerald-600 { @apply dark:text-emerald-400; }
-.text-indigo-600 { @apply dark:text-indigo-400; }
-.text-teal-600 { @apply dark:text-teal-400; }
-.text-cyan-600 { @apply dark:text-cyan-400; }
-.text-purple-600 { @apply dark:text-purple-400; }
-.text-orange-600 { @apply dark:text-orange-400; }
-.text-green-600 { @apply dark:text-green-400; }
-.text-red-600 { @apply dark:text-red-400; }
-.text-rose-600 { @apply dark:text-rose-400; }
-.text-sky-600 { @apply dark:text-sky-400; }
-.text-pink-600 { @apply dark:text-pink-400; }
-.text-amber-600 { @apply dark:text-amber-400; }
-.text-lime-600 { @apply dark:text-lime-400; }
-.text-fuchsia-600 { @apply dark:text-fuchsia-400; }
-.text-violet-600 { @apply dark:text-violet-400; }
+/* Backgrounds - light backgrounds need to be darker in dark mode */
+@media (prefers-color-scheme: dark) {
+  .bg-white { @apply bg-gray-800; }
+  .bg-gray-50 { @apply bg-gray-900; }
+  .bg-gray-100 { @apply bg-gray-800; }
+  .bg-gray-200 { @apply bg-gray-700; }
+  
+  /* Ensure text is readable on adapted backgrounds */
+  .bg-white, .bg-gray-50, .bg-gray-100, .bg-gray-200 {
+    @apply text-white;
+  }
+  
+  /* Light color backgrounds need darker variants */
+  .bg-emerald-100 { @apply bg-emerald-900; }
+  .bg-indigo-100 { @apply bg-indigo-900; }
+  .bg-teal-100 { @apply bg-teal-900; }
+  .bg-cyan-100 { @apply bg-cyan-900; }
+  .bg-purple-100 { @apply bg-purple-900; }
+  .bg-orange-100 { @apply bg-orange-900; }
+  .bg-green-100 { @apply bg-green-900; }
+  .bg-red-100 { @apply bg-red-900; }
+  .bg-blue-100 { @apply bg-blue-900; }
+  .bg-rose-100 { @apply bg-rose-900; }
+  .bg-sky-100 { @apply bg-sky-900; }
+  .bg-pink-100 { @apply bg-pink-900; }
+  .bg-amber-100 { @apply bg-amber-900; }
+  
+  /* Light text colors need to be lighter in dark mode */
+  .text-gray-900 { @apply text-gray-100; }
+  .text-gray-700 { @apply text-gray-200; }
+  .text-gray-500 { @apply text-gray-400; }
+  
+  /* Border colors for dark mode */
+  .border-gray-100 { @apply border-gray-700; }
+  .border-gray-200 { @apply border-gray-600; }
+  .border-gray-300 { @apply border-gray-500; }
+  
+  /* Accent colors for links and text */
+  .text-blue-600 { @apply text-blue-400; }
+  .text-blue-700 { @apply text-blue-300; }
+}
 
 .btn-primary {
   background-color: #3b82f6;

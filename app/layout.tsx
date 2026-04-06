@@ -2,7 +2,6 @@ import './globals.css';
 import { inter } from '@/app/ui/fonts';
 import Header from '@/app/ui/header';
 import Navigation from '@/app/ui/navigation';
-import { ThemeProvider } from '@/app/ui/theme-provider';
 import { Suspense } from 'react';
 
 export const metadata = {
@@ -16,15 +15,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={`${inter.className} antialiased`}>
-        <ThemeProvider>
-          <Header />
-          <Suspense fallback={<div />}>
-            <Navigation />
-          </Suspense>
-          <main className="p-4 md:p-6">{children}</main>
-        </ThemeProvider>
+        <Header />
+        <Suspense fallback={<div />}>
+          <Navigation />
+        </Suspense>
+        <main className="p-4 md:p-6">{children}</main>
       </body>
     </html>
   );
