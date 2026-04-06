@@ -7,8 +7,15 @@ export type CoOwnerUser = {
   name: string;
 };
 
+type CoOwnerMergedUser = CoOwnerUser & {
+  rawName?: string;
+  email?: string;
+};
+
 export type CoOwnerAdminUser = CoOwnerUser & {
   selectable: boolean;
+  rawName?: string;
+  email?: string;
 };
 
 type SelectionOverrideDoc = {
@@ -28,7 +35,21 @@ function normalizeUser(user: Partial<CoOwnerUser>): CoOwnerUser | null {
   };
 }
 
-async function fetchUsersFromAuth0Management(): Promise<CoOwnerUser[]> {
+function normalizeMergedUser(user: Partial<CoOwnerMergedUser>): CoOwnerMergedUser | null {
+  const normalized = normalizeUser(user);
+  if (!normalized) return null;
+
+  const rawName = typeof user.rawName === 'string' ? user.rawName.trim() : '';
+  const email = typeof user.email === 'string' ? user.email.trim() : '';
+
+  return {
+    ...normalized,
+    ...(rawName ? { rawName: rawName.slice(0, 120) } : {}),
+    ...(email ? { email: email.slice(0, 160) } : {}),
+  };
+}
+
+async function fetchUsersFromAuth0Management(): Promise<CoOwnerMergedUser[]> {
   const issuerBaseUrl = process.env.AUTH0_ISSUER_BASE_URL;
   const managementClientId = process.env.AUTH0_M2M_CLIENT_ID;
   const managementClientSecret = process.env.AUTH0_M2M_CLIENT_SECRET;
@@ -61,7 +82,7 @@ async function fetchUsersFromAuth0Management(): Promise<CoOwnerUser[]> {
     throw new Error('Auth0 token response did not include access_token');
   }
 
-  const users: CoOwnerUser[] = [];
+  const users: CoOwnerMergedUser[] = [];
   const perPage = 100;
   const maxPages = 10;
 
@@ -83,9 +104,11 @@ async function fetchUsersFromAuth0Management(): Promise<CoOwnerUser[]> {
     if (!Array.isArray(pageUsers) || pageUsers.length === 0) break;
 
     for (const user of pageUsers) {
-      const normalized = normalizeUser({
+      const normalized = normalizeMergedUser({
         userId: user?.user_id,
         name: user?.name || user?.nickname,
+        rawName: user?.name || user?.nickname,
+        email: user?.email,
       });
       if (normalized) users.push(normalized);
     }
@@ -96,7 +119,7 @@ async function fetchUsersFromAuth0Management(): Promise<CoOwnerUser[]> {
   return users;
 }
 
-async function fetchUsersFromTeamOwners(db: Db): Promise<CoOwnerUser[]> {
+async function fetchUsersFromTeamOwners(db: Db): Promise<CoOwnerMergedUser[]> {
   const users = await db.collection('ablteams').aggregate([
     { $unwind: '$owners' },
     { $replaceRoot: { newRoot: '$owners' } },
@@ -111,8 +134,8 @@ async function fetchUsersFromTeamOwners(db: Db): Promise<CoOwnerUser[]> {
   ]).toArray();
 
   return users
-    .map((u: any) => normalizeUser({ userId: u.userId, name: u.name }))
-    .filter((u: CoOwnerUser | null): u is CoOwnerUser => u !== null);
+    .map((u: any) => normalizeMergedUser({ userId: u.userId, name: u.name, rawName: u.name }))
+    .filter((u: CoOwnerMergedUser | null): u is CoOwnerMergedUser => u !== null);
 }
 
 async function getDeselectedUserIdSet(db: Db): Promise<Set<string>> {
@@ -124,13 +147,25 @@ async function getDeselectedUserIdSet(db: Db): Promise<Set<string>> {
   return new Set(records.map((r) => r.userId).filter(Boolean));
 }
 
-async function getMergedUsers(db: Db): Promise<CoOwnerUser[]> {
+async function getAuthorizedAblUserIdSet(db: Db): Promise<Set<string>> {
+  const profiles = await db
+    .collection<{ userId: string }>('user_profiles')
+    .find({}, { projection: { _id: 0, userId: 1 } })
+    .toArray();
+
+  return new Set(profiles.map((p) => p.userId).filter(Boolean));
+}
+
+async function getMergedUsers(db: Db): Promise<CoOwnerMergedUser[]> {
+  const authorizedUserIds = await getAuthorizedAblUserIdSet(db);
   const [auth0UsersResult, teamUsersResult] = await Promise.allSettled([
     fetchUsersFromAuth0Management(),
     fetchUsersFromTeamOwners(db),
   ]);
 
-  const auth0Users = auth0UsersResult.status === 'fulfilled' ? auth0UsersResult.value : [];
+  const auth0Users = auth0UsersResult.status === 'fulfilled'
+    ? auth0UsersResult.value.filter((u) => authorizedUserIds.has(u.userId))
+    : [];
   const teamUsers = teamUsersResult.status === 'fulfilled' ? teamUsersResult.value : [];
 
   if (auth0UsersResult.status === 'rejected') {
@@ -146,7 +181,7 @@ async function getMergedUsers(db: Db): Promise<CoOwnerUser[]> {
     console.error('Team owners users fallback fetch failed:', teamUsersResult.reason);
   }
 
-  const merged = new Map<string, CoOwnerUser>();
+  const merged = new Map<string, CoOwnerMergedUser>();
   for (const user of [...teamUsers, ...auth0Users]) {
     if (!merged.has(user.userId)) {
       merged.set(user.userId, user);
@@ -173,7 +208,9 @@ export async function getSelectableCoOwnerUsers(): Promise<CoOwnerUser[]> {
     getDeselectedUserIdSet(db),
   ]);
 
-  return users.filter((u) => !deselectedSet.has(u.userId));
+  return users
+    .filter((u) => !deselectedSet.has(u.userId))
+    .map(({ userId, name }) => ({ userId, name }));
 }
 
 export async function getAdminCoOwnerUsers(): Promise<CoOwnerAdminUser[]> {
