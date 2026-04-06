@@ -4,7 +4,7 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
 // POST /api/teams/[id]/co-owner
-// Body: { userId, name, email }
+// Body: { userId, name }
 // Auth: caller must already be an owner of the team.
 export async function POST(
   request: NextRequest,
@@ -28,7 +28,7 @@ export async function POST(
     if (!callerId) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
 
     const body = await request.json();
-    const { userId, name, email } = body;
+    const { userId, name } = body;
     if (!userId || !name) {
       return NextResponse.json({ error: 'userId and name are required' }, { status: 400 });
     }
@@ -57,7 +57,7 @@ export async function POST(
       _id: new ObjectId(),
       userId,
       name,
-      email: email ?? '',
+      email: '',
       verified: true,
     };
 
