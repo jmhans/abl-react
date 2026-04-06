@@ -58,17 +58,26 @@ async function fetchBattingSplits(url: string): Promise<any[]> {
   }
 }
 
-function makePlayerStatOp(mlbId: string, split: any) {
+// Pre-opening-day sentinel: spring training stats stored with this timestamp
+// will be treated as stale by refresh-cache and zeroed out.
+const SPRING_STAT_TIMESTAMP = new Date('2026-03-25T00:00:00Z');
+
+function makePlayerStatOp(mlbId: string, split: any, isSpring = false) {
+  const teamAbbr = split.team?.abbreviation;
+  const setFields: Record<string, any> = {
+    name: split.player?.fullName ?? '',
+    'stats.batting': extractBattingStats(split.stat),
+    // Spring training stats get a pre-opening-day timestamp so refresh-cache
+    // treats them as stale and zeroes them out. Regular-season stats use today.
+    lastStatUpdate: isSpring ? SPRING_STAT_TIMESTAMP : new Date(),
+  };
+  if (teamAbbr) setFields.team = teamAbbr;
+
   return {
     updateOne: {
       filter: { mlbID: mlbId },
       update: {
-        $set: {
-          name: split.player?.fullName ?? '',
-          team: split.team?.abbreviation ?? '',
-          'stats.batting': extractBattingStats(split.stat),
-          lastStatUpdate: new Date(),
-        },
+        $set: setFields,
         $setOnInsert: {
           mlbID: mlbId,
           lastUpdate: new Date(),
@@ -159,7 +168,7 @@ export async function POST(request: NextRequest) {
         const mlbId = String(split.player?.id ?? '');
         const posAbbr: string = split.position?.abbreviation ?? 'DH';
         if (!mlbId || posAbbr === 'P') continue;
-        playerOps.push(makePlayerStatOp(mlbId, split));
+        playerOps.push(makePlayerStatOp(mlbId, split, true));
         posLogOps.push(makePosLogOp(mlbId, normalizePos(posAbbr)));
         fromSpringMlb++;
       }
