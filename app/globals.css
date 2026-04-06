@@ -129,24 +129,26 @@ p {
 /* ===========================
    Links
    =========================== */
-a {
-  color: rgb(var(--color-primary-600));
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
+@layer base {
+  a {
+    color: rgb(var(--color-primary-600));
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
 
-a:hover {
-  color: rgb(var(--color-primary-700));
-  text-decoration: underline;
-}
+  a:hover {
+    color: rgb(var(--color-primary-700));
+    text-decoration: underline;
+  }
 
-/* Header links use their Tailwind classes */
-header a {
-  text-decoration: none;
-}
+  /* Header links: suppress underline but let Tailwind color classes win */
+  header a {
+    text-decoration: none;
+  }
 
-header a:hover {
-  text-decoration: none;
+  header a:hover {
+    text-decoration: none;
+  }
 }
 
 /* ===========================
