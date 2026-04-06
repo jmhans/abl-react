@@ -74,30 +74,30 @@ export default function TeamDetailPage() {
         </Link>
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
-        <div className="border-b border-gray-200 pb-6 mb-6">
-          <h1 className="text-4xl font-bold text-gray-900">
-            {team.location && <span className="text-gray-600">{team.location} </span>}
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-8 mb-8">
+        <div className="border-b border-gray-200 dark:border-gray-700 pb-6 mb-6">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+            {team.location && <span>{team.location} </span>}
             {team.nickname}
           </h1>
 
           {team.stadium && (
-            <p className="text-lg text-gray-600 mt-2">🏟️ {team.stadium}</p>
+            <p className="text-lg text-gray-600 dark:text-gray-300 mt-2">🏟️ {team.stadium}</p>
           )}
         </div>
 
         {team.owners && team.owners.length > 0 && (
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Team Owners</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Team Owners</h2>
             <div className="grid md:grid-cols-2 gap-4">
               {team.owners.map((owner, idx) => (
-                <div key={idx} className="bg-gray-50 p-4 rounded-lg">
+                <div key={idx} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-gray-900">{owner.name || 'Unknown Owner'}</p>
-                      {owner.email && <p className="text-sm text-gray-600">{owner.email}</p>}
+                      <p className="font-medium text-gray-900 dark:text-white">{owner.name || 'Unknown Owner'}</p>
+                      {owner.email && <p className="text-sm text-gray-600 dark:text-gray-400">{owner.email}</p>}
                     </div>
-                    {owner.verified && <span className="text-green-600 text-xl">✓</span>}
+                    {owner.verified && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
                   </div>
                 </div>
               ))}

@@ -26,25 +26,25 @@ export default function Header() {
         <div className="flex items-center gap-3">
           <button
             onClick={toggleNav}
-            className="text-white/80 hover:text-white p-1.5 rounded transition text-xl leading-none"
+            className="text-white hover:text-blue-50 p-1.5 rounded transition text-xl leading-none font-bold"
             aria-label="Open menu"
           >
             ☰
           </button>
-          <Link href="/" className="text-xl font-bold tracking-tight">
+          <Link href="/" className="text-2xl font-bold tracking-tight text-white hover:text-blue-50 transition">
             ABL
           </Link>
         </div>
         <div>
           {user ? (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-blue-100 hidden sm:inline">{user.name}</span>
-              <a href="/api/auth/logout" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
+              <span className="text-sm text-blue-50 hidden sm:inline">{user.name}</span>
+              <a href="/api/auth/logout" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
                 Sign out
               </a>
             </div>
           ) : (
-            <a href="/api/auth/login" className="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded transition">
+            <a href="/api/auth/login" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
               Sign in
             </a>
           )}

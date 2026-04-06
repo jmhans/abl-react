@@ -108,19 +108,19 @@ function CardGrid({ cards, leagueQuery }: { cards: AdminCard[]; leagueQuery: str
         <Link
           key={card.href}
           href={LEAGUE_SCOPED.has(card.href) ? `${card.href}${leagueQuery}` : card.href}
-          className={`group flex items-start gap-4 rounded-xl bg-white shadow-sm border border-gray-100 border-l-4 ${card.accent} px-5 py-4 hover:shadow-md hover:border-gray-200 transition-all`}
+          className={`group flex items-start gap-4 rounded-xl bg-surface border border-border-default hover:border-border-dark shadow-sm px-5 py-4 hover:shadow-md transition-all`}
         >
           <div className={`shrink-0 w-10 h-10 rounded-lg ${card.iconBg} flex items-center justify-center text-lg`}>
             {card.icon}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
+              <span className="font-semibold text-text-primary group-hover:text-primary-600 transition-colors">
                 {card.title}
               </span>
-              <span className="text-gray-300 group-hover:text-blue-400 transition-colors shrink-0">→</span>
+              <span className="text-text-tertiary group-hover:text-primary-500 transition-colors shrink-0">→</span>
             </div>
-            <p className="text-sm text-gray-500 mt-0.5 leading-snug">{card.description}</p>
+            <p className="text-sm text-text-secondary mt-0.5 leading-snug">{card.description}</p>
           </div>
         </Link>
       ))}
@@ -137,11 +137,11 @@ export default function AdminPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-10">
       <div>
-        <Link href="/" className="text-sm text-blue-600 hover:text-blue-800 inline-block mb-4">
+        <Link href="/" className="text-sm text-primary-600 hover:text-primary-700 inline-block mb-4">
           ← Back to Home
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900">Admin</h1>
-        <p className="text-gray-500 mt-1 text-sm">Management tools and data operations.</p>
+        <h1 className="text-3xl font-bold text-text-primary">Admin</h1>
+        <p className="text-text-secondary mt-1 text-sm">Management tools and data operations.</p>
         {league && season && (
           <p className="text-xs text-blue-600 mt-1">League context: {league.toUpperCase()} {season}</p>
         )}
