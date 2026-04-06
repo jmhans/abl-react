@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
+import { connectToDatabase } from '@/app/lib/mongodb';
+import { sanitizeDisplayName, upsertUserProfileDisplayName } from '@/app/lib/display-name';
 
 const AUTH0_ROLES_CLAIM_NAMESPACE = process.env.AUTH0_ROLES_CLAIM_NAMESPACE || 'https://abl.app';
 const AUTH0_ROLES_CLAIM_KEY = `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles`;
@@ -121,6 +123,20 @@ export async function GET(
           : {}),
         roles,
       };
+
+      // Keep an app-owned display name that can differ from provider profile data.
+      try {
+        if (typeof sessionUser.sub === 'string' && sessionUser.sub) {
+          const db = await connectToDatabase();
+          const defaultName = sanitizeDisplayName(
+            (sessionUser as any).name || (sessionUser as any).nickname || '',
+            sessionUser.sub
+          );
+          await upsertUserProfileDisplayName(db, sessionUser.sub, defaultName);
+        }
+      } catch (profileError) {
+        console.warn('Unable to upsert profile display name during callback:', profileError);
+      }
 
       // Set session cookie
       // Decode state to find returnTo destination (from login ?returnTo= param)

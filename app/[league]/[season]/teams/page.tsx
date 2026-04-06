@@ -89,7 +89,7 @@ export default function TeamsPage() {
                 <div className="space-y-1">
                   {team.owners.map((owner, idx) => (
                     <div key={idx} className="text-sm text-gray-600">
-                      {owner.name || owner.email || 'Unknown'}
+                      {owner.name || 'Unknown'}
                       {owner.verified && <span className="ml-2 text-green-600">✓</span>}
                     </div>
                   ))}

@@ -277,6 +277,9 @@ export default function Navigation() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-gray-800 truncate">{user.name}</p>
+                <a href="/profile" className="block text-xs text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 transition-colors">
+                  Edit display name
+                </a>
                 <a href="/api/auth/logout" className="text-xs text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-300 transition-colors">
                   Sign out
                 </a>
