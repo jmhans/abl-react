@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   assignDraftSlots,
   buildDraftBoard,
@@ -333,7 +333,7 @@ export default function DraftPage() {
     }
   };
 
-  const refreshDraft = async () => {
+  const refreshDraft = useCallback(async () => {
     const [draftRes, teamsRes] = await Promise.all([
       fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
       fetch(`/api/teams?league=${league}&season=${season}`, { cache: 'no-store' }),
@@ -348,7 +348,28 @@ export default function DraftPage() {
     const sortedTeams = [...teamsData].sort((a, b) => getTeamDisplayName(a).localeCompare(getTeamDisplayName(b)));
     setTeams(sortedTeams);
     applyDraftState(sortedTeams, draftData.draft || null);
-  };
+  }, [league, season]);
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (draftStatus !== 'active') {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+    pollRef.current = setInterval(() => {
+      refreshDraft().catch(() => {});
+    }, 5000);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [draftStatus, refreshDraft]);
 
   const handleCreateDraft = async () => {
     if (!isAdmin) return;
