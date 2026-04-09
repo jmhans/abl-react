@@ -578,6 +578,11 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
       continue;
     }
 
+    // Skip spring training games - only process regular season (galleryType=R)
+    if (game?.gameType !== 'R') {
+      continue;
+    }
+
     activeGames.push(game);
   }
 

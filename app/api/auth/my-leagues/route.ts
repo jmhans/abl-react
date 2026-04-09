@@ -33,11 +33,15 @@ export async function GET() {
     if (myTeams.length === 0) return NextResponse.json([]);
 
     const myTeamIds = myTeams.map((t) => t._id);
+    const myTeamIdStrings = myTeamIds.map((id) => id.toString());
 
     // 2. Find all seasons that contain any of my teams
+    // Convert both sides to strings for reliable matching (teamIds might be strings or ObjectIds)
     const seasons = await db
       .collection('seasons')
-      .find({ teamIds: { $in: myTeamIds } })
+      .find({
+        teamIds: { $in: [...myTeamIds, ...myTeamIdStrings] }
+      })
       .sort({ year: -1 })
       .toArray();
 

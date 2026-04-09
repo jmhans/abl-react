@@ -101,7 +101,7 @@ export default function FreeAgentsPage() {
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(500);
+  const [pageSize] = useState(1000);
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -273,7 +273,11 @@ export default function FreeAgentsPage() {
     });
 
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    // Encode as UTF-8 with BOM to fix character encoding issues (e.g., "Ã" appearing instead of accented chars)
+    const encoder = new TextEncoder();
+    const utf8Bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+    const csvBytes = encoder.encode(csv);
+    const blob = new Blob([utf8Bom, csvBytes], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
