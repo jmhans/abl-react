@@ -38,10 +38,14 @@ type DisplayStats = {
   g: number | null;
   ab: number | null;
   h: number | null;
+  doubles: number | null;
+  triples: number | null;
   hr: number | null;
   bb: number | null;
   netSb: number | null;
   hbp: number | null;
+  sh: number | null;
+  sf: number | null;
   ablScore: number | null;
 };
 
@@ -57,10 +61,14 @@ function getDisplayStats(player: PlayerForDraft, view: string): DisplayStats {
       g: (b?.gamesPlayed || null),
       ab: ab > 0 ? ab : null,
       h: b?.hits ?? null,
+      doubles: b?.doubles ?? null,
+      triples: b?.triples ?? null,
       hr: b?.homeRuns ?? null,
       bb: bb > 0 ? bb : null,
       netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
       hbp: hbp > 0 ? hbp : null,
+      sh: b?.sacrificeBunts ?? null,
+      sf: b?.sacrificeFlies ?? null,
       ablScore: player.abl,
     };
   }
@@ -71,21 +79,28 @@ function getDisplayStats(player: PlayerForDraft, view: string): DisplayStats {
     g: p?.g ?? null,
     ab: p?.ab ?? null,
     h: p?.h ?? null,
+    doubles: p?.doubles ?? null,
+    triples: p?.triples ?? null,
     hr: p?.hr ?? null,
     bb: p?.bb ?? null,
     netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
     hbp: p?.hbp ?? null,
+    sh: p?.sacBunts ?? null,
+    sf: p?.sacFlies ?? null,
     ablScore: player.ablProjected,
   };
 }
 
-const STAT_COLS = ['G','AB','H','HR','BB','SB(net)','HBP'] as const;
+type SortColKey = 'g' | 'ab' | 'h' | 'doubles' | 'triples' | 'hr' | 'bb' | 'hbp' | 'netSb' | 'sh' | 'sf' | 'abl';
+const STAT_COL_KEYS: SortColKey[] = ['g', 'ab', 'h', 'doubles', 'triples', 'hr', 'bb', 'hbp', 'netSb', 'sh', 'sf'];
+
+const STAT_COLS = ['G', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'HBP', 'SB(net)', 'SH', 'SF'] as const;
 // xs: Player | ABL | Action (3 cols)
 // sm: Player | AB | ABL | Action (4 cols)
-// md+: Player | G AB H HR BB NB HBP | ABL | Action (10 cols)
-const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3.5rem_3rem_3rem_3rem_3.5rem_3rem_4.5rem_4rem]';
-// Visibility per stat column (matches DOM order: G AB H HR BB NB HBP)
-const STAT_VIS = ['hidden md:block','hidden sm:block','hidden md:block','hidden md:block','hidden md:block','hidden md:block','hidden md:block'] as const;
+// md+: Player | G AB H 2B 3B HR BB HBP SB(net) SH SF | ABL | Action (14 cols)
+const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_4rem]';
+// Visibility per stat column (matches DOM order: G AB H 2B 3B HR BB HBP SB(net) SH SF)
+const STAT_VIS = ['hidden md:block', 'hidden sm:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden lg:block', 'hidden lg:block'] as const;
 
 
 
@@ -112,6 +127,8 @@ export default function DraftPage() {
   const [statView, setStatView] = useState<string>('actual');
   const [projSystems, setProjSystems] = useState<string[]>([]);
   const [projLoading, setProjLoading] = useState(false);
+  const [sortCol, setSortCol] = useState<SortColKey | null>(null);
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   const applyDraftState = (sortedTeams: DraftTeam[], draft: DraftApiState | null) => {
     const defaultOrderIds = sortedTeams.map((team) => team._id);
@@ -208,6 +225,8 @@ export default function DraftPage() {
 
   const handleStatViewChange = async (newView: string) => {
     setStatView(newView);
+    setSortCol(null);
+    setSortDir('desc');
     setProjLoading(true);
     try {
       const url = newView !== 'actual'
@@ -235,6 +254,23 @@ export default function DraftPage() {
     }
   };
 
+  const handleColSort = (col: SortColKey) => {
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir('desc');
+    } else if (sortDir === 'desc') {
+      setSortDir('asc');
+    } else {
+      setSortCol(null);
+      setSortDir('desc');
+    }
+  };
+
+  const sortIcon = (col: SortColKey) => {
+    if (sortCol !== col) return <span className="ml-0.5 opacity-20">↕</span>;
+    return <span className="ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>;
+  };
+
   const orderedTeams = useMemo(() => {
     const teamMap = new Map(teams.map((team) => [team._id, team]));
     return orderIds.map((id) => teamMap.get(id)).filter(Boolean) as DraftTeam[];
@@ -247,7 +283,18 @@ export default function DraftPage() {
   const currentTeam = currentPick ? orderedTeams.find((team) => team._id === currentPick.teamId) || null : null;
 
   const sortedPlayers = useMemo(() => {
+    const getVal = (player: PlayerForDraft, col: SortColKey): number | null => {
+      const ds = getDisplayStats(player, statView);
+      return col === 'abl' ? ds.ablScore : ds[col];
+    };
     return [...players].sort((a, b) => {
+      if (sortCol) {
+        const nullVal = sortDir === 'desc' ? -Infinity : Infinity;
+        const av = getVal(a, sortCol) ?? nullVal;
+        const bv = getVal(b, sortCol) ?? nullVal;
+        return sortDir === 'desc' ? bv - av : av - bv;
+      }
+      // Default: ABL descending
       if (statView !== 'actual') {
         const aHas = a.ablProjected !== null;
         const bHas = b.ablProjected !== null;
@@ -260,7 +307,7 @@ export default function DraftPage() {
       if (b.abl !== a.abl) return b.abl - a.abl;
       return a.name.localeCompare(b.name);
     });
-  }, [players, statView]);
+  }, [players, statView, sortCol, sortDir]);
 
   const availablePlayers = useMemo(() => {
     return sortedPlayers.filter((player) => {
@@ -675,11 +722,24 @@ export default function DraftPage() {
               <div className={`${GRID} gap-x-2 sticky top-0 z-10 border-b bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500`}>
                 <div>Player</div>
                 {STAT_COLS.map((col, i) => (
-                  <div key={col} className={`text-center ${STAT_VIS[i]}`}>{col}</div>
+                  <button
+                    key={col}
+                    type="button"
+                    onClick={() => handleColSort(STAT_COL_KEYS[i])}
+                    className={`text-center cursor-pointer hover:text-gray-900 ${STAT_VIS[i]}`}
+                  >
+                    {col}{sortIcon(STAT_COL_KEYS[i])}
+                  </button>
                 ))}
-                <div className={`text-center ${statView !== 'actual' ? 'text-blue-600' : 'text-green-700'}`}>
-                  {projLoading ? '…' : (statView !== 'actual' ? 'ABL★' : 'ABL')}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleColSort('abl')}
+                  className={`text-center cursor-pointer hover:text-gray-900 ${
+                    statView !== 'actual' ? 'text-blue-600' : 'text-green-700'
+                  }`}
+                >
+                  {projLoading ? '…' : (statView !== 'actual' ? 'ABL★' : 'ABL')}{sortIcon('abl')}
+                </button>
                 <div>Action</div>
               </div>
               {availablePlayers.map((player) => {
@@ -703,10 +763,14 @@ export default function DraftPage() {
                     <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
                     <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
                     <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.doubles)}`}>{fmt(ds.doubles)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.triples)}`}>{fmt(ds.triples)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[7]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[8]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[9]} ${statC(ds.sh)}`}>{fmt(ds.sh)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[10]} ${statC(ds.sf)}`}>{fmt(ds.sf)}</div>
                     <div className={`text-center text-xs font-medium ${ablColor}`}>
                       {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
                     </div>
