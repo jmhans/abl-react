@@ -99,6 +99,8 @@ export default function DraftPage() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<'active' | 'completed' | 'abandoned' | 'none'>('none');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [adminPickMode, setAdminPickMode] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -141,11 +143,12 @@ export default function DraftPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [teamsRes, draftRes, adminRes, projSummaryRes] = await Promise.all([
+        const [teamsRes, draftRes, adminRes, projSummaryRes, userRes] = await Promise.all([
           fetch(`/api/teams?league=${league}&season=${season}`),
           fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
           fetch('/api/admin/me', { cache: 'no-store' }),
           fetch('/api/projections'),
+          fetch('/api/auth/me').catch(() => null),
         ]);
 
         if (!teamsRes.ok) throw new Error('Failed to load teams');
@@ -154,6 +157,8 @@ export default function DraftPage() {
         const teamsData = (await teamsRes.json()) as DraftTeam[];
         const draftData = (await draftRes.json()) as { draft: DraftApiState | null };
         const adminData = adminRes.ok ? await adminRes.json() : { isAdmin: false };
+        const userData = userRes?.ok ? await userRes.json() : null;
+        setUserEmail(userData?.user?.email ?? null);
 
         // Determine available projection systems for this season
         const projSummaryData = projSummaryRes.ok ? await projSummaryRes.json() : { summary: [] };
@@ -296,6 +301,15 @@ export default function DraftPage() {
   const currentTeamSlots = useMemo(() => assignDraftSlots(currentTeamPicks), [currentTeamPicks]);
 
   const activeDraft = draftStatus === 'active';
+
+  const isOnClock = useMemo(() => {
+    if (!userEmail || !currentTeam) return false;
+    return (currentTeam.owners ?? []).some(
+      (o) => o.email && o.email.toLowerCase() === userEmail.toLowerCase()
+    );
+  }, [userEmail, currentTeam]);
+
+  const canPick = activeDraft && !!currentPick && (isOnClock || (isAdmin && adminPickMode));
 
   const positionOptions = useMemo(() => {
     const positions = new Set<string>();
@@ -486,6 +500,19 @@ export default function DraftPage() {
           <h1 className="text-4xl font-bold text-gray-900">ABL Draft Room</h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isAdmin && activeDraft && (
+            <button
+              type="button"
+              onClick={() => setAdminPickMode((v) => !v)}
+              className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
+                adminPickMode
+                  ? 'bg-orange-100 text-orange-800 ring-2 ring-orange-400 hover:bg-orange-200'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {adminPickMode ? '🔓 Admin Pick Mode ON' : '🔒 Admin Pick Mode'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleUndo}
@@ -687,7 +714,7 @@ export default function DraftPage() {
                       <button
                         type="button"
                         onClick={() => handleDraftPlayer(player)}
-                        disabled={!activeDraft || !currentPick || isWorking}
+                        disabled={!canPick || isWorking}
                         className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                       >
                         Draft
