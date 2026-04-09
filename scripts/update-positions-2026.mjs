@@ -44,14 +44,15 @@ const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
 const db = client.db('abl_dev');
 
-// 1. Aggregate positions from 2026 statlines
+// 1. Aggregate positions from 2026 statlines through 2026-04-05
 //    statlines docs: _id = "YYYY-MM-DD", p: { "{mlbId}_{gameId}": { pos: ["3B","2B"], ... } }
-console.log('Scanning 2026 statlines...');
+//    Filter: Only regular season (Jan-May), excluding spring training after April 5
+console.log('Scanning 2026 statlines through 2026-04-05...');
 const statDates2026 = await db.collection('statlines')
-  .find({ _id: { $regex: `^${SEASON_YEAR}-` } })
+  .find({ _id: { $regex: `^2026-(?:0[1-3]|04-0[0-5])` } })
   .toArray();
 
-console.log(`Found ${statDates2026.length} 2026 statline date documents`);
+console.log(`Found ${statDates2026.length} 2026 statline date documents (through 2026-04-05)`);
 
 if (statDates2026.length === 0) {
   console.log('⚠️  No 2026 statlines found. Clearing all CommishPos (positions collection).');
