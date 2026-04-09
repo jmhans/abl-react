@@ -84,7 +84,8 @@ export async function POST(request: NextRequest) {
 
     // Only the on-clock team's owner(s) or an admin may submit a pick
     if (!admin) {
-      const onClockTeam = await db.collection('ablteams').findOne({ _id: currentPick.teamId });
+      const teamIdValue = ObjectId.isValid(currentPick.teamId) ? new ObjectId(currentPick.teamId) : currentPick.teamId;
+      const onClockTeam = await db.collection('ablteams').findOne({ _id: teamIdValue } as any);
       const owners: Array<{ email?: string }> = onClockTeam?.owners ?? [];
       const ownsTeam = owners.some(
         (o) => o.email && sessionUser.email && o.email.toLowerCase() === sessionUser.email.toLowerCase()
