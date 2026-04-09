@@ -20,6 +20,7 @@ export default function LeagueSeasonHome() {
 
   const [user, setUser] = useState<User | null>(null);
   const [draftActive, setDraftActive] = useState(false);
+  const [draftCompleted, setDraftCompleted] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -41,6 +42,7 @@ export default function LeagueSeasonHome() {
         setUser(sessionUser);
         setIsAdmin(adminRes?.isAdmin ?? false);
         setDraftActive(draftCheck?.draft?.status === 'active');
+        setDraftCompleted(draftCheck?.draft?.status === 'completed');
         const s = Array.isArray(seasonRes) ? seasonRes[0] : null;
         setSeasonStatus(s?.status ?? null);
 
@@ -107,11 +109,15 @@ export default function LeagueSeasonHome() {
           <p className="text-xs text-gray-500 mt-1">Browse all {leagueName} teams</p>
         </Link>
 
-        {draftActive && (
-          <Link href={`${base}/draft`} className="bg-white p-5 rounded-lg border border-teal-300 hover:border-teal-500 hover:shadow transition group">
+        {(draftActive || draftCompleted) && (
+          <Link href={`${base}/draft`} className={`bg-white p-5 rounded-lg border hover:shadow transition group ${
+            draftActive ? 'border-teal-300 hover:border-teal-500' : 'border-gray-200 hover:border-gray-400'
+          }`}>
             <div className="text-2xl mb-2">🎯</div>
             <h2 className="text-sm font-semibold text-gray-900 group-hover:text-teal-700">Draft Room</h2>
-            <p className="text-xs text-teal-600 mt-1">Draft is live — make your picks!</p>
+            <p className={`text-xs mt-1 ${draftActive ? 'text-teal-600' : 'text-gray-500'}`}>
+              {draftActive ? 'Draft is live — make your picks!' : 'View draft summary'}
+            </p>
           </Link>
         )}
 

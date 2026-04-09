@@ -13,6 +13,8 @@ import {
   getEffectivePickCounts,
   getOwnerDisplay,
   getTeamDisplayName,
+  STANDARD_SNAKE_ROUNDS,
+  TOTAL_DRAFT_ROUNDS,
 } from '@/app/lib/draft-utils';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
 import type { ProjectionStats } from '@/app/lib/projection-utils';
@@ -362,6 +364,16 @@ export default function DraftPage() {
 
   const currentTeamSlots = useMemo(() => assignDraftSlots(currentTeamPicks), [currentTeamPicks]);
 
+  const picksByRoundAndTeam = useMemo(() => {
+    const map = new Map<number, Map<string, DraftedPlayerPick>>();
+    for (const p of picks) {
+      const round = p.pick.round;
+      if (!map.has(round)) map.set(round, new Map());
+      map.get(round)!.set(p.pick.teamId, p);
+    }
+    return map;
+  }, [picks]);
+
   const activeDraft = draftStatus === 'active';
 
   const isOnClock = useMemo(() => {
@@ -678,6 +690,7 @@ export default function DraftPage() {
         );
       })()}
 
+      {draftStatus !== 'completed' && (
       <section className="rounded-lg bg-white p-4 shadow">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Draft progress by team</h2>
@@ -692,6 +705,8 @@ export default function DraftPage() {
             const isCurrent = currentTeam?._id === team._id;
             const currentRound = currentPick?.round || 0;
             const isSnakeGoingDown = currentRound % 2 === 1;
+            const nextBoardPick = draftBoard[picks.length + 1] ?? null;
+            const picksAgainNext = nextBoardPick?.teamId === currentPick?.teamId;
 
             return (
               <div
@@ -731,14 +746,18 @@ export default function DraftPage() {
                   <div className="mt-1 text-xs text-gray-600">#{nextPickForTeam.overallPick}</div>
                 )}
                 {isCurrent && (
-                  <div className="mt-2 text-xl font-bold text-blue-600">{isSnakeGoingDown ? '→' : '←'}</div>
+                  <div className="mt-2 text-xl font-bold text-blue-600">
+                    {picksAgainNext ? '↓' : (isSnakeGoingDown ? '→' : '←')}
+                  </div>
                 )}
               </div>
             );
           })}
         </div>
       </section>
+      )}
 
+      {draftStatus !== 'completed' && (
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         {showPlayers ? (
           <section className="space-y-4 rounded-lg bg-white p-4 shadow">
@@ -993,6 +1012,70 @@ export default function DraftPage() {
           </div>
         </section>
       </div>
+      )}
+
+      {draftStatus === 'completed' && (
+        <div className="rounded border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+          ✅ Draft complete — {picks.length} picks made.
+        </div>
+      )}
+
+      {picks.length > 0 && (
+        <section className="rounded-lg bg-white p-4 shadow">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">
+            Draft Summary
+            <span className="ml-2 text-sm font-normal text-gray-500">{picks.length} picks</span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="sticky left-0 z-10 bg-gray-100 px-2 py-1.5 text-left font-semibold text-gray-600 w-8">Rd</th>
+                  {orderedTeams.map((team, idx) => (
+                    <th key={team._id} className="min-w-[7rem] px-2 py-1.5 text-left font-semibold text-gray-700 whitespace-nowrap">
+                      <span className="text-gray-400 mr-1">{idx + 1}.</span>{getTeamDisplayName(team)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: TOTAL_DRAFT_ROUNDS }, (_, i) => i + 1).map((round) => {
+                  const isGrouped = round > STANDARD_SNAKE_ROUNDS;
+                  return (
+                    <tr key={round} className={isGrouped ? 'bg-amber-50' : round % 2 === 0 ? 'bg-gray-50' : ''}>
+                      <td className={`sticky left-0 z-10 px-2 py-1 font-semibold ${
+                        isGrouped ? 'bg-amber-50 text-amber-700' : round % 2 === 0 ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-500'
+                      }`}>
+                        {round}
+                      </td>
+                      {orderedTeams.map((team) => {
+                        const p = picksByRoundAndTeam.get(round)?.get(team._id);
+                        return (
+                          <td key={team._id} className="px-2 py-1 align-top">
+                            {p ? (
+                              <div>
+                                <div className="font-medium text-gray-900 truncate max-w-[7rem]" title={p.player.name}>
+                                  {p.player.name}
+                                </div>
+                                <div className="text-gray-400">
+                                  {p.player.eligible?.slice(0, 2).join('/') || '—'}
+                                  {p.player.team ? ` · ${p.player.team}` : ''}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
