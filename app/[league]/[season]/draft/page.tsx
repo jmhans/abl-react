@@ -10,6 +10,7 @@ import {
   DraftTeam,
   DraftedPlayerPick,
   getDraftEligiblePositions,
+  getEffectivePickCounts,
   getOwnerDisplay,
   getTeamDisplayName,
 } from '@/app/lib/draft-utils';
@@ -30,6 +31,7 @@ type DraftApiState = {
   orderIds: string[];
   picks: DraftedPlayerPick[];
   createdAt: string;
+  startedAt: string | null;
   completedAt: string | null;
   effectiveDate?: string | null;
 };
@@ -118,6 +120,7 @@ export default function DraftPage() {
   const [userSub, setUserSub] = useState<string | null>(null);
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [adminPickMode, setAdminPickMode] = useState(false);
+  const [draftStartedAt, setDraftStartedAt] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -153,6 +156,7 @@ export default function DraftPage() {
 
     setDraftId(draft._id);
     setDraftStatus(draft.status);
+    setDraftStartedAt(draft.startedAt ?? null);
     setOrderIds(mergedOrderIds);
     setPicks(Array.isArray(draft.picks) ? draft.picks : []);
     setSelectedTeamId((current) => current || mergedOrderIds[0] || '');
@@ -371,7 +375,7 @@ export default function DraftPage() {
     );
   }, [userTeamId, userSub, userEmail, currentTeam]);
 
-  const canPick = activeDraft && !!currentPick && (isOnClock || (isAdmin && adminPickMode));
+  const canPick = activeDraft && !!currentPick && !!draftStartedAt && (isOnClock || (isAdmin && adminPickMode));
 
   const positionOptions = useMemo(() => {
     const positions = new Set<string>();
@@ -544,6 +548,25 @@ export default function DraftPage() {
     }
   };
 
+  const handleStartPicks = async () => {
+    if (!isAdmin || !activeDraft) return;
+    if (!confirm('Start the draft clock now? This will log the official start time and open picks for all owners.')) return;
+    try {
+      setIsWorking(true);
+      setError(null);
+      const res = await fetch(`/api/draft/start?league=${league}&season=${season}`, { method: 'PATCH' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to start picks');
+      }
+      await refreshDraft();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start picks');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center text-xl">Loading draft room...</div>;
   }
@@ -562,6 +585,16 @@ export default function DraftPage() {
           <h1 className="text-4xl font-bold text-gray-900">ABL Draft Room</h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isAdmin && activeDraft && !draftStartedAt && (
+            <button
+              type="button"
+              onClick={handleStartPicks}
+              disabled={isWorking}
+              className="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            >
+              🏁 Start Picks
+            </button>
+          )}
           {isAdmin && activeDraft && (
             <button
               type="button"
@@ -610,6 +643,40 @@ export default function DraftPage() {
           )}
         </div>
       )}
+
+      {activeDraft && !draftStartedAt && (
+        <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          ⏳ Draft is activated but picks have not started yet.{' '}
+          {isAdmin ? 'Click "Start Picks" when ready to begin.' : 'Waiting for the commissioner to start picks.'}
+        </div>
+      )}
+
+      {activeDraft && draftStartedAt && picks.length > 0 && (() => {
+        const startMs = new Date(draftStartedAt).getTime();
+        const nowMs = Date.now();
+        const elapsedMs = nowMs - startMs;
+        const { completed, remaining } = getEffectivePickCounts(draftBoard, picks.length);
+        const avgMsPerPick = completed > 0 ? elapsedMs / completed : null;
+        const estimatedFinish = avgMsPerPick !== null
+          ? new Date(nowMs + avgMsPerPick * remaining)
+          : null;
+        const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const fmtDur = (ms: number) => {
+          const totalMin = Math.round(ms / 60000);
+          if (totalMin < 60) return `${totalMin}m`;
+          return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+        };
+        return (
+          <div className="rounded border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 flex flex-wrap gap-x-6 gap-y-1 items-center">
+            <span>⏱ <strong>Elapsed:</strong> {fmtDur(elapsedMs)}</span>
+            <span>📊 <strong>Avg per pick:</strong> {avgMsPerPick !== null ? fmtDur(avgMsPerPick) : '—'}</span>
+            <span>🎯 <strong>Picks remaining:</strong> {remaining} effective</span>
+            {estimatedFinish && (
+              <span>🏁 <strong>Est. finish:</strong> {fmtTime(estimatedFinish)}{remaining === 0 ? ' (complete!)' : ''}</span>
+            )}
+          </div>
+        );
+      })()}
 
       <section className="rounded-lg bg-white p-4 shadow">
         <div className="mb-3 flex items-center justify-between">
