@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { buildDraftBoard } from '@/app/lib/draft-utils';
 import { resolveLeagueContext } from '@/app/lib/league-context';
+import { getSessionUserFromCookies, isAdminUser } from '@/app/lib/admin-auth';
 
 function toStringId(value: any): string {
   if (!value) return '';
@@ -43,6 +44,12 @@ async function hydrateDraft(db: any, draft: any) {
 
 export async function POST(request: NextRequest) {
   try {
+    const sessionUser = await getSessionUserFromCookies();
+    if (!sessionUser) {
+      return NextResponse.json({ error: 'You must be signed in to make a pick' }, { status: 401 });
+    }
+    const admin = isAdminUser(sessionUser);
+
     const body = await request.json();
     const playerId = String(body.playerId || '');
     const leagueSlug = String(body.league || 'abl');
@@ -73,6 +80,21 @@ export async function POST(request: NextRequest) {
 
     if (!currentPick) {
       return NextResponse.json({ error: 'Draft is already complete' }, { status: 400 });
+    }
+
+    // Only the on-clock team's owner(s) or an admin may submit a pick
+    if (!admin) {
+      const teamIdValue = ObjectId.isValid(currentPick.teamId) ? new ObjectId(currentPick.teamId) : currentPick.teamId;
+      const onClockTeam = await db.collection('ablteams').findOne({ _id: teamIdValue } as any);
+      const owners: Array<{ userId?: string; email?: string }> = onClockTeam?.owners ?? [];
+      const ownsTeam = owners.some(
+        (o) =>
+          (o.userId && sessionUser.sub && o.userId === sessionUser.sub) ||
+          (o.email && sessionUser.email && o.email.toLowerCase() === sessionUser.email.toLowerCase())
+      );
+      if (!ownsTeam) {
+        return NextResponse.json({ error: 'You are not the owner of the team on the clock' }, { status: 403 });
+      }
     }
 
     await db.collection('drafts').updateOne(

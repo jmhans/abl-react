@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   assignDraftSlots,
   buildDraftBoard,
@@ -10,8 +10,11 @@ import {
   DraftTeam,
   DraftedPlayerPick,
   getDraftEligiblePositions,
+  getEffectivePickCounts,
   getOwnerDisplay,
   getTeamDisplayName,
+  STANDARD_SNAKE_ROUNDS,
+  TOTAL_DRAFT_ROUNDS,
 } from '@/app/lib/draft-utils';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
 import type { ProjectionStats } from '@/app/lib/projection-utils';
@@ -30,6 +33,7 @@ type DraftApiState = {
   orderIds: string[];
   picks: DraftedPlayerPick[];
   createdAt: string;
+  startedAt: string | null;
   completedAt: string | null;
   effectiveDate?: string | null;
 };
@@ -38,10 +42,14 @@ type DisplayStats = {
   g: number | null;
   ab: number | null;
   h: number | null;
+  doubles: number | null;
+  triples: number | null;
   hr: number | null;
   bb: number | null;
   netSb: number | null;
   hbp: number | null;
+  sh: number | null;
+  sf: number | null;
   ablScore: number | null;
 };
 
@@ -57,10 +65,14 @@ function getDisplayStats(player: PlayerForDraft, view: string): DisplayStats {
       g: (b?.gamesPlayed || null),
       ab: ab > 0 ? ab : null,
       h: b?.hits ?? null,
+      doubles: b?.doubles ?? null,
+      triples: b?.triples ?? null,
       hr: b?.homeRuns ?? null,
       bb: bb > 0 ? bb : null,
       netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
       hbp: hbp > 0 ? hbp : null,
+      sh: b?.sacrificeBunts ?? null,
+      sf: b?.sacrificeFlies ?? null,
       ablScore: player.abl,
     };
   }
@@ -71,21 +83,28 @@ function getDisplayStats(player: PlayerForDraft, view: string): DisplayStats {
     g: p?.g ?? null,
     ab: p?.ab ?? null,
     h: p?.h ?? null,
+    doubles: p?.doubles ?? null,
+    triples: p?.triples ?? null,
     hr: p?.hr ?? null,
     bb: p?.bb ?? null,
     netSb: (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null,
     hbp: p?.hbp ?? null,
+    sh: p?.sacBunts ?? null,
+    sf: p?.sacFlies ?? null,
     ablScore: player.ablProjected,
   };
 }
 
-const STAT_COLS = ['G','AB','H','HR','BB','SB(net)','HBP'] as const;
+type SortColKey = 'g' | 'ab' | 'h' | 'doubles' | 'triples' | 'hr' | 'bb' | 'hbp' | 'netSb' | 'sh' | 'sf' | 'abl';
+const STAT_COL_KEYS: SortColKey[] = ['g', 'ab', 'h', 'doubles', 'triples', 'hr', 'bb', 'hbp', 'netSb', 'sh', 'sf'];
+
+const STAT_COLS = ['G', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'HBP', 'SB(net)', 'SH', 'SF'] as const;
 // xs: Player | ABL | Action (3 cols)
 // sm: Player | AB | ABL | Action (4 cols)
-// md+: Player | G AB H HR BB NB HBP | ABL | Action (10 cols)
-const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3.5rem_3rem_3rem_3rem_3.5rem_3rem_4.5rem_4rem]';
-// Visibility per stat column (matches DOM order: G AB H HR BB NB HBP)
-const STAT_VIS = ['hidden md:block','hidden sm:block','hidden md:block','hidden md:block','hidden md:block','hidden md:block','hidden md:block'] as const;
+// md+: Player | G AB H 2B 3B HR BB HBP SB(net) SH SF | ABL | Action (14 cols)
+const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_4rem]';
+// Visibility per stat column (matches DOM order: G AB H 2B 3B HR BB HBP SB(net) SH SF)
+const STAT_VIS = ['hidden md:block', 'hidden sm:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden lg:block', 'hidden lg:block'] as const;
 
 
 
@@ -99,6 +118,11 @@ export default function DraftPage() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<'active' | 'completed' | 'abandoned' | 'none'>('none');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userSub, setUserSub] = useState<string | null>(null);
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
+  const [adminPickMode, setAdminPickMode] = useState(false);
+  const [draftStartedAt, setDraftStartedAt] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -110,6 +134,8 @@ export default function DraftPage() {
   const [statView, setStatView] = useState<string>('actual');
   const [projSystems, setProjSystems] = useState<string[]>([]);
   const [projLoading, setProjLoading] = useState(false);
+  const [sortCol, setSortCol] = useState<SortColKey | null>(null);
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   const applyDraftState = (sortedTeams: DraftTeam[], draft: DraftApiState | null) => {
     const defaultOrderIds = sortedTeams.map((team) => team._id);
@@ -132,6 +158,7 @@ export default function DraftPage() {
 
     setDraftId(draft._id);
     setDraftStatus(draft.status);
+    setDraftStartedAt(draft.startedAt ?? null);
     setOrderIds(mergedOrderIds);
     setPicks(Array.isArray(draft.picks) ? draft.picks : []);
     setSelectedTeamId((current) => current || mergedOrderIds[0] || '');
@@ -141,11 +168,13 @@ export default function DraftPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [teamsRes, draftRes, adminRes, projSummaryRes] = await Promise.all([
+        const [teamsRes, draftRes, adminRes, projSummaryRes, userRes, myLeaguesRes] = await Promise.all([
           fetch(`/api/teams?league=${league}&season=${season}`),
           fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
           fetch('/api/admin/me', { cache: 'no-store' }),
           fetch('/api/projections'),
+          fetch('/api/auth/me').catch(() => null),
+          fetch('/api/auth/my-leagues').catch(() => null),
         ]);
 
         if (!teamsRes.ok) throw new Error('Failed to load teams');
@@ -154,6 +183,16 @@ export default function DraftPage() {
         const teamsData = (await teamsRes.json()) as DraftTeam[];
         const draftData = (await draftRes.json()) as { draft: DraftApiState | null };
         const adminData = adminRes.ok ? await adminRes.json() : { isAdmin: false };
+        const userData = userRes?.ok ? await userRes.json() : null;
+        setUserEmail(userData?.user?.email ?? null);
+        setUserSub(userData?.user?.sub ?? null);
+
+        // Derive user's team in this league/season via my-leagues (handles primary + co-owners)
+        const myLeaguesData = myLeaguesRes?.ok ? await myLeaguesRes.json() : [];
+        const myEntry = (Array.isArray(myLeaguesData) ? myLeaguesData : []).find(
+          (e: any) => e.league?.slug === league && String(e.season?.year) === String(season)
+        );
+        if (myEntry?.team?._id) setUserTeamId(myEntry.team._id);
 
         // Determine available projection systems for this season
         const projSummaryData = projSummaryRes.ok ? await projSummaryRes.json() : { summary: [] };
@@ -203,6 +242,8 @@ export default function DraftPage() {
 
   const handleStatViewChange = async (newView: string) => {
     setStatView(newView);
+    setSortCol(null);
+    setSortDir('desc');
     setProjLoading(true);
     try {
       const url = newView !== 'actual'
@@ -230,6 +271,23 @@ export default function DraftPage() {
     }
   };
 
+  const handleColSort = (col: SortColKey) => {
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir('desc');
+    } else if (sortDir === 'desc') {
+      setSortDir('asc');
+    } else {
+      setSortCol(null);
+      setSortDir('desc');
+    }
+  };
+
+  const sortIcon = (col: SortColKey) => {
+    if (sortCol !== col) return <span className="ml-0.5 opacity-20">↕</span>;
+    return <span className="ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>;
+  };
+
   const orderedTeams = useMemo(() => {
     const teamMap = new Map(teams.map((team) => [team._id, team]));
     return orderIds.map((id) => teamMap.get(id)).filter(Boolean) as DraftTeam[];
@@ -242,7 +300,18 @@ export default function DraftPage() {
   const currentTeam = currentPick ? orderedTeams.find((team) => team._id === currentPick.teamId) || null : null;
 
   const sortedPlayers = useMemo(() => {
+    const getVal = (player: PlayerForDraft, col: SortColKey): number | null => {
+      const ds = getDisplayStats(player, statView);
+      return col === 'abl' ? ds.ablScore : ds[col];
+    };
     return [...players].sort((a, b) => {
+      if (sortCol) {
+        const nullVal = sortDir === 'desc' ? -Infinity : Infinity;
+        const av = getVal(a, sortCol) ?? nullVal;
+        const bv = getVal(b, sortCol) ?? nullVal;
+        return sortDir === 'desc' ? bv - av : av - bv;
+      }
+      // Default: ABL descending
       if (statView !== 'actual') {
         const aHas = a.ablProjected !== null;
         const bHas = b.ablProjected !== null;
@@ -255,7 +324,7 @@ export default function DraftPage() {
       if (b.abl !== a.abl) return b.abl - a.abl;
       return a.name.localeCompare(b.name);
     });
-  }, [players, statView]);
+  }, [players, statView, sortCol, sortDir]);
 
   const availablePlayers = useMemo(() => {
     return sortedPlayers.filter((player) => {
@@ -295,7 +364,30 @@ export default function DraftPage() {
 
   const currentTeamSlots = useMemo(() => assignDraftSlots(currentTeamPicks), [currentTeamPicks]);
 
+  const picksByRoundAndTeam = useMemo(() => {
+    const map = new Map<number, Map<string, DraftedPlayerPick>>();
+    for (const p of picks) {
+      const round = p.pick.round;
+      if (!map.has(round)) map.set(round, new Map());
+      map.get(round)!.set(p.pick.teamId, p);
+    }
+    return map;
+  }, [picks]);
+
   const activeDraft = draftStatus === 'active';
+
+  const isOnClock = useMemo(() => {
+    if (!currentTeam) return false;
+    // Use my-leagues-derived team ID as primary check (handles co-owners)
+    if (userTeamId && currentTeam._id === userTeamId) return true;
+    // Fall back to direct owner record matching
+    return (currentTeam.owners ?? []).some((o: any) =>
+      (userSub && o.userId && o.userId === userSub) ||
+      (userEmail && o.email && o.email.toLowerCase() === userEmail.toLowerCase())
+    );
+  }, [userTeamId, userSub, userEmail, currentTeam]);
+
+  const canPick = activeDraft && !!currentPick && !!draftStartedAt && (isOnClock || (isAdmin && adminPickMode));
 
   const positionOptions = useMemo(() => {
     const positions = new Set<string>();
@@ -333,7 +425,7 @@ export default function DraftPage() {
     }
   };
 
-  const refreshDraft = async () => {
+  const refreshDraft = useCallback(async () => {
     const [draftRes, teamsRes] = await Promise.all([
       fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
       fetch(`/api/teams?league=${league}&season=${season}`, { cache: 'no-store' }),
@@ -348,7 +440,28 @@ export default function DraftPage() {
     const sortedTeams = [...teamsData].sort((a, b) => getTeamDisplayName(a).localeCompare(getTeamDisplayName(b)));
     setTeams(sortedTeams);
     applyDraftState(sortedTeams, draftData.draft || null);
-  };
+  }, [league, season]);
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (draftStatus !== 'active') {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+    pollRef.current = setInterval(() => {
+      refreshDraft().catch(() => {});
+    }, 5000);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [draftStatus, refreshDraft]);
 
   const handleCreateDraft = async () => {
     if (!isAdmin) return;
@@ -447,6 +560,25 @@ export default function DraftPage() {
     }
   };
 
+  const handleStartPicks = async () => {
+    if (!isAdmin || !activeDraft) return;
+    if (!confirm('Start the draft clock now? This will log the official start time and open picks for all owners.')) return;
+    try {
+      setIsWorking(true);
+      setError(null);
+      const res = await fetch(`/api/draft/start?league=${league}&season=${season}`, { method: 'PATCH' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to start picks');
+      }
+      await refreshDraft();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start picks');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center text-xl">Loading draft room...</div>;
   }
@@ -465,6 +597,29 @@ export default function DraftPage() {
           <h1 className="text-4xl font-bold text-gray-900">ABL Draft Room</h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isAdmin && activeDraft && !draftStartedAt && (
+            <button
+              type="button"
+              onClick={handleStartPicks}
+              disabled={isWorking}
+              className="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            >
+              🏁 Start Picks
+            </button>
+          )}
+          {isAdmin && activeDraft && (
+            <button
+              type="button"
+              onClick={() => setAdminPickMode((v) => !v)}
+              className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
+                adminPickMode
+                  ? 'bg-orange-100 text-orange-800 ring-2 ring-orange-400 hover:bg-orange-200'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {adminPickMode ? '🔓 Admin Pick Mode ON' : '🔒 Admin Pick Mode'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleUndo}
@@ -501,6 +656,41 @@ export default function DraftPage() {
         </div>
       )}
 
+      {activeDraft && !draftStartedAt && (
+        <div className="rounded border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          ⏳ Draft is activated but picks have not started yet.{' '}
+          {isAdmin ? 'Click "Start Picks" when ready to begin.' : 'Waiting for the commissioner to start picks.'}
+        </div>
+      )}
+
+      {activeDraft && draftStartedAt && picks.length > 0 && (() => {
+        const startMs = new Date(draftStartedAt).getTime();
+        const nowMs = Date.now();
+        const elapsedMs = nowMs - startMs;
+        const { completed, remaining } = getEffectivePickCounts(draftBoard, picks.length);
+        const avgMsPerPick = completed > 0 ? elapsedMs / completed : null;
+        const estimatedFinish = avgMsPerPick !== null
+          ? new Date(nowMs + avgMsPerPick * remaining)
+          : null;
+        const fmtTime = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const fmtDur = (ms: number) => {
+          const totalMin = Math.round(ms / 60000);
+          if (totalMin < 60) return `${totalMin}m`;
+          return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+        };
+        return (
+          <div className="rounded border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 flex flex-wrap gap-x-6 gap-y-1 items-center">
+            <span>⏱ <strong>Elapsed:</strong> {fmtDur(elapsedMs)}</span>
+            <span>📊 <strong>Avg per pick:</strong> {avgMsPerPick !== null ? fmtDur(avgMsPerPick) : '—'}</span>
+            <span>🎯 <strong>Picks remaining:</strong> {remaining} effective</span>
+            {estimatedFinish && (
+              <span>🏁 <strong>Est. finish:</strong> {fmtTime(estimatedFinish)}{remaining === 0 ? ' (complete!)' : ''}</span>
+            )}
+          </div>
+        );
+      })()}
+
+      {draftStatus !== 'completed' && (
       <section className="rounded-lg bg-white p-4 shadow">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Draft progress by team</h2>
@@ -515,6 +705,8 @@ export default function DraftPage() {
             const isCurrent = currentTeam?._id === team._id;
             const currentRound = currentPick?.round || 0;
             const isSnakeGoingDown = currentRound % 2 === 1;
+            const nextBoardPick = draftBoard[picks.length + 1] ?? null;
+            const picksAgainNext = nextBoardPick?.teamId === currentPick?.teamId;
 
             return (
               <div
@@ -554,14 +746,18 @@ export default function DraftPage() {
                   <div className="mt-1 text-xs text-gray-600">#{nextPickForTeam.overallPick}</div>
                 )}
                 {isCurrent && (
-                  <div className="mt-2 text-xl font-bold text-blue-600">{isSnakeGoingDown ? '→' : '←'}</div>
+                  <div className="mt-2 text-xl font-bold text-blue-600">
+                    {picksAgainNext ? '↓' : (isSnakeGoingDown ? '→' : '←')}
+                  </div>
                 )}
               </div>
             );
           })}
         </div>
       </section>
+      )}
 
+      {draftStatus !== 'completed' && (
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         {showPlayers ? (
           <section className="space-y-4 rounded-lg bg-white p-4 shadow">
@@ -627,11 +823,24 @@ export default function DraftPage() {
               <div className={`${GRID} gap-x-2 sticky top-0 z-10 border-b bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500`}>
                 <div>Player</div>
                 {STAT_COLS.map((col, i) => (
-                  <div key={col} className={`text-center ${STAT_VIS[i]}`}>{col}</div>
+                  <button
+                    key={col}
+                    type="button"
+                    onClick={() => handleColSort(STAT_COL_KEYS[i])}
+                    className={`text-center cursor-pointer hover:text-gray-900 ${STAT_VIS[i]}`}
+                  >
+                    {col}{sortIcon(STAT_COL_KEYS[i])}
+                  </button>
                 ))}
-                <div className={`text-center ${statView !== 'actual' ? 'text-blue-600' : 'text-green-700'}`}>
-                  {projLoading ? '…' : (statView !== 'actual' ? 'ABL★' : 'ABL')}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => handleColSort('abl')}
+                  className={`text-center cursor-pointer hover:text-gray-900 ${
+                    statView !== 'actual' ? 'text-blue-600' : 'text-green-700'
+                  }`}
+                >
+                  {projLoading ? '…' : (statView !== 'actual' ? 'ABL★' : 'ABL')}{sortIcon('abl')}
+                </button>
                 <div>Action</div>
               </div>
               {availablePlayers.map((player) => {
@@ -655,10 +864,14 @@ export default function DraftPage() {
                     <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
                     <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
                     <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
-                    <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.doubles)}`}>{fmt(ds.doubles)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.triples)}`}>{fmt(ds.triples)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[7]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[8]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[9]} ${statC(ds.sh)}`}>{fmt(ds.sh)}</div>
+                    <div className={`text-center text-xs ${STAT_VIS[10]} ${statC(ds.sf)}`}>{fmt(ds.sf)}</div>
                     <div className={`text-center text-xs font-medium ${ablColor}`}>
                       {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
                     </div>
@@ -666,7 +879,7 @@ export default function DraftPage() {
                       <button
                         type="button"
                         onClick={() => handleDraftPlayer(player)}
-                        disabled={!activeDraft || !currentPick || isWorking}
+                        disabled={!canPick || isWorking}
                         className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                       >
                         Draft
@@ -799,6 +1012,70 @@ export default function DraftPage() {
           </div>
         </section>
       </div>
+      )}
+
+      {draftStatus === 'completed' && (
+        <div className="rounded border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-800">
+          ✅ Draft complete — {picks.length} picks made.
+        </div>
+      )}
+
+      {picks.length > 0 && (
+        <section className="rounded-lg bg-white p-4 shadow">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">
+            Draft Summary
+            <span className="ml-2 text-sm font-normal text-gray-500">{picks.length} picks</span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="sticky left-0 z-10 bg-gray-100 px-2 py-1.5 text-left font-semibold text-gray-600 w-8">Rd</th>
+                  {orderedTeams.map((team, idx) => (
+                    <th key={team._id} className="min-w-[7rem] px-2 py-1.5 text-left font-semibold text-gray-700 whitespace-nowrap">
+                      <span className="text-gray-400 mr-1">{idx + 1}.</span>{getTeamDisplayName(team)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: TOTAL_DRAFT_ROUNDS }, (_, i) => i + 1).map((round) => {
+                  const isGrouped = round > STANDARD_SNAKE_ROUNDS;
+                  return (
+                    <tr key={round} className={isGrouped ? 'bg-amber-50' : round % 2 === 0 ? 'bg-gray-50' : ''}>
+                      <td className={`sticky left-0 z-10 px-2 py-1 font-semibold ${
+                        isGrouped ? 'bg-amber-50 text-amber-700' : round % 2 === 0 ? 'bg-gray-50 text-gray-500' : 'bg-white text-gray-500'
+                      }`}>
+                        {round}
+                      </td>
+                      {orderedTeams.map((team) => {
+                        const p = picksByRoundAndTeam.get(round)?.get(team._id);
+                        return (
+                          <td key={team._id} className="px-2 py-1 align-top">
+                            {p ? (
+                              <div>
+                                <div className="font-medium text-gray-900 truncate max-w-[7rem]" title={p.player.name}>
+                                  {p.player.name}
+                                </div>
+                                <div className="text-gray-400">
+                                  {p.player.eligible?.slice(0, 2).join('/') || '—'}
+                                  {p.player.team ? ` · ${p.player.team}` : ''}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

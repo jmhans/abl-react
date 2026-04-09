@@ -52,6 +52,7 @@ async function hydrateDraft(db: any, draft: any) {
     _id: toStringId(draft._id),
     status: draft.status,
     createdAt: draft.createdAt,
+    startedAt: draft.startedAt || null,
     completedAt: draft.completedAt || null,
     effectiveDate: draft.effectiveDate || null,
     orderIds: draft.orderIds || [],

@@ -19,7 +19,8 @@ export default function LeagueSeasonHome() {
   const base = `/${league}/${season}`;
 
   const [user, setUser] = useState<User | null>(null);
-  const [hasDraft, setHasDraft] = useState(false);
+  const [draftActive, setDraftActive] = useState(false);
+  const [draftCompleted, setDraftCompleted] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -31,8 +32,8 @@ export default function LeagueSeasonHome() {
         const [userRes, adminRes, draftCheck, seasonRes, myLeaguesRes] = await Promise.all([
           fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch('/api/admin/me').then(r => r.ok ? r.json() : {} as AdminResponse).catch(() => ({} as AdminResponse)),
-          fetch(`/api/games?league=${league}&season=${season}&gameType=D&limit=1&view=summary`)
-            .then(r => r.json()).catch(() => []),
+          fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : { draft: null }).catch(() => ({ draft: null })),
           fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []),
           fetch('/api/auth/my-leagues').then(r => r.json()).catch(() => []),
         ]);
@@ -40,7 +41,8 @@ export default function LeagueSeasonHome() {
         const sessionUser = userRes?.user || null;
         setUser(sessionUser);
         setIsAdmin(adminRes?.isAdmin ?? false);
-        setHasDraft(Array.isArray(draftCheck) && draftCheck.length > 0);
+        setDraftActive(draftCheck?.draft?.status === 'active');
+        setDraftCompleted(draftCheck?.draft?.status === 'completed');
         const s = Array.isArray(seasonRes) ? seasonRes[0] : null;
         setSeasonStatus(s?.status ?? null);
 
@@ -107,11 +109,15 @@ export default function LeagueSeasonHome() {
           <p className="text-xs text-gray-500 mt-1">Browse all {leagueName} teams</p>
         </Link>
 
-        {(hasDraft || seasonStatus === 'pre-draft') && (
-          <Link href={`${base}/draft`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-teal-400 hover:shadow transition group">
+        {(draftActive || draftCompleted) && (
+          <Link href={`${base}/draft`} className={`bg-white p-5 rounded-lg border hover:shadow transition group ${
+            draftActive ? 'border-teal-300 hover:border-teal-500' : 'border-gray-200 hover:border-gray-400'
+          }`}>
             <div className="text-2xl mb-2">🎯</div>
             <h2 className="text-sm font-semibold text-gray-900 group-hover:text-teal-700">Draft Room</h2>
-            <p className="text-xs text-gray-500 mt-1">{seasonStatus === 'pre-draft' && !hasDraft ? 'Draft coming soon — check the board' : '24-round grouped snake draft board'}</p>
+            <p className={`text-xs mt-1 ${draftActive ? 'text-teal-600' : 'text-gray-500'}`}>
+              {draftActive ? 'Draft is live — make your picks!' : 'View draft summary'}
+            </p>
           </Link>
         )}
 

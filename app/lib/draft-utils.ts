@@ -9,6 +9,7 @@ export type DraftTeam = {
   nickname: string;
   location?: string;
   owners?: Array<{
+    userId?: string;
     name?: string;
     email?: string;
   }>;
@@ -174,6 +175,86 @@ export function assignDraftSlots(teamPicks: DraftedPlayerPick[]) {
     extras,
     filledRequiredCount,
     missingRequiredCount: requiredSlots.length - filledRequiredCount,
+  };
+}
+
+/**
+ * Calculates "effective pick counts" for draft timing estimation.
+ *
+ * Rules:
+ * - Standard snake rounds: each individual pick = 1 effective pick.
+ * - Grouped blocks (GROUPED_ROUND_SIZE rounds per team, simultaneous):
+ *     each team's entire block = 1 effective pick.
+ *   - A block is "completed" only when ALL picks in it are done.
+ *   - A block is "in-progress" if at least one pick was made but not all — counts as 0 completed.
+ *   - A future block counts as 1 remaining.
+ *
+ * Returns { completed, remaining } effective pick counts across all teams.
+ */
+export function getEffectivePickCounts(
+  draftBoard: DraftBoardPick[],
+  picksCount: number,
+): { completed: number; remaining: number } {
+  if (draftBoard.length === 0) return { completed: 0, remaining: 0 };
+
+  // Standard picks (not grouped)
+  const standardPicks = draftBoard.filter((p) => !p.grouped);
+  const standardCompleted = Math.min(picksCount, standardPicks.length);
+  const standardRemaining = Math.max(0, standardPicks.length - picksCount);
+
+  if (picksCount <= standardPicks.length) {
+    // Still in standard rounds — all grouped picks are remaining
+    // Count grouped blocks as effective remaining picks
+    const groupedBlocks = new Map<string, number>(); // key: `${teamId}-${groupStart}` → count of picks in block
+    for (const p of draftBoard.filter((p) => p.grouped)) {
+      const key = `${p.teamId}-${p.groupStartRound}`;
+      groupedBlocks.set(key, (groupedBlocks.get(key) ?? 0) + 1);
+    }
+    return { completed: standardCompleted, remaining: standardRemaining + groupedBlocks.size };
+  }
+
+  // Into grouped rounds — figure out which blocks are done vs in-progress vs future
+  const groupedPicks = draftBoard.filter((p) => p.grouped);
+  const groupedCompletedCount = picksCount - standardPicks.length; // how many individual grouped picks done
+
+  // Build a map of each block's total size
+  const blockSizes = new Map<string, number>();
+  for (const p of groupedPicks) {
+    const key = `${p.teamId}-${p.groupStartRound}`;
+    blockSizes.set(key, (blockSizes.get(key) ?? 0) + 1);
+  }
+
+  // Walk through grouped picks in order to find completed blocks
+  let groupedPicksSeen = 0;
+  let completedBlocks = 0;
+  let remainingBlocks = 0;
+
+  // Group picks by block key in order
+  const blockOrder: string[] = [];
+  const blockSeenSet = new Set<string>();
+  for (const p of groupedPicks) {
+    const key = `${p.teamId}-${p.groupStartRound}`;
+    if (!blockSeenSet.has(key)) { blockOrder.push(key); blockSeenSet.add(key); }
+  }
+
+  for (const key of blockOrder) {
+    const size = blockSizes.get(key)!;
+    if (groupedPicksSeen + size <= groupedCompletedCount) {
+      // Entire block is done
+      completedBlocks++;
+      groupedPicksSeen += size;
+    } else if (groupedPicksSeen < groupedCompletedCount) {
+      // Partially done — counts as 0 completed, 0 remaining (in progress)
+      groupedPicksSeen += size;
+    } else {
+      // Not started yet — counts as 1 remaining
+      remainingBlocks++;
+    }
+  }
+
+  return {
+    completed: standardPicks.length + completedBlocks,
+    remaining: remainingBlocks,
   };
 }
 
