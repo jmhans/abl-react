@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
     if (leagueSlug && seasonSlug) {
       // Return only the teams assigned to this specific season
       const ctx = await resolveLeagueContext(db, leagueSlug, seasonSlug);
-      const teamIds: ObjectId[] = (ctx.season.teamIds ?? []).map((id: any) =>
-        id instanceof ObjectId ? id : new ObjectId(id)
-      );
+      const teamIds = ctx.season.teamIds ?? [];
       if (teamIds.length === 0) return NextResponse.json([]);
+      
+      // teamIds could be strings or ObjectIds depending on data source
       const teams = await db.collection('ablteams')
         .find({ _id: { $in: teamIds } })
         .toArray();

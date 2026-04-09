@@ -29,6 +29,7 @@ const args = process.argv.slice(2);
 const argIdx = (flag) => args.indexOf(flag);
 const getArg = (flag) => { const i = argIdx(flag); return i !== -1 ? args[i + 1] : null; };
 const DRY = args.includes('--dry');
+const PROD = args.includes('--prod');
 
 const today = new Date();
 const yesterday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 1));
@@ -89,9 +90,10 @@ function isPositionPlayer(p) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-const client = new MongoClient(process.env.MONGODB_URI);
+const mongoUri = PROD ? process.env.MONGODB_URI.replace('/abl_dev', '/heroku_wm40bx9r') : process.env.MONGODB_URI;
+const client = new MongoClient(mongoUri);
 await client.connect();
-const dbName = process.env.MONGODB_DB || 'abl_dev';
+const dbName = PROD ? 'heroku_wm40bx9r' : (process.env.MONGODB_DB || 'abl_dev');
 const db = client.db(dbName);
 
 const dates = dateRange(startStr, endStr);
@@ -105,21 +107,21 @@ for (const dateStr of dates) {
   // 1. Get schedule for this date
   let schedule;
   try {
-    schedule = await fetchJson(`${MLB_API}/schedule?sportId=1&date=${dateStr}&hydrate=game(content(editorial(recap)))&fields=dates,games,gamePk,gameDate,status,abstractGameState`);
+    schedule = await fetchJson(`${MLB_API}/schedule?sportId=1&date=${dateStr}&hydrate=game(content(editorial(recap)))&fields=dates,games,gamePk,gameDate,gameType,status,abstractGameState`);
   } catch (e) {
     console.log(`⚠️  schedule fetch failed: ${e.message}`);
     continue;
   }
 
   const games = schedule?.dates?.[0]?.games ?? [];
-  const finalGames = games.filter(g => g?.status?.abstractGameState === 'Final');
+  const finalGames = games.filter(g => g?.status?.abstractGameState === 'Final' && g?.gameType === 'R');
 
   if (finalGames.length === 0) {
-    console.log(`no final games`);
+    console.log(`no final REGULAR SEASON games`);
     continue;
   }
 
-  // 2. For each final game, fetch boxscore
+  // 2. For each final regular-season game, fetch boxscore
   // Statlines for this date are stored as one doc keyed by date:
   //   { _id: "2026-03-26", p: { "mlbId_gamePk": { b, pos, t }, ... } }
   const pEntries = {};
