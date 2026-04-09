@@ -86,9 +86,11 @@ export async function POST(request: NextRequest) {
     if (!admin) {
       const teamIdValue = ObjectId.isValid(currentPick.teamId) ? new ObjectId(currentPick.teamId) : currentPick.teamId;
       const onClockTeam = await db.collection('ablteams').findOne({ _id: teamIdValue } as any);
-      const owners: Array<{ email?: string }> = onClockTeam?.owners ?? [];
+      const owners: Array<{ userId?: string; email?: string }> = onClockTeam?.owners ?? [];
       const ownsTeam = owners.some(
-        (o) => o.email && sessionUser.email && o.email.toLowerCase() === sessionUser.email.toLowerCase()
+        (o) =>
+          (o.userId && sessionUser.sub && o.userId === sessionUser.sub) ||
+          (o.email && sessionUser.email && o.email.toLowerCase() === sessionUser.email.toLowerCase())
       );
       if (!ownsTeam) {
         return NextResponse.json({ error: 'You are not the owner of the team on the clock' }, { status: 403 });

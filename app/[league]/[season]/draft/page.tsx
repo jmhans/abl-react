@@ -115,6 +115,7 @@ export default function DraftPage() {
   const [draftStatus, setDraftStatus] = useState<'active' | 'completed' | 'abandoned' | 'none'>('none');
   const [isAdmin, setIsAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userSub, setUserSub] = useState<string | null>(null);
   const [adminPickMode, setAdminPickMode] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
@@ -176,6 +177,7 @@ export default function DraftPage() {
         const adminData = adminRes.ok ? await adminRes.json() : { isAdmin: false };
         const userData = userRes?.ok ? await userRes.json() : null;
         setUserEmail(userData?.user?.email ?? null);
+        setUserSub(userData?.user?.sub ?? null);
 
         // Determine available projection systems for this season
         const projSummaryData = projSummaryRes.ok ? await projSummaryRes.json() : { summary: [] };
@@ -350,11 +352,13 @@ export default function DraftPage() {
   const activeDraft = draftStatus === 'active';
 
   const isOnClock = useMemo(() => {
-    if (!userEmail || !currentTeam) return false;
-    return (currentTeam.owners ?? []).some(
-      (o) => o.email && o.email.toLowerCase() === userEmail.toLowerCase()
+    if (!currentTeam) return false;
+    // Match by userId (Auth0 sub) first, fall back to email
+    return (currentTeam.owners ?? []).some((o: any) =>
+      (userSub && o.userId && o.userId === userSub) ||
+      (userEmail && o.email && o.email.toLowerCase() === userEmail.toLowerCase())
     );
-  }, [userEmail, currentTeam]);
+  }, [userSub, userEmail, currentTeam]);
 
   const canPick = activeDraft && !!currentPick && (isOnClock || (isAdmin && adminPickMode));
 

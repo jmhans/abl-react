@@ -9,6 +9,7 @@ export type DraftTeam = {
   nickname: string;
   location?: string;
   owners?: Array<{
+    userId?: string;
     name?: string;
     email?: string;
   }>;
