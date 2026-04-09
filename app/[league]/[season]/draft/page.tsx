@@ -116,6 +116,7 @@ export default function DraftPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userSub, setUserSub] = useState<string | null>(null);
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [adminPickMode, setAdminPickMode] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
@@ -161,12 +162,13 @@ export default function DraftPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [teamsRes, draftRes, adminRes, projSummaryRes, userRes] = await Promise.all([
+        const [teamsRes, draftRes, adminRes, projSummaryRes, userRes, myLeaguesRes] = await Promise.all([
           fetch(`/api/teams?league=${league}&season=${season}`),
           fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' }),
           fetch('/api/admin/me', { cache: 'no-store' }),
           fetch('/api/projections'),
           fetch('/api/auth/me').catch(() => null),
+          fetch('/api/auth/my-leagues').catch(() => null),
         ]);
 
         if (!teamsRes.ok) throw new Error('Failed to load teams');
@@ -178,6 +180,13 @@ export default function DraftPage() {
         const userData = userRes?.ok ? await userRes.json() : null;
         setUserEmail(userData?.user?.email ?? null);
         setUserSub(userData?.user?.sub ?? null);
+
+        // Derive user's team in this league/season via my-leagues (handles primary + co-owners)
+        const myLeaguesData = myLeaguesRes?.ok ? await myLeaguesRes.json() : [];
+        const myEntry = (Array.isArray(myLeaguesData) ? myLeaguesData : []).find(
+          (e: any) => e.league?.slug === league && String(e.season?.year) === String(season)
+        );
+        if (myEntry?.team?._id) setUserTeamId(myEntry.team._id);
 
         // Determine available projection systems for this season
         const projSummaryData = projSummaryRes.ok ? await projSummaryRes.json() : { summary: [] };
@@ -353,12 +362,14 @@ export default function DraftPage() {
 
   const isOnClock = useMemo(() => {
     if (!currentTeam) return false;
-    // Match by userId (Auth0 sub) first, fall back to email
+    // Use my-leagues-derived team ID as primary check (handles co-owners)
+    if (userTeamId && currentTeam._id === userTeamId) return true;
+    // Fall back to direct owner record matching
     return (currentTeam.owners ?? []).some((o: any) =>
       (userSub && o.userId && o.userId === userSub) ||
       (userEmail && o.email && o.email.toLowerCase() === userEmail.toLowerCase())
     );
-  }, [userSub, userEmail, currentTeam]);
+  }, [userTeamId, userSub, userEmail, currentTeam]);
 
   const canPick = activeDraft && !!currentPick && (isOnClock || (isAdmin && adminPickMode));
 
