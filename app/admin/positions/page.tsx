@@ -14,10 +14,23 @@ type UpdateResult = {
   error?: string;
 };
 
+type SyncLogResult = {
+  ok: boolean;
+  season?: number;
+  playersProcessed?: number;
+  posLogUpserted?: number;
+  gamesForEligible?: number;
+  error?: string;
+};
+
 export default function PositionsPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UpdateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncLogResult | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const run = async () => {
     setBusy(true);
@@ -32,6 +45,22 @@ export default function PositionsPage() {
       setError(e instanceof Error ? e.message : 'Position update failed');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const syncLog = async () => {
+    setSyncBusy(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const res = await fetch('/api/players/sync-position-log', { method: 'POST' });
+      const data: SyncLogResult = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Position log sync failed');
+      setSyncResult(data);
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : 'Position log sync failed');
+    } finally {
+      setSyncBusy(false);
     }
   };
 
@@ -106,6 +135,44 @@ export default function PositionsPage() {
                 </div>
               </>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Sync Eligibility (position_log only)</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            Updates <code>position_log</code> eligibility from current-season statlines and rebuilds
+            the player cache. Does <strong>not</strong> touch CommishPos. This is the same step
+            that runs automatically at the end of every daily stat refresh.
+          </p>
+        </div>
+
+        {syncError && (
+          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+            {syncError}
+          </div>
+        )}
+
+        <button
+          onClick={syncLog}
+          disabled={syncBusy}
+          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+        >
+          {syncBusy ? 'Syncing eligibility…' : 'Sync Position Log'}
+        </button>
+
+        {syncResult?.ok && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-900 space-y-1">
+            <div className="font-medium">✓ position_log synced for {syncResult.season} season</div>
+            <div>
+              {syncResult.playersProcessed} players processed &bull;{' '}
+              {syncResult.posLogUpserted} position_log records updated
+            </div>
+            <div className="text-blue-700">
+              Eligibility threshold: ≥&nbsp;{syncResult.gamesForEligible} games at a position
+            </div>
           </div>
         )}
       </div>

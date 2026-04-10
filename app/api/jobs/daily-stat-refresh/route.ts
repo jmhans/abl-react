@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { runDailyStatRefresh } from '@/app/lib/stat-refresh-service';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
+import { syncPositionLog } from '@/app/api/players/sync-position-log/route';
 
 async function isAuthorized(request: NextRequest): Promise<boolean> {
   const { isAdmin } = await getAdminAuthState();
@@ -94,6 +95,8 @@ async function handleRefresh(request: NextRequest) {
         });
       }
 
+      const posLogSummary = await syncPositionLog(db).catch((e) => ({ error: String(e) }));
+
       return NextResponse.json(
         {
           ok: true,
@@ -114,6 +117,7 @@ async function handleRefresh(request: NextRequest) {
               errors: totalRecalcErrors,
             },
           }),
+          posLogSummary,
           daysProcessed: results.length,
           byDay: results,
         },
@@ -124,6 +128,7 @@ async function handleRefresh(request: NextRequest) {
     // Single date mode (original behavior)
     const targetDate = parseTargetDate(dateParam);
     const summary = await runDailyStatRefresh(db, targetDate, { recalculate });
+    const posLogSummary = await syncPositionLog(db).catch((e) => ({ error: String(e) }));
 
     return NextResponse.json(
       {
@@ -131,6 +136,7 @@ async function handleRefresh(request: NextRequest) {
         targetDate: targetDate.toISOString().substring(0, 10),
         recalculate,
         ...summary,
+        posLogSummary,
       },
       { status: 200 }
     );

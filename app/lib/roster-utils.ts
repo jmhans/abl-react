@@ -56,6 +56,46 @@ export function calculateAblPoints(stats: any): number {
 }
 
 /**
+ * Rebuilds players_cache from players_view, then post-processes:
+ *   - Computes `abl` score for each player
+ *   - Strips stale stats (lastStatUpdate before SEASON_START)
+ *   - Creates mlbID index
+ * Returns count of docs processed.
+ */
+const SEASON_START = new Date('2026-03-26T00:00:00Z');
+
+export async function rebuildPlayersCache(db: Db): Promise<number> {
+  await db.collection('players_view').aggregate([{ $out: 'players_cache' }]).toArray();
+  await db.collection('players_cache').createIndex({ mlbID: 1 }, { background: true });
+
+  const allDocs = await db.collection('players_cache').find({}, {
+    projection: { _id: 1, stats: 1, lastStatUpdate: 1 },
+  }).toArray();
+
+  const bulkOps: any[] = [];
+  for (const doc of allDocs) {
+    const lastUpdate = doc.lastStatUpdate ? new Date(doc.lastStatUpdate) : null;
+    const statsAreStale = !lastUpdate || lastUpdate < SEASON_START;
+    const stats = statsAreStale ? undefined : doc.stats;
+    const abl = calculateAblScore(stats);
+
+    const setFields: any = { abl };
+    const unsetFields: any = {};
+    if (statsAreStale && doc.stats) unsetFields.stats = '';
+
+    const update: any = { $set: setFields };
+    if (Object.keys(unsetFields).length > 0) update.$unset = unsetFields;
+    bulkOps.push({ updateOne: { filter: { _id: doc._id }, update } });
+  }
+
+  if (bulkOps.length > 0) {
+    await db.collection('players_cache').bulkWrite(bulkOps, { ordered: false });
+  }
+
+  return allDocs.length;
+}
+
+/**
  * Convert a date to noon Central Time, returned as UTC
  * Handles DST properly
  */
