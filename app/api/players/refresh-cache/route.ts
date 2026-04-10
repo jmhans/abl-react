@@ -32,7 +32,7 @@ export async function POST() {
 
     const elapsed = Date.now() - t0;
 
-    console.log(`[refresh-cache] players_cache rebuilt: ${count} docs in ${elapsed}ms (${bulkOps.length} post-processed)`);
+    console.log(`[refresh-cache] players_cache rebuilt: ${count} docs in ${elapsed}ms`);
     return NextResponse.json({ ok: true, players: count, ms: elapsed });
   } catch (error) {
     console.error('Error rebuilding player cache:', error);
