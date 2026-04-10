@@ -18,6 +18,7 @@ import {
 } from '@/app/lib/draft-utils';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
 import type { ProjectionStats } from '@/app/lib/projection-utils';
+import { PosLogPopover } from '@/app/ui/pos-log-popover';
 
 type PlayerForDraft = DraftPlayer & {
   abl: number;
@@ -858,7 +859,10 @@ export default function DraftPage() {
                   >
                     <div>
                       <div className="font-medium text-gray-900 leading-tight">{player.name}</div>
-                      <div className="text-xs text-gray-500">{player.team || 'FA'} – {player.eligible.join(', ')}</div>
+                      <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-0.5">
+                        <span>{player.team || 'FA'} – {player.eligible.join(', ')}</span>
+                        <PosLogPopover mlbId={player.mlbID} />
+                      </div>
                       {player.status && <div className="text-xs text-gray-400">{player.status}</div>}
                     </div>
                     <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>

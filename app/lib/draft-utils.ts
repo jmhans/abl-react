@@ -22,6 +22,7 @@ export type DraftPlayer = {
   position?: string;
   eligible?: string[];
   mlbPosition?: string;
+  mlbID?: string | number;
   status?: string;
   stats?: any;
 };
