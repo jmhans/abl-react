@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -148,6 +148,66 @@ export default function TeamRosterPage() {
   };
 
   const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent, index: number) => {
+    if (roster?.locked || !isOwner) return;
+    longPressTimerRef.current = setTimeout(() => {
+      setDraggedIndex(index);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, 300);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (draggedIndex === null) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      return;
+    }
+    if (!roster || roster.locked || !isOwner) return;
+
+    const touch = e.touches[0];
+    const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+    const row = elem?.closest('tr[data-index]') as HTMLElement | null;
+    if (!row) return;
+
+    const targetIndex = parseInt(row.dataset.index ?? '-1', 10);
+    if (isNaN(targetIndex) || targetIndex < 0 || targetIndex === draggedIndex) return;
+
+    const items = [...roster.roster];
+    const draggedItem = items[draggedIndex];
+    const targetItem = items[targetIndex];
+
+    const isDraggedPickup =
+      draggedItem.player.ablstatus?.acqType === 'fa' ||
+      draggedItem.player.ablstatus?.acqType === 'trade';
+    const isTargetDrafted =
+      targetItem.player.ablstatus?.acqType === 'draft' ||
+      targetItem.player.ablstatus?.acqType === 'supp_draft';
+
+    if (isDraggedPickup && isTargetDrafted && targetIndex < draggedIndex) return;
+
+    items.splice(draggedIndex, 1);
+    items.splice(targetIndex, 0, draggedItem);
+    items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+
+    setRoster({ ...roster, roster: items });
+    setDraggedIndex(targetIndex);
+    setHasChanges(true);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
     setDraggedIndex(null);
   };
 
@@ -336,7 +396,7 @@ export default function TeamRosterPage() {
             <li>• Drafted players cannot be dropped</li>
             <li>• Drafted players must appear first in roster order</li>
             <li>• Pickups can only be placed after all drafted players</li>
-            <li>• Drag and drop to reorder (within rules)</li>
+            <li>• Drag and drop to reorder (within rules) — use the grip handle on mobile</li>
           </ul>
         </div>
       </div>
@@ -346,6 +406,7 @@ export default function TeamRosterPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-2 py-3 w-8"></th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">MLB Team</th>
@@ -367,16 +428,39 @@ export default function TeamRosterPage() {
               return (
                 <tr
                   key={item.player._id}
+                  data-index={index}
                   draggable={canDrag}
                   onDragStart={() => handleDragStart(index)}
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
                   className={`${draggedIndex === index ? 'opacity-50' : ''} ${
-                    canDrag ? 'cursor-move hover:bg-gray-50' : 'cursor-default'
+                    canDrag ? 'hover:bg-gray-50' : ''
                   } ${
                     isDrafted ? 'bg-yellow-50' : ''
                   }`}
                 >
+                  <td className="px-2 py-4 w-8 text-center">
+                    {canDrag && (
+                      <div
+                        className="cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 flex items-center justify-center select-none"
+                        style={{ touchAction: 'none' }}
+                        onTouchStart={(e) => handleTouchStart(e, index)}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchCancel={handleTouchEnd}
+                        aria-label="Drag to reorder"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                          <circle cx="5.5" cy="4" r="1.5" />
+                          <circle cx="10.5" cy="4" r="1.5" />
+                          <circle cx="5.5" cy="8" r="1.5" />
+                          <circle cx="10.5" cy="8" r="1.5" />
+                          <circle cx="5.5" cy="12" r="1.5" />
+                          <circle cx="10.5" cy="12" r="1.5" />
+                        </svg>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-4 text-sm font-medium text-gray-900">
                     {item.rosterOrder}
                   </td>
