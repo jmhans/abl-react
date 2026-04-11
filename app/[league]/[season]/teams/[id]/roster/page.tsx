@@ -27,6 +27,7 @@ interface RosterItem {
   player: Player;
   lineupPosition: string | null;
   rosterOrder: number;
+  acqType?: 'draft' | 'supp_draft' | 'fa' | 'trade';
 }
 
 interface RosterData {
@@ -663,6 +664,8 @@ export default function TeamRosterPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {roster.roster.map((item, index) => {
               const isDrafted =
+                item.acqType === 'draft' ||
+                item.acqType === 'supp_draft' ||
                 item.player.ablstatus?.acqType === 'draft' ||
                 item.player.ablstatus?.acqType === 'supp_draft';
               const canDrag = !roster.locked && isOwner;
@@ -759,7 +762,7 @@ export default function TeamRosterPage() {
                     {canDrop ? (
                       <button
                         onClick={() =>
-                          handleDropPlayer(item.player._id, item.player.name, item.player.ablstatus?.acqType || '')
+                          handleDropPlayer(item.player._id, item.player.name, item.acqType || '')
                         }
                         className="text-red-600 hover:text-red-800 text-sm font-medium"
                       >

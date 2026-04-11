@@ -135,29 +135,29 @@ export async function PUT(
       );
     }
 
-    // Ensure all roster items have required fields and correct rosterOrder
-    const roster = body.roster.map((item: any, index: number) => ({
-      player: new ObjectId(item.player._id || item.player),
-      lineupPosition: item.lineupPosition || null,
-      rosterOrder: index + 1 // CRITICAL: Preserve exact order from frontend
-    }));
-
     // RULE VALIDATION: Pickups must stay below all drafted players
-    // Fetch existing lineup to get acqTypes
+    // Fetch existing lineup to get acqTypes BEFORE building roster array
     const existingLineup = await db.collection('lineups').findOne({ 
       ablTeam: new ObjectId(teamId),
       effectiveDate: effectiveDate
     });
 
-    // Get all players to check acqType
-    const playerIds = roster.map((r: any) => r.player);
-    const players = await db.collection('players')
-      .find({ _id: { $in: playerIds } })
-      .toArray();
-    
     const playerAcqMap = new Map(
       (existingLineup?.roster || []).map((r: any) => [r.player.toString(), r.acqType])
     );
+
+    // Ensure all roster items have required fields and correct rosterOrder.
+    // CRITICAL: preserve acqType from the existing lineup so it is never stripped on save.
+    const roster = body.roster.map((item: any, index: number) => {
+      const playerId = new ObjectId(item.player._id || item.player);
+      const acqType = item.acqType || playerAcqMap.get(playerId.toString()) || undefined;
+      return {
+        player: playerId,
+        lineupPosition: item.lineupPosition || null,
+        rosterOrder: index + 1, // CRITICAL: Preserve exact order from frontend
+        ...(acqType !== undefined ? { acqType } : {}),
+      };
+    });
 
     // Find the highest drafted player position and lowest pickup position
     let highestDraftedPos = -1;
