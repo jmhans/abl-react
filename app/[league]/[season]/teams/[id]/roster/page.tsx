@@ -34,6 +34,7 @@ interface RosterData {
   _id?: string;
   ablTeam: string;
   effectiveDate: string;
+  lockTime: string;
   roster: RosterItem[];
   updatedAt: string;
   locked: boolean;

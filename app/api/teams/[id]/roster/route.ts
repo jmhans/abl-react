@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getNextRosterEffectiveDate, isRosterLocked, getTimeUntilLock, calculateAblScore } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore } from '@/app/lib/roster-utils';
 
 // GET /api/teams/:id/roster - Get current roster for team
 export async function GET(
@@ -12,8 +12,9 @@ export async function GET(
     const db = await connectToDatabase();
     const { id: teamId } = await params;
 
-    // Get next game's effective date
-    const effectiveDate = await getNextRosterEffectiveDate(db);
+    // Get next game date
+    const gameDate = await getNextRosterGameDate(db);
+    const lockTime = await getNextRosterLockTime(db);
 
     // Check if roster is locked
     const locked = await isRosterLocked(db);
@@ -22,7 +23,7 @@ export async function GET(
     // Try to find roster for this effective date
     let lineup = await db.collection('lineups').findOne({
       ablTeam: new ObjectId(teamId),
-      effectiveDate: effectiveDate
+      effectiveDate: gameDate
     });
 
     // If no roster exists for next game, return empty roster
@@ -32,7 +33,7 @@ export async function GET(
       lineup = {
         _id: new ObjectId(),
         ablTeam: new ObjectId(teamId),
-        effectiveDate: effectiveDate,
+        effectiveDate: gameDate,
         roster: [],
         updatedAt: new Date()
       } as any;
@@ -84,6 +85,7 @@ export async function GET(
       _id: lineup._id,
       ablTeam: lineup.ablTeam,
       effectiveDate: lineup.effectiveDate,
+      lockTime: lockTime,
       roster: lineup.roster || [],
       updatedAt: lineup.updatedAt,
       locked: locked,
@@ -119,13 +121,7 @@ export async function PUT(
       );
     }
 
-    const effectiveDate = await getNextRosterEffectiveDate(db);
-    if (!effectiveDate) {
-      return NextResponse.json(
-        { error: 'No upcoming games scheduled' },
-        { status: 404 }
-      );
-    }
+    const effectiveDate = await getNextRosterGameDate(db);
 
     // Validate roster array
     if (!body.roster || !Array.isArray(body.roster)) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getNextRosterEffectiveDate } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate } from '@/app/lib/roster-utils';
 
 // GET /api/teams/:id/il-positions - Get eligible positions for IL players on team
 export async function GET(
@@ -11,7 +11,7 @@ export async function GET(
   try {
     const db = await connectToDatabase();
     const { id: teamId } = await params;
-    const effectiveDate = await getNextRosterEffectiveDate(db);
+    const effectiveDate = await getNextRosterGameDate(db);
 
     // Get current roster
     const lineup = await db.collection('lineups').findOne({

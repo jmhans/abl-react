@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
-import { getNextRosterEffectiveDate } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate } from '@/app/lib/roster-utils';
 import { resolveLeagueContext } from '@/app/lib/league-context';
 import { getDraftEligiblePositions, DraftPlayer } from '@/app/lib/draft-utils';
 
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Draft has no picks' }, { status: 400 });
     }
 
-    const effectiveDate = await getNextRosterEffectiveDate(db);
+    const effectiveDate = await getNextRosterGameDate(db);
 
     const picksByTeam = new Map<string, any[]>();
     for (const entry of picks) {
