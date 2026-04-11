@@ -139,7 +139,7 @@ export default function FreeAgentsPage() {
     fetch(`/api/teams?league=${encodeURIComponent(league)}&season=${encodeURIComponent(season)}`)
       .then(r => r.json())
       .then((data: any[]) => {
-        setAllTeams(data.map((t: any) => ({ _id: t._id, name: t.name || t._id })));
+        setAllTeams(data.map((t: any) => ({ _id: t._id, name: t.nickname || t.name || t._id })));
         // Default to the team in the URL if present, otherwise first team
         setAdminTargetTeamId(prev => prev || teamId);
       })
