@@ -21,7 +21,7 @@ export async function GET() {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     },
-    next: { revalidate: 60 }, // cache for 60s
+    cache: 'no-store',
   });
 
   if (!res.ok) {
