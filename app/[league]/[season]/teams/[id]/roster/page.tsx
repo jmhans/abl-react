@@ -768,6 +768,12 @@ export default function TeamRosterPage() {
                         className="text-sm border rounded px-2 py-1"
                       >
                         <option value="">--</option>
+                        {item.player.status?.includes('Injured') && (
+                          <option value="INJ">INJ (Injured)</option>
+                        )}
+                        {item.player.status?.includes('Minors') && (
+                          <option value="NA">NA (Minors)</option>
+                        )}
                         {item.player.eligible?.map(pos => (
                           <option key={pos} value={pos}>{pos}</option>
                         ))}
