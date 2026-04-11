@@ -59,6 +59,7 @@ export default function TeamRosterPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [teamOwners, setTeamOwners] = useState<any[]>([]);
   const [teamInfo, setTeamInfo] = useState<{ location: string; nickname: string; stadium: string }>({ location: '', nickname: '', stadium: '' });
@@ -82,7 +83,10 @@ export default function TeamRosterPage() {
     try {
       setLoading(true);
 
-      const userRes = await fetch('/api/auth/me');
+      const [userRes, adminRes] = await Promise.all([
+        fetch('/api/auth/me'),
+        fetch('/api/admin/me'),
+      ]);
       if (userRes.ok) {
         const userData = await userRes.json();
         setCurrentUser(userData?.user);
@@ -97,6 +101,10 @@ export default function TeamRosterPage() {
           setTeamInfo(info);
           setTeamInfoDraft(info);
         }
+      }
+      if (adminRes.ok) {
+        const adminData = await adminRes.json();
+        setIsAdmin(adminData?.isAdmin || false);
       }
 
       // Fetch season status to gate pre-draft actions
@@ -132,24 +140,24 @@ export default function TeamRosterPage() {
   };
 
   const handleDragStart = (index: number) => {
-    if (roster?.locked || !isOwner) return;
+    if (roster?.locked || (!isOwner && !isAdmin)) return;
     setDraggedIndex(index);
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index || !roster || roster.locked || !isOwner) return;
+    if (draggedIndex === null || draggedIndex === index || !roster || roster.locked || (!isOwner && !isAdmin)) return;
 
     const items = [...roster.roster];
     const draggedItem = items[draggedIndex];
     const targetItem = items[index];
 
     const isDraggedPickup =
-      draggedItem.player.ablstatus?.acqType === 'fa' ||
-      draggedItem.player.ablstatus?.acqType === 'trade';
+      draggedItem.acqType === 'fa' ||
+      draggedItem.acqType === 'trade';
     const isTargetDrafted =
-      targetItem.player.ablstatus?.acqType === 'draft' ||
-      targetItem.player.ablstatus?.acqType === 'supp_draft';
+      targetItem.acqType === 'draft' ||
+      targetItem.acqType === 'supp_draft';
 
     if (isDraggedPickup && isTargetDrafted && index < draggedIndex) return;
 
@@ -168,11 +176,13 @@ export default function TeamRosterPage() {
   const rosterRef = useRef<RosterData | null>(null);
   const draggedIndexRef = useRef<number | null>(null);
   const isOwnerRef = useRef(false);
+  const canEditRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => { rosterRef.current = roster; }, [roster]);
   useEffect(() => { isOwnerRef.current = isOwner; }, [isOwner]);
+  useEffect(() => { canEditRef.current = isOwner || isAdmin; }, [isOwner, isAdmin]);
 
   // React registers onTouchMove as passive (cannot call preventDefault), so iOS Safari
   // intercepts the gesture for scrolling before our handler can reorder rows.
@@ -181,7 +191,7 @@ export default function TeamRosterPage() {
     const onTouchStart = (e: TouchEvent) => {
       const handle = (e.target as Element).closest('[data-drag-handle]') as HTMLElement | null;
       if (!handle) return;
-      if (!isOwnerRef.current || rosterRef.current?.locked) return;
+      if (!canEditRef.current || rosterRef.current?.locked) return;
       const rowEl = handle.closest('tr[data-index]') as HTMLElement | null;
       if (!rowEl) return;
       const index = parseInt(rowEl.dataset.index ?? '-1', 10);
@@ -216,7 +226,7 @@ export default function TeamRosterPage() {
       // Prevent iOS scroll during active drag
       e.preventDefault();
       const currentRoster = rosterRef.current;
-      if (!currentRoster || currentRoster.locked || !isOwnerRef.current) return;
+      if (!currentRoster || currentRoster.locked || !canEditRef.current) return;
       const touch = e.touches[0];
       const elem = document.elementFromPoint(touch.clientX, touch.clientY);
       const row = elem?.closest('tr[data-index]') as HTMLElement | null;
@@ -227,11 +237,11 @@ export default function TeamRosterPage() {
       const draggedItem = items[currentDraggedIndex];
       const targetItem = items[targetIndex];
       const isDraggedPickup =
-        draggedItem.player.ablstatus?.acqType === 'fa' ||
-        draggedItem.player.ablstatus?.acqType === 'trade';
+        draggedItem.acqType === 'fa' ||
+        draggedItem.acqType === 'trade';
       const isTargetDrafted =
-        targetItem.player.ablstatus?.acqType === 'draft' ||
-        targetItem.player.ablstatus?.acqType === 'supp_draft';
+        targetItem.acqType === 'draft' ||
+        targetItem.acqType === 'supp_draft';
       if (isDraggedPickup && isTargetDrafted && targetIndex < currentDraggedIndex) return;
       items.splice(currentDraggedIndex, 1);
       items.splice(targetIndex, 0, draggedItem);
@@ -268,7 +278,7 @@ export default function TeamRosterPage() {
   }, []);
 
   const handlePositionChange = (index: number, newPosition: string) => {
-    if (!roster || roster.locked || !isOwner) return;
+    if (!roster || roster.locked || (!isOwner && !isAdmin)) return;
     const items = [...roster.roster];
     items[index].lineupPosition = newPosition;
     setRoster({ ...roster, roster: items });
@@ -298,7 +308,7 @@ export default function TeamRosterPage() {
   };
 
   const handleDropPlayer = async (playerId: string, playerName: string, acqType: string) => {
-    if (!isOwner) { alert('Only the team owner can modify the roster'); return; }
+    if (!isOwner && !isAdmin) { alert('Only the team owner or an admin can modify the roster'); return; }
     if (roster?.locked) { alert('Roster is locked for next game'); return; }
     if (acqType === 'draft' || acqType === 'supp_draft') { alert('Cannot drop drafted players'); return; }
     if (!confirm(`Drop ${playerName}?`)) return;
@@ -344,10 +354,10 @@ export default function TeamRosterPage() {
   if (!roster) return null;
 
   const draftedPlayers = roster.roster.filter(
-    r => r.player.ablstatus?.acqType === 'draft' || r.player.ablstatus?.acqType === 'supp_draft'
+    r => r.acqType === 'draft' || r.acqType === 'supp_draft'
   );
   const pickupPlayers = roster.roster.filter(
-    r => r.player.ablstatus?.acqType === 'fa' || r.player.ablstatus?.acqType === 'trade'
+    r => r.acqType === 'fa' || r.acqType === 'trade'
   );
 
   return (
@@ -470,10 +480,18 @@ export default function TeamRosterPage() {
           )}
         </div>
 
-        {!isOwner && (
+        {!isOwner && !isAdmin && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <p className="text-yellow-800">
               ℹ️ You are viewing this roster as a read-only member. Only the team owner can make changes.
+            </p>
+          </div>
+        )}
+
+        {isAdmin && !isOwner && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+            <p className="text-purple-800 font-medium">
+              🔑 Admin Mode — you can edit this roster on behalf of the team owner.
             </p>
           </div>
         )}
@@ -487,7 +505,17 @@ export default function TeamRosterPage() {
           )}
         </div>
 
-        {isOwner && hasChanges && (
+        {(isOwner || isAdmin) && !roster.locked && seasonStatus !== 'pre-draft' && (
+          <div className="mb-4">
+            <Link
+              href={`/${league}/${season}/teams/${teamId}/free-agents`}
+              className="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              + Add Players
+            </Link>
+          </div>
+        )}
+        {(isOwner || isAdmin) && hasChanges && (
           <div className="flex gap-3 mb-4">
             {!roster.locked && (
               <button
@@ -665,11 +693,9 @@ export default function TeamRosterPage() {
             {roster.roster.map((item, index) => {
               const isDrafted =
                 item.acqType === 'draft' ||
-                item.acqType === 'supp_draft' ||
-                item.player.ablstatus?.acqType === 'draft' ||
-                item.player.ablstatus?.acqType === 'supp_draft';
-              const canDrag = !roster.locked && isOwner;
-              const canDrop = !roster.locked && !isDrafted && isOwner;
+                item.acqType === 'supp_draft';
+              const canDrag = !roster.locked && (isOwner || isAdmin);
+              const canDrop = !roster.locked && !isDrafted && (isOwner || isAdmin);
               const b = item.player.stats?.batting;
               const sb = b?.stolenBases ?? null;
               const cs = b?.caughtStealing ?? null;
@@ -733,13 +759,19 @@ export default function TeamRosterPage() {
                     </div>
                   </td>
                   <td className="px-3 py-4 text-center">
-                    {!roster.locked && isOwner ? (
+                    {!roster.locked && (isOwner || isAdmin) ? (
                       <select
                         value={item.lineupPosition || ''}
                         onChange={e => handlePositionChange(index, e.target.value)}
                         className="text-sm border rounded px-2 py-1"
                       >
                         <option value="">--</option>
+                        {item.player.status?.includes('Injured') && (
+                          <option value="INJ">INJ (Injured)</option>
+                        )}
+                        {item.player.status?.includes('Minors') && (
+                          <option value="NA">NA (Minors)</option>
+                        )}
                         {item.player.eligible?.map(pos => (
                           <option key={pos} value={pos}>{pos}</option>
                         ))}

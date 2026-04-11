@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { getNextRosterEffectiveDate, isRosterLocked } from '@/app/lib/roster-utils';
+import { getAdminAuthState } from '@/app/lib/admin-auth';
 
 // POST /api/teams/:id/roster/add - Add player to roster
 export async function POST(
@@ -13,13 +14,26 @@ export async function POST(
     const { id: teamId } = await params;
     const body = await request.json();
 
-    const { playerId, position, acqType } = body;
+    const { playerId, position, acqType, adminOverride } = body;
 
     if (!playerId) {
       return NextResponse.json(
         { error: 'playerId is required' },
         { status: 400 }
       );
+    }
+
+    // If adminOverride is requested, verify the caller is actually an admin
+    let isAdminRequest = false;
+    if (adminOverride) {
+      const { isAdmin } = await getAdminAuthState();
+      if (!isAdmin) {
+        return NextResponse.json(
+          { error: 'Admin access required for adminOverride' },
+          { status: 403 }
+        );
+      }
+      isAdminRequest = true;
     }
 
     // Check if roster is locked
@@ -85,63 +99,90 @@ export async function POST(
     }
 
     // RULE: Check that team has IL player with matching position
-    const ilPlayerIds = lineup.roster
-      .filter((r: any) => r.lineupPosition === 'INJ' || r.lineupPosition === 'NA')
-      .map((r: any) => r.player);
+    // Admins can bypass this requirement
+    if (!isAdminRequest) {
+      const ilPlayerIds = lineup.roster
+        .filter((r: any) => r.lineupPosition === 'INJ' || r.lineupPosition === 'NA')
+        .map((r: any) => r.player);
 
-    if (ilPlayerIds.length === 0) {
-      return NextResponse.json(
-        { error: 'No IL players on roster. Cannot add free agents without IL player.' },
-        { status: 403 }
-      );
-    }
-
-    // Get IL player eligible positions
-    const ilPlayers = await db.collection('players_view')
-      .find({ _id: { $in: ilPlayerIds } })
-      .toArray();
-
-    const ilPositions = new Set<string>();
-    ilPlayers.forEach((p: any) => {
-      if (Array.isArray(p.eligible)) {
-        p.eligible.forEach((pos: string) => {
-          ilPositions.add(pos);
-        });
+      if (ilPlayerIds.length === 0) {
+        return NextResponse.json(
+          { error: 'No IL players on roster. Cannot add free agents without IL player.' },
+          { status: 403 }
+        );
       }
-    });
 
-    // Get new player eligible positions from players_view (has correct eligible array)
-    const newPlayerFromView = await db.collection('players_view').findOne({ _id: new ObjectId(playerId) });
-    const newPlayerEligible = newPlayerFromView?.eligible || player.eligible || [];
+      // Get IL player eligible positions
+      const ilPlayers = await db.collection('players_view')
+        .find({ _id: { $in: ilPlayerIds } })
+        .toArray();
 
-    // Check if new player matches any IL position
-    const hasMatchingPosition = newPlayerEligible.some((pos: string) => ilPositions.has(pos));
-    if (!hasMatchingPosition) {
-      return NextResponse.json(
-        { 
-          error: `Player is not eligible for any IL positions. IL positions: ${Array.from(ilPositions).join(', ')}`,
-          ilPositions: Array.from(ilPositions),
-          playerEligible: newPlayerEligible
-        },
-        { status: 403 }
-      );
+      const ilPositions = new Set<string>();
+      ilPlayers.forEach((p: any) => {
+        if (Array.isArray(p.eligible)) {
+          p.eligible.forEach((pos: string) => {
+            ilPositions.add(pos);
+          });
+        }
+      });
+
+      // Get new player eligible positions from players_view (has correct eligible array)
+      const newPlayerFromView = await db.collection('players_view').findOne({ _id: new ObjectId(playerId) });
+      const newPlayerEligible = newPlayerFromView?.eligible || player.eligible || [];
+
+      // Check if new player matches any IL position
+      const hasMatchingPosition = newPlayerEligible.some((pos: string) => ilPositions.has(pos));
+      if (!hasMatchingPosition) {
+        return NextResponse.json(
+          { 
+            error: `Player is not eligible for any IL positions. IL positions: ${Array.from(ilPositions).join(', ')}`,
+            ilPositions: Array.from(ilPositions),
+            playerEligible: newPlayerEligible
+          },
+          { status: 403 }
+        );
+      }
+
+      // Determine position - use provided position, or first eligible position matching IL
+      let lineupPosition = position;
+      if (!lineupPosition) {
+        // Try to use first matching IL position, otherwise first eligible
+        lineupPosition = newPlayerEligible.find((pos: string) => ilPositions.has(pos)) || newPlayerEligible[0];
+      }
+
+      // Add player to end of roster with next rosterOrder
+      const nextRosterOrder = lineup.roster.length + 1;
+      lineup.roster.push({
+        player: new ObjectId(playerId),
+        lineupPosition: lineupPosition,
+        rosterOrder: nextRosterOrder,
+        acqType: acqType || 'fa',
+      });
+    } else {
+      // Admin path: skip IL check, use provided position or first eligible
+      const newPlayerFromView = await db.collection('players_view').findOne({ _id: new ObjectId(playerId) });
+      const newPlayerEligible = newPlayerFromView?.eligible || player.eligible || [];
+
+      let lineupPosition = position;
+      if (!lineupPosition) {
+        if (newPlayerEligible.length === 0) {
+          return NextResponse.json(
+            { error: 'Player has no eligible positions' },
+            { status: 400 }
+          );
+        }
+        lineupPosition = newPlayerEligible[0];
+      }
+
+      // Add player to end of roster with next rosterOrder
+      const nextRosterOrder = lineup.roster.length + 1;
+      lineup.roster.push({
+        player: new ObjectId(playerId),
+        lineupPosition: lineupPosition,
+        rosterOrder: nextRosterOrder,
+        acqType: acqType || 'fa',
+      });
     }
-
-    // Determine position - use provided position, or first eligible position matching IL
-    let lineupPosition = position;
-    if (!lineupPosition) {
-      // Try to use first matching IL position, otherwise first eligible
-      lineupPosition = newPlayerEligible.find((pos: string) => ilPositions.has(pos)) || newPlayerEligible[0];
-    }
-
-    // Add player to end of roster with next rosterOrder
-    const nextRosterOrder = lineup.roster.length + 1;
-    lineup.roster.push({
-      player: new ObjectId(playerId),
-      lineupPosition: lineupPosition,
-      rosterOrder: nextRosterOrder,
-      acqType: acqType || 'fa',
-    });
     lineup.updatedAt = new Date();
 
     // Update lineup document
@@ -165,12 +206,13 @@ export async function POST(
 
     // Populate player data for response
     const updatedPlayer = await db.collection('players').findOne({ _id: new ObjectId(playerId) });
+    const addedEntry = lineup.roster[lineup.roster.length - 1];
 
     return NextResponse.json({
       success: true,
       player: updatedPlayer,
-      rosterOrder: nextRosterOrder,
-      lineupPosition: lineupPosition,
+      rosterOrder: addedEntry.rosterOrder,
+      lineupPosition: addedEntry.lineupPosition,
       effectiveDate: effectiveDate
     });
 
