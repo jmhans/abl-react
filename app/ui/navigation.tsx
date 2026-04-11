@@ -265,6 +265,7 @@ export default function Navigation() {
 
         {/* Profile */}
         <div className="border-t border-gray-200 p-4">
+          <Link href="/feedback" className={`block px-1 py-1.5 mb-2 text-xs text-gray-500 hover:text-blue-600 transition-colors ${isActive('/feedback') ? 'text-blue-600 font-semibold' : ''}`}>💬 Feedback</Link>
           {user ? (
             <div className="flex items-center gap-3">
               <div className="shrink-0 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
