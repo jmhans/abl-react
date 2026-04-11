@@ -93,7 +93,12 @@ export default function StandingsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-3 py-6 md:px-4 md:py-8">
-      <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">Standings</h1>
+      <div className="mb-6 md:mb-8">
+        <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-3 md:mb-4 inline-block text-sm md:text-base">
+          ← Back to Home
+        </Link>
+        <h1 className="text-2xl md:text-4xl font-bold text-gray-900">Standings</h1>
+      </div>
 
       {/* Tabs */}
       <div className="mb-4 md:mb-6 border-b border-gray-200">

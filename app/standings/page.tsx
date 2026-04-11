@@ -89,7 +89,12 @@ export default function StandingsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-4xl font-bold text-gray-900 mb-8">Standings</h1>
+      <div className="mb-8">
+        <Link href="/" className="text-blue-600 hover:text-blue-800 mb-4 inline-block">
+          ← Back to Home
+        </Link>
+        <h1 className="text-4xl font-bold text-gray-900">Standings</h1>
+      </div>
 
       {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
