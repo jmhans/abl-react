@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useLeagueSeason, leagueSeasonQuery } from '@/app/lib/league-season-context';
 
@@ -63,31 +63,97 @@ export default function GamesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchGames = useCallback(async () => {
+    try {
+      const [gamesRes, myLeaguesRes] = await Promise.all([
+        fetch(`/api/games?view=summary&${leagueSeasonQuery(ctx)}`),
+        fetch('/api/auth/my-leagues').catch(() => null),
+      ]);
+      if (!gamesRes.ok) throw new Error('Failed to fetch games');
+      setGames(await gamesRes.json());
+
+      const myLeaguesData = myLeaguesRes?.ok ? await myLeaguesRes.json() : [];
+      const myEntry = (Array.isArray(myLeaguesData) ? myLeaguesData : []).find(
+        (e: any) => e.league?.slug === league && String(e.season?.year) === String(season)
+      );
+      if (myEntry?.team?._id) setUserTeamId(myEntry.team._id);
+    } catch (err) {
+      setError('Failed to load games');
+      console.error(err);
+    }
+  }, [ctx, league, season]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [gamesRes, myLeaguesRes] = await Promise.all([
-          fetch(`/api/games?view=summary&${leagueSeasonQuery(ctx)}`),
-          fetch('/api/auth/my-leagues').catch(() => null),
+        const [, cooldownRes] = await Promise.all([
+          fetchGames(),
+          fetch('/api/scores/refresh').catch(() => null),
         ]);
-        if (!gamesRes.ok) throw new Error('Failed to fetch games');
-        setGames(await gamesRes.json());
-
-        const myLeaguesData = myLeaguesRes?.ok ? await myLeaguesRes.json() : [];
-        const myEntry = (Array.isArray(myLeaguesData) ? myLeaguesData : []).find(
-          (e: any) => e.league?.slug === league && String(e.season?.year) === String(season)
-        );
-        if (myEntry?.team?._id) setUserTeamId(myEntry.team._id);
-      } catch (err) {
-        setError('Failed to load games');
-        console.error(err);
+        const cooldownData = cooldownRes?.ok ? await cooldownRes.json() : null;
+        if (cooldownData) {
+          setLoggedIn(!!cooldownData.loggedIn);
+          if (cooldownData.onCooldown && cooldownData.secondsRemaining > 0) {
+            startCooldownTimer(cooldownData.secondsRemaining);
+          }
+        }
       } finally {
         setLoading(false);
       }
     }
     load();
+
+    return () => {
+      if (cooldownTimer.current) clearInterval(cooldownTimer.current);
+    };
   }, [league, season]);
+
+  function startCooldownTimer(seconds: number) {
+    setCooldownSeconds(seconds);
+    if (cooldownTimer.current) clearInterval(cooldownTimer.current);
+    cooldownTimer.current = setInterval(() => {
+      setCooldownSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(cooldownTimer.current!);
+          cooldownTimer.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
+  const handleRefresh = async () => {
+    if (refreshing || cooldownSeconds > 0) return;
+    setRefreshing(true);
+    setRefreshMsg(null);
+    try {
+      const res = await fetch('/api/scores/refresh', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 429 && data.secondsRemaining) {
+          startCooldownTimer(data.secondsRemaining);
+          setRefreshMsg({ text: 'Already refreshed recently — try again in a moment.', ok: false });
+        } else {
+          setRefreshMsg({ text: data.error || 'Refresh failed', ok: false });
+        }
+      } else {
+        setRefreshMsg({ text: `Scores updated — ${data.gamesRecalculated} game${data.gamesRecalculated !== 1 ? 's' : ''} recalculated.`, ok: true });
+        startCooldownTimer(300);
+        await fetchGames();
+      }
+    } catch {
+      setRefreshMsg({ text: 'Something went wrong.', ok: false });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -123,8 +189,38 @@ export default function GamesPage() {
         <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-2 inline-block text-sm">
           ← Back to Home
         </Link>
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900">ABL Games</h1>
-        <p className="text-gray-500 text-xs mt-0.5">{games.length} games total</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">ABL Games</h1>
+            <p className="text-gray-500 text-xs mt-0.5">{games.length} games total</p>
+          </div>
+          {loggedIn && (
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing || cooldownSeconds > 0}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {refreshing ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Refreshing…
+                  </>
+                ) : cooldownSeconds > 0 ? (
+                  `Refresh (${Math.floor(cooldownSeconds / 60)}:${String(cooldownSeconds % 60).padStart(2, '0')})`
+                ) : (
+                  '↻ Refresh Scores'
+                )}
+              </button>
+              {refreshMsg && (
+                <p className={`text-xs ${refreshMsg.ok ? 'text-green-600' : 'text-red-500'}`}>{refreshMsg.text}</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
