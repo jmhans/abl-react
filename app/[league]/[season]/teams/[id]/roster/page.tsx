@@ -153,11 +153,11 @@ export default function TeamRosterPage() {
     const targetItem = items[index];
 
     const isDraggedPickup =
-      draggedItem.player.ablstatus?.acqType === 'fa' ||
-      draggedItem.player.ablstatus?.acqType === 'trade';
+      draggedItem.acqType === 'fa' ||
+      draggedItem.acqType === 'trade';
     const isTargetDrafted =
-      targetItem.player.ablstatus?.acqType === 'draft' ||
-      targetItem.player.ablstatus?.acqType === 'supp_draft';
+      targetItem.acqType === 'draft' ||
+      targetItem.acqType === 'supp_draft';
 
     if (isDraggedPickup && isTargetDrafted && index < draggedIndex) return;
 
@@ -237,11 +237,11 @@ export default function TeamRosterPage() {
       const draggedItem = items[currentDraggedIndex];
       const targetItem = items[targetIndex];
       const isDraggedPickup =
-        draggedItem.player.ablstatus?.acqType === 'fa' ||
-        draggedItem.player.ablstatus?.acqType === 'trade';
+        draggedItem.acqType === 'fa' ||
+        draggedItem.acqType === 'trade';
       const isTargetDrafted =
-        targetItem.player.ablstatus?.acqType === 'draft' ||
-        targetItem.player.ablstatus?.acqType === 'supp_draft';
+        targetItem.acqType === 'draft' ||
+        targetItem.acqType === 'supp_draft';
       if (isDraggedPickup && isTargetDrafted && targetIndex < currentDraggedIndex) return;
       items.splice(currentDraggedIndex, 1);
       items.splice(targetIndex, 0, draggedItem);
@@ -354,10 +354,10 @@ export default function TeamRosterPage() {
   if (!roster) return null;
 
   const draftedPlayers = roster.roster.filter(
-    r => r.player.ablstatus?.acqType === 'draft' || r.player.ablstatus?.acqType === 'supp_draft'
+    r => r.acqType === 'draft' || r.acqType === 'supp_draft'
   );
   const pickupPlayers = roster.roster.filter(
-    r => r.player.ablstatus?.acqType === 'fa' || r.player.ablstatus?.acqType === 'trade'
+    r => r.acqType === 'fa' || r.acqType === 'trade'
   );
 
   return (
@@ -693,9 +693,7 @@ export default function TeamRosterPage() {
             {roster.roster.map((item, index) => {
               const isDrafted =
                 item.acqType === 'draft' ||
-                item.acqType === 'supp_draft' ||
-                item.player.ablstatus?.acqType === 'draft' ||
-                item.player.ablstatus?.acqType === 'supp_draft';
+                item.acqType === 'supp_draft';
               const canDrag = !roster.locked && (isOwner || isAdmin);
               const canDrop = !roster.locked && !isDrafted && (isOwner || isAdmin);
               const b = item.player.stats?.batting;
