@@ -597,12 +597,18 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
     }
   }
 
+  // All active (non-postponed, regular season) MLB games must be Final for scores to be official
+  const allMlbGamesComplete =
+    activeGames.length === 0 ||
+    activeGames.every((game: any) => game?.status?.abstractGameState === 'Final');
+
   return {
     date: dateYmd,
     scheduledGames: games.length,
     playersUpdated,
     statlinesUpdated,
     gameSummaries,
+    allMlbGamesComplete,
   };
 }
 
@@ -680,7 +686,7 @@ export async function ensureRostersLockedForGames(db: Db, games: any[], official
   return { locked, alreadySet };
 }
 
-export async function recalculateAblGamesForDate(db: Db, gameDate: Date) {
+export async function recalculateAblGamesForDate(db: Db, gameDate: Date, options?: { isFinal?: boolean }) {
   const dayStart = new Date(Date.UTC(gameDate.getUTCFullYear(), gameDate.getUTCMonth(), gameDate.getUTCDate(), 0, 0, 0, 0));
   const dayEnd = new Date(Date.UTC(gameDate.getUTCFullYear(), gameDate.getUTCMonth(), gameDate.getUTCDate(), 23, 59, 59, 999));
 
@@ -695,13 +701,14 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date) {
   const officialDate = formatDateYmd(gameDate);
   const rosterLockSummary = await ensureRostersLockedForGames(db, games, officialDate);
 
+  const isFinal = options?.isFinal ?? false;
   let processed = 0;
   let skipped = 0;
   let errors = 0;
 
   for (const game of games) {
     try {
-      const outcome = await calculateAndStoreLiveGameResult(db, game, { save: true });
+      const outcome = await calculateAndStoreLiveGameResult(db, game, { save: true, isFinal });
       if (outcome.status === 'skipped') {
         skipped++;
       } else {
@@ -719,6 +726,7 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date) {
     skipped,
     errors,
     rosterLockSummary,
+    isFinal,
   };
 }
 
@@ -727,7 +735,9 @@ export async function runDailyStatRefresh(db: Db, gameDate: Date, options?: { re
 
   let recalcSummary: any = null;
   if (options?.recalculate !== false) {
-    recalcSummary = await recalculateAblGamesForDate(db, gameDate);
+    recalcSummary = await recalculateAblGamesForDate(db, gameDate, {
+      isFinal: refreshSummary.allMlbGamesComplete,
+    });
   }
 
   return {

@@ -239,6 +239,7 @@ export default function GamesPage() {
                 {sorted.map(game => {
                   const isMyGame = !!userTeamId && (game.awayTeam?._id === userTeamId || game.homeTeam?._id === userTeamId);
                   const hasResult = !!game.result?.winner;
+                  const isFinal = game.result?.isFinal !== false; // treat missing as true for old records
                   const result = hasResult ? game.result! : null;
                   const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
                   const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
@@ -255,22 +256,24 @@ export default function GamesPage() {
                     >
                       {/* Away team */}
                       <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className={`font-medium truncate ${result?.winner?._id === game.awayTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.awayTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
+                        <span className={`font-medium truncate ${hasResult && isFinal && result?.winner?._id === game.awayTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.awayTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
                           {game.awayTeam?.nickname}
                         </span>
                         <span className="font-mono text-gray-700 shrink-0">{awayScore ?? '—'}</span>
                       </div>
                       {/* Home team */}
                       <div className="flex items-center justify-between gap-1">
-                        <span className={`font-medium truncate ${result?.winner?._id === game.homeTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.homeTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
+                        <span className={`font-medium truncate ${hasResult && isFinal && result?.winner?._id === game.homeTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.homeTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
                           {game.homeTeam?.nickname}
                         </span>
                         <span className="font-mono text-gray-700 shrink-0">{homeScore ?? '—'}</span>
                       </div>
                       {/* Status */}
                       <div className="mt-1.5">
-                        {hasResult ? (
+                        {hasResult && isFinal ? (
                           <span className="text-green-700 font-medium">Final</span>
+                        ) : hasResult ? (
+                          <span className="text-yellow-600 font-medium">In Progress</span>
                         ) : (
                           <span className="text-gray-400">Scheduled</span>
                         )}
