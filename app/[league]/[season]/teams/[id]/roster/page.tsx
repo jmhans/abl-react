@@ -163,65 +163,108 @@ export default function TeamRosterPage() {
 
   const handleDragEnd = () => { setDraggedIndex(null); };
 
+  // Refs so native (non-passive) touch handlers always see fresh state without stale closures
+  const rosterRef = useRef<RosterData | null>(null);
+  const draggedIndexRef = useRef<number | null>(null);
+  const isOwnerRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  const handleTouchStart = (e: React.TouchEvent, index: number) => {
-    if (roster?.locked || !isOwner) return;
-    longPressTimerRef.current = setTimeout(() => {
-      setDraggedIndex(index);
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(50);
+  useEffect(() => { rosterRef.current = roster; }, [roster]);
+  useEffect(() => { isOwnerRef.current = isOwner; }, [isOwner]);
+
+  // React registers onTouchMove as passive (cannot call preventDefault), so iOS Safari
+  // intercepts the gesture for scrolling before our handler can reorder rows.
+  // Solution: attach non-passive native listeners to document so preventDefault works.
+  useEffect(() => {
+    const onTouchStart = (e: TouchEvent) => {
+      const handle = (e.target as Element).closest('[data-drag-handle]') as HTMLElement | null;
+      if (!handle) return;
+      if (!isOwnerRef.current || rosterRef.current?.locked) return;
+      const rowEl = handle.closest('tr[data-index]') as HTMLElement | null;
+      if (!rowEl) return;
+      const index = parseInt(rowEl.dataset.index ?? '-1', 10);
+      if (isNaN(index) || index < 0) return;
+      const touch = e.touches[0];
+      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+      // Prevent iOS from claiming this touch for scroll
+      e.preventDefault();
+      longPressTimerRef.current = setTimeout(() => {
+        draggedIndexRef.current = index;
+        setDraggedIndex(index);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      }, 300);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      // Cancel long-press if finger moved significantly before it fired
+      if (longPressTimerRef.current !== null && touchStartPosRef.current) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchStartPosRef.current.x;
+        const dy = touch.clientY - touchStartPosRef.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 15) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+          touchStartPosRef.current = null;
+        }
       }
-    }, 300);
-  };
+      const currentDraggedIndex = draggedIndexRef.current;
+      if (currentDraggedIndex === null) return;
+      // Prevent iOS scroll during active drag
+      e.preventDefault();
+      const currentRoster = rosterRef.current;
+      if (!currentRoster || currentRoster.locked || !isOwnerRef.current) return;
+      const touch = e.touches[0];
+      const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+      const row = elem?.closest('tr[data-index]') as HTMLElement | null;
+      if (!row) return;
+      const targetIndex = parseInt(row.dataset.index ?? '-1', 10);
+      if (isNaN(targetIndex) || targetIndex < 0 || targetIndex === currentDraggedIndex) return;
+      const items = [...currentRoster.roster];
+      const draggedItem = items[currentDraggedIndex];
+      const targetItem = items[targetIndex];
+      const isDraggedPickup =
+        draggedItem.player.ablstatus?.acqType === 'fa' ||
+        draggedItem.player.ablstatus?.acqType === 'trade';
+      const isTargetDrafted =
+        targetItem.player.ablstatus?.acqType === 'draft' ||
+        targetItem.player.ablstatus?.acqType === 'supp_draft';
+      if (isDraggedPickup && isTargetDrafted && targetIndex < currentDraggedIndex) return;
+      items.splice(currentDraggedIndex, 1);
+      items.splice(targetIndex, 0, draggedItem);
+      items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+      const newRoster = { ...currentRoster, roster: items };
+      // Update refs immediately so the next touchmove sees fresh values
+      rosterRef.current = newRoster;
+      draggedIndexRef.current = targetIndex;
+      setRoster(newRoster);
+      setDraggedIndex(targetIndex);
+      setHasChanges(true);
+    };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (draggedIndex === null) {
+    const onTouchEnd = () => {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
       }
-      return;
-    }
-    if (!roster || roster.locked || !isOwner) return;
+      touchStartPosRef.current = null;
+      draggedIndexRef.current = null;
+      setDraggedIndex(null);
+    };
 
-    const touch = e.touches[0];
-    const elem = document.elementFromPoint(touch.clientX, touch.clientY);
-    const row = elem?.closest('tr[data-index]') as HTMLElement | null;
-    if (!row) return;
-
-    const targetIndex = parseInt(row.dataset.index ?? '-1', 10);
-    if (isNaN(targetIndex) || targetIndex < 0 || targetIndex === draggedIndex) return;
-
-    const items = [...roster.roster];
-    const draggedItem = items[draggedIndex];
-    const targetItem = items[targetIndex];
-
-    const isDraggedPickup =
-      draggedItem.player.ablstatus?.acqType === 'fa' ||
-      draggedItem.player.ablstatus?.acqType === 'trade';
-    const isTargetDrafted =
-      targetItem.player.ablstatus?.acqType === 'draft' ||
-      targetItem.player.ablstatus?.acqType === 'supp_draft';
-
-    if (isDraggedPickup && isTargetDrafted && targetIndex < draggedIndex) return;
-
-    items.splice(draggedIndex, 1);
-    items.splice(targetIndex, 0, draggedItem);
-    items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
-
-    setRoster({ ...roster, roster: items });
-    setDraggedIndex(targetIndex);
-    setHasChanges(true);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    setDraggedIndex(null);
-  };
+    document.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+    document.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
 
   const handlePositionChange = (index: number, newPosition: string) => {
     if (!roster || roster.locked || !isOwner) return;
@@ -646,10 +689,7 @@ export default function TeamRosterPage() {
                       <div
                         className="cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 flex items-center justify-center select-none"
                         style={{ touchAction: 'none' }}
-                        onTouchStart={(e) => handleTouchStart(e, index)}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        onTouchCancel={handleTouchEnd}
+                        data-drag-handle="true"
                         aria-label="Drag to reorder"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
