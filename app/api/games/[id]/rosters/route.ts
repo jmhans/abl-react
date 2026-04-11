@@ -209,7 +209,8 @@ export async function GET(
       away_score: normalizeTeamScore(awayScore),
       result: {
         winner: homeTeam && latestResult.winner?.toString() === game.homeTeam.toString() ? homeTeam : awayTeam,
-        loser: homeTeam && latestResult.winner?.toString() === game.homeTeam.toString() ? awayTeam : homeTeam
+        loser: homeTeam && latestResult.winner?.toString() === game.homeTeam.toString() ? awayTeam : homeTeam,
+        isFinal: latestResult.isFinal !== false, // treat missing as true for pre-existing records
       },
       status: latestResult.status || 'live'
     });

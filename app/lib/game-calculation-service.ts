@@ -53,8 +53,9 @@ export async function saveCalculatedResult(db: Db, gameId: string, result: any) 
   );
 }
 
-export async function calculateAndStoreLiveGameResult(db: Db, game: any, options?: { save?: boolean }) {
+export async function calculateAndStoreLiveGameResult(db: Db, game: any, options?: { save?: boolean; isFinal?: boolean }) {
   const save = options?.save !== false;
+  const isFinal = options?.isFinal ?? false;
 
   let homeSourceRoster = game?.homeTeamRoster || [];
   let awaySourceRoster = game?.awayTeamRoster || [];
@@ -115,7 +116,8 @@ export async function calculateAndStoreLiveGameResult(db: Db, game: any, options
     };
   }
 
-  const updateResult = await saveCalculatedResult(db, game._id.toString(), result);
+  const resultWithFinal = { ...result, isFinal };
+  const updateResult = await saveCalculatedResult(db, game._id.toString(), resultWithFinal);
   const savedGame = updateResult ? updateResult.value : null;
 
   return {

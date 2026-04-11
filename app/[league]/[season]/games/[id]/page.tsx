@@ -48,7 +48,7 @@ interface GameRoster {
   awayTeam: Player[];
   home_score: { regulation: any; final: any };
   away_score: { regulation: any; final: any };
-  result?: { winner: Team; loser: Team };
+  result?: { winner: Team; loser: Team; isFinal?: boolean };
   status: string;
 }
 
@@ -239,8 +239,11 @@ export default function GameDetailPage() {
 
           <div className="text-center">
             <div className="text-4xl font-bold text-gray-400">@</div>
-            {isLive && rosters?.result?.winner && (
+            {isLive && rosters?.result?.winner && rosters.result.isFinal !== false && (
               <p className="text-sm text-green-600 font-semibold mt-2">FINAL</p>
+            )}
+            {isLive && rosters?.result?.winner && rosters.result.isFinal === false && (
+              <p className="text-sm text-yellow-600 font-semibold mt-2">IN PROGRESS</p>
             )}
           </div>
 
