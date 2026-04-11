@@ -253,7 +253,6 @@ export default function Navigation() {
           ) : (
             user && <div className="px-4 py-2 text-xs text-gray-400">No team this season</div>
           )}
-          <Link href="/feedback" className={navLinkClass('/feedback')}>Feedback</Link>
           {isAdmin && (
             <Link
               href={`/admin${currentLeagueSlug && currentSeasonYear ? `?league=${currentLeagueSlug}&season=${currentSeasonYear}` : ''}`}
@@ -266,6 +265,7 @@ export default function Navigation() {
 
         {/* Profile */}
         <div className="border-t border-gray-200 p-4">
+          <Link href="/feedback" className={`block px-1 py-1.5 mb-2 text-xs text-gray-500 hover:text-blue-600 transition-colors ${isActive('/feedback') ? 'text-blue-600 font-semibold' : ''}`}>💬 Feedback</Link>
           {user ? (
             <div className="flex items-center gap-3">
               <div className="shrink-0 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold overflow-hidden">
