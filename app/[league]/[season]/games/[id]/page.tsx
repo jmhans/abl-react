@@ -39,6 +39,7 @@ interface Player {
   ablPlayedType?: string | null;
   dailyStats?: PlayerStats;
   playedPosition?: string;
+  lineupPosition?: string;
   lineupOrder?: number;
 }
 
