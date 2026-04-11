@@ -516,7 +516,7 @@ export default function DraftPage() {
   };
 
   const handleUndo = async () => {
-    if (!activeDraft) return;
+    if (!activeDraft || !isAdmin) return;
     try {
       setIsWorking(true);
       setError(null);
@@ -621,6 +621,7 @@ export default function DraftPage() {
               {adminPickMode ? '🔓 Admin Pick Mode ON' : '🔒 Admin Pick Mode'}
             </button>
           )}
+          {isAdmin && (
           <button
             type="button"
             onClick={handleUndo}
@@ -629,6 +630,7 @@ export default function DraftPage() {
           >
             Undo Last Pick
           </button>
+          )}
           {isAdmin && activeDraft && (
             <button
               type="button"

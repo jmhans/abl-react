@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { resolveLeagueContext } from '@/app/lib/league-context';
+import { getDisplayNameMap, sanitizeDisplayName } from '@/app/lib/display-name';
+
+function populateOwnerNames(teams: any[], nameMap: Map<string, string>) {
+  for (const team of teams) {
+    if (!Array.isArray(team.owners)) continue;
+    for (const owner of team.owners) {
+      if (!owner.userId) continue;
+      const display = nameMap.get(owner.userId);
+      if (display) {
+        owner.name = display;
+      } else if (!owner.name || owner.name === owner.userId) {
+        // Fall back to a sanitized version of whatever name Auth0 gave us
+        owner.name = sanitizeDisplayName(owner.name, owner.userId);
+      }
+    }
+  }
+}
 
 // GET /api/teams?league=abl&season=2025 - Get teams, optionally scoped to a season
 export async function GET(request: NextRequest) {
@@ -21,11 +38,17 @@ export async function GET(request: NextRequest) {
       const teams = await db.collection('ablteams')
         .find({ _id: { $in: teamIds } })
         .toArray();
+      const userIds = teams.flatMap((t: any) => (t.owners ?? []).map((o: any) => o.userId).filter(Boolean));
+      const nameMap = await getDisplayNameMap(db, userIds);
+      populateOwnerNames(teams, nameMap);
       return NextResponse.json(teams);
     }
 
     // No filter — return all teams (admin / legacy use)
     const teams = await db.collection('ablteams').find({}).toArray();
+    const userIds = teams.flatMap((t: any) => (t.owners ?? []).map((o: any) => o.userId).filter(Boolean));
+    const nameMap = await getDisplayNameMap(db, userIds);
+    populateOwnerNames(teams, nameMap);
     return NextResponse.json(teams);
   } catch (error) {
     console.error('Error fetching teams:', error);
