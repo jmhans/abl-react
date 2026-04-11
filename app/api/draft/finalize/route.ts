@@ -4,7 +4,7 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 import { getNextRosterEffectiveDate } from '@/app/lib/roster-utils';
 import { resolveLeagueContext } from '@/app/lib/league-context';
-import { getDraftEligiblePositions } from '@/app/lib/draft-utils';
+import { getDraftEligiblePositions, DraftPlayer } from '@/app/lib/draft-utils';
 
 function toObjectId(id: string) {
   return new ObjectId(id);
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       const sorted = [...teamPicks].sort((a, b) => a.pick.overallPick - b.pick.overallPick);
       const roster = sorted.map((entry, index) => {
         const player = playerMap.get(entry.playerId);
-        const eligiblePositions = player ? getDraftEligiblePositions(player) : [];
+        const eligiblePositions = player ? getDraftEligiblePositions(player as unknown as DraftPlayer) : [];
         return {
           player: toObjectId(entry.playerId),
           lineupPosition: eligiblePositions.length > 0 ? eligiblePositions[0] : null,
