@@ -354,12 +354,18 @@ export default function TeamRosterPage() {
 
   if (!roster) return null;
 
+  const ROSTER_LIMIT = 24; // increases to 27 after Supplemental Draft
+
   const draftedPlayers = roster.roster.filter(
     r => r.acqType === 'draft' || r.acqType === 'supp_draft'
   );
   const pickupPlayers = roster.roster.filter(
     r => r.acqType === 'fa' || r.acqType === 'trade'
   );
+  const activePlayers = roster.roster.filter(
+    r => r.lineupPosition !== 'INJ' && r.lineupPosition !== 'NA'
+  );
+  const rosterAtCapacity = activePlayers.length >= ROSTER_LIMIT;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -508,12 +514,18 @@ export default function TeamRosterPage() {
 
         {(isOwner || isAdmin) && !roster.locked && seasonStatus !== 'pre-draft' && (
           <div className="mb-4">
-            <Link
-              href={`/${league}/${season}/teams/${teamId}/free-agents`}
-              className="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              + Add Players
-            </Link>
+            {!rosterAtCapacity ? (
+              <Link
+                href={`/${league}/${season}/teams/${teamId}/free-agents`}
+                className="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              >
+                + Add Players
+              </Link>
+            ) : (
+              <span className="inline-block bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 px-5 py-2 rounded-lg text-sm cursor-not-allowed" title={`Roster is at capacity (${ROSTER_LIMIT} active players)`}>
+                + Add Players
+              </span>
+            )}
           </div>
         )}
         {(isOwner || isAdmin) && hasChanges && (
