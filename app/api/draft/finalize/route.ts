@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const allPlayerIds = picks
       .map((entry: { playerId?: string }) => entry.playerId)
       .filter(Boolean)
-      .map((id) => new ObjectId(id as string));
+      .map((id: string) => new ObjectId(id));
     const players = allPlayerIds.length
       ? await db.collection('players_view').find({ _id: { $in: allPlayerIds } }).toArray()
       : [];
