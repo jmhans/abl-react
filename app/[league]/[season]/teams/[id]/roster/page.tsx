@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
@@ -162,6 +162,109 @@ export default function TeamRosterPage() {
   };
 
   const handleDragEnd = () => { setDraggedIndex(null); };
+
+  // Refs so native (non-passive) touch handlers always see fresh state without stale closures
+  const rosterRef = useRef<RosterData | null>(null);
+  const draggedIndexRef = useRef<number | null>(null);
+  const isOwnerRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => { rosterRef.current = roster; }, [roster]);
+  useEffect(() => { isOwnerRef.current = isOwner; }, [isOwner]);
+
+  // React registers onTouchMove as passive (cannot call preventDefault), so iOS Safari
+  // intercepts the gesture for scrolling before our handler can reorder rows.
+  // Solution: attach non-passive native listeners to document so preventDefault works.
+  useEffect(() => {
+    const onTouchStart = (e: TouchEvent) => {
+      const handle = (e.target as Element).closest('[data-drag-handle]') as HTMLElement | null;
+      if (!handle) return;
+      if (!isOwnerRef.current || rosterRef.current?.locked) return;
+      const rowEl = handle.closest('tr[data-index]') as HTMLElement | null;
+      if (!rowEl) return;
+      const index = parseInt(rowEl.dataset.index ?? '-1', 10);
+      if (isNaN(index) || index < 0) return;
+      const touch = e.touches[0];
+      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+      // Prevent iOS from claiming this touch for scroll
+      e.preventDefault();
+      longPressTimerRef.current = setTimeout(() => {
+        draggedIndexRef.current = index;
+        setDraggedIndex(index);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      }, 300);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      // Cancel long-press if finger moved significantly before it fired
+      if (longPressTimerRef.current !== null && touchStartPosRef.current) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchStartPosRef.current.x;
+        const dy = touch.clientY - touchStartPosRef.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 15) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+          touchStartPosRef.current = null;
+        }
+      }
+      const currentDraggedIndex = draggedIndexRef.current;
+      if (currentDraggedIndex === null) return;
+      // Prevent iOS scroll during active drag
+      e.preventDefault();
+      const currentRoster = rosterRef.current;
+      if (!currentRoster || currentRoster.locked || !isOwnerRef.current) return;
+      const touch = e.touches[0];
+      const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+      const row = elem?.closest('tr[data-index]') as HTMLElement | null;
+      if (!row) return;
+      const targetIndex = parseInt(row.dataset.index ?? '-1', 10);
+      if (isNaN(targetIndex) || targetIndex < 0 || targetIndex === currentDraggedIndex) return;
+      const items = [...currentRoster.roster];
+      const draggedItem = items[currentDraggedIndex];
+      const targetItem = items[targetIndex];
+      const isDraggedPickup =
+        draggedItem.player.ablstatus?.acqType === 'fa' ||
+        draggedItem.player.ablstatus?.acqType === 'trade';
+      const isTargetDrafted =
+        targetItem.player.ablstatus?.acqType === 'draft' ||
+        targetItem.player.ablstatus?.acqType === 'supp_draft';
+      if (isDraggedPickup && isTargetDrafted && targetIndex < currentDraggedIndex) return;
+      items.splice(currentDraggedIndex, 1);
+      items.splice(targetIndex, 0, draggedItem);
+      items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+      const newRoster = { ...currentRoster, roster: items };
+      // Update refs immediately so the next touchmove sees fresh values
+      rosterRef.current = newRoster;
+      draggedIndexRef.current = targetIndex;
+      setRoster(newRoster);
+      setDraggedIndex(targetIndex);
+      setHasChanges(true);
+    };
+
+    const onTouchEnd = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      touchStartPosRef.current = null;
+      draggedIndexRef.current = null;
+      setDraggedIndex(null);
+    };
+
+    document.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+    document.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+      document.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
 
   const handlePositionChange = (index: number, newPosition: string) => {
     if (!roster || roster.locked || !isOwner) return;
@@ -529,7 +632,7 @@ export default function TeamRosterPage() {
                   <li>• Drafted players cannot be dropped</li>
                   <li>• Drafted players must appear first in roster order</li>
                   <li>• Pickups can only be placed after all drafted players</li>
-                  <li>• Drag and drop rows to reorder (within rules)</li>
+                  <li>• Drag and drop rows to reorder (within rules) — use the grip handle on mobile</li>
                 </ul>
               </div>
             </>
@@ -541,6 +644,7 @@ export default function TeamRosterPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-2 py-3 w-8"></th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -571,14 +675,34 @@ export default function TeamRosterPage() {
               return (
                 <tr
                   key={item.player._id}
+                  data-index={index}
                   draggable={canDrag}
                   onDragStart={() => handleDragStart(index)}
                   onDragOver={e => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
                   className={`${draggedIndex === index ? 'opacity-50' : ''} ${
-                    canDrag ? 'cursor-move hover:bg-gray-50' : 'cursor-default'
+                    canDrag ? 'hover:bg-gray-50' : ''
                   } ${isDrafted ? 'bg-yellow-50' : ''}`}
                 >
+                  <td className="px-2 py-4 w-8 text-center">
+                    {canDrag && (
+                      <div
+                        className="cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 flex items-center justify-center select-none"
+                        style={{ touchAction: 'none' }}
+                        data-drag-handle="true"
+                        aria-label="Drag to reorder"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                          <circle cx="5.5" cy="4" r="1.5" />
+                          <circle cx="10.5" cy="4" r="1.5" />
+                          <circle cx="5.5" cy="8" r="1.5" />
+                          <circle cx="10.5" cy="8" r="1.5" />
+                          <circle cx="5.5" cy="12" r="1.5" />
+                          <circle cx="10.5" cy="12" r="1.5" />
+                        </svg>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-4 text-sm font-medium text-gray-900">{item.rosterOrder}</td>
                   <td className="px-3 py-4 text-sm">
                     <div className="font-medium text-gray-900">{item.player.name}</div>
