@@ -21,6 +21,7 @@ interface Game {
     winner?: Team;
     loser?: Team;
     scores?: any[];
+    isFinal?: boolean;
   };
 }
 
