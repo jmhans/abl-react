@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { getFirstMlbGameTimeForDate } from '@/app/lib/roster-utils';
 
 const EMPTY_SCORE = {
   ab: 0,
@@ -213,27 +214,21 @@ export async function PUT(
 
     // Option 2: Fetch rosters from team roster documents for the game date
     const gameDate = new Date(game.gameDate);
-    const gameNoonCT = new Date(
-      gameDate.getFullYear(),
-      gameDate.getMonth(),
-      gameDate.getDate(),
-      12,
-      0,
-      0
-    );
+    const officialDate = gameDate.toISOString().slice(0, 10);
+    const gameLockTime = await getFirstMlbGameTimeForDate(db, officialDate);
 
-    // Get the effective date (noon CT on game day or before)
+    // Get the effective date (first MLB game start time on game day, or noon CT fallback)
     const rosters = await db
       .collection('rosters')
       .find({
         $or: [
           {
             ablTeam: game.homeTeam,
-            effectiveDate: { $lte: gameNoonCT }
+            effectiveDate: { $lte: gameLockTime }
           },
           {
             ablTeam: game.awayTeam,
-            effectiveDate: { $lte: gameNoonCT }
+            effectiveDate: { $lte: gameLockTime }
           }
         ]
       })

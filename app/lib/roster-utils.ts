@@ -168,31 +168,60 @@ export function enrichPlayersWithEligibility(players: any[]): any[] {
     eligible: getEligiblePositions(player)
   }));
 }
+/**
+ * Get the first MLB regular-season game start time for a given official date.
+ * Uses the mlbgameschemas collection (kept fresh by the sync-mlb-schedule cron).
+ * Falls back to noon CT on that day when no non-TBD games are found.
+ *
+ * @param officialDate  YYYY-MM-DD string matching mlbgameschemas.officialDate
+ */
+export async function getFirstMlbGameTimeForDate(db: Db, officialDate: string): Promise<Date> {
+  const first = await db.collection('mlbgameschemas')
+    .find({
+      officialDate,
+      gameType: 'R',
+      'status.startTimeTBD': { $ne: true },
+    })
+    .sort({ gameDate: 1 })
+    .limit(1)
+    .toArray();
+
+  if (first.length > 0) {
+    return new Date(first[0].gameDate as string);
+  }
+
+  // Fallback: noon CT on that day
+  const [year, month, day] = officialDate.split('-').map(Number);
+  return getNoonCTAsUTC(new Date(year, month - 1, day));
+}
+
 export async function getNextRosterEffectiveDate(db: Db): Promise<Date> {
   try {
-    // Find next scheduled game
+    // Find next scheduled ABL game to determine the target date
     const nextGames = await db.collection('games')
       .find({ 
         gameDate: { $gte: new Date() },
-        gameType: 'R' // Regular season only
+        gameType: 'R',
       })
       .sort({ gameDate: 1 })
       .limit(1)
       .toArray();
-    
+
+    let targetDate: Date;
     if (nextGames.length === 0) {
-      // No upcoming games - use tomorrow's date for development/testing/off-season
-      // This gives users a day to make roster changes before locking
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return getNoonCTAsUTC(tomorrow);
+      // Off-season / no upcoming games — use tomorrow
+      targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + 1);
+    } else {
+      targetDate = new Date(nextGames[0].gameDate);
     }
-    
-    const nextGameDate = new Date(nextGames[0].gameDate);
-    
-    // Return noon CT on that game date
-    return getNoonCTAsUTC(nextGameDate);
-    
+
+    // Official date is the YYYY-MM-DD portion of the ABL game date (stored at noon CT = 17:00 UTC)
+    const officialDate = targetDate.toISOString().slice(0, 10);
+
+    // Lock time = first MLB regular-season game start on that date (or noon CT fallback)
+    return getFirstMlbGameTimeForDate(db, officialDate);
+
   } catch (error) {
     console.error('Error getting next roster effective date:', error);
     throw error;
