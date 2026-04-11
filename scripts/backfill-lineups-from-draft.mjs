@@ -59,15 +59,48 @@ for (const draft of completedDrafts) {
     byTeam.get(teamId).push(entry);
   }
 
+  // Fetch player data for all picks so we can set lineupPosition
+  const allPlayerIds = picks
+    .map(p => p.playerId)
+    .filter(Boolean)
+    .map(id => new ObjectId(id));
+  const players = allPlayerIds.length
+    ? await db.collection('players_view').find({ _id: { $in: allPlayerIds } }).toArray()
+    : [];
+  const playerMap = new Map(players.map(p => [p._id.toString(), p]));
+
+  function getFirstEligiblePosition(player) {
+    if (Array.isArray(player.eligible) && player.eligible.length > 0) {
+      return player.eligible[0];
+    }
+    if (player.position && typeof player.position === 'string' && player.position.length > 0) {
+      return player.position;
+    }
+    if (player.mlbPosition && typeof player.mlbPosition === 'string') {
+      const pos = player.mlbPosition.toUpperCase();
+      if (pos.includes('C')) return 'C';
+      if (pos.includes('1B')) return '1B';
+      if (pos.includes('2B')) return '2B';
+      if (pos.includes('3B')) return '3B';
+      if (pos.includes('SS')) return 'SS';
+      if (pos.includes('OF')) return 'OF';
+      if (pos.includes('DH')) return 'DH';
+    }
+    return null;
+  }
+
   const ops = [];
   for (const [teamId, teamPicks] of byTeam.entries()) {
     const sorted = [...teamPicks].sort((a, b) => a.pick.overallPick - b.pick.overallPick);
-    const roster = sorted.map((entry, i) => ({
-      player: new ObjectId(entry.playerId),
-      lineupPosition: null,
-      rosterOrder: i + 1,
-      acqType: 'draft',
-    }));
+    const roster = sorted.map((entry, i) => {
+      const player = playerMap.get(entry.playerId);
+      return {
+        player: new ObjectId(entry.playerId),
+        lineupPosition: player ? getFirstEligiblePosition(player) : null,
+        rosterOrder: i + 1,
+        acqType: 'draft',
+      };
+    });
 
     ops.push({
       updateOne: {

@@ -4,6 +4,7 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 import { getNextRosterEffectiveDate } from '@/app/lib/roster-utils';
 import { resolveLeagueContext } from '@/app/lib/league-context';
+import { getDraftEligiblePositions, DraftPlayer } from '@/app/lib/draft-utils';
 
 function toObjectId(id: string) {
   return new ObjectId(id);
@@ -45,15 +46,29 @@ export async function POST(request: NextRequest) {
       picksByTeam.get(teamId)!.push(entry);
     }
 
+    // Fetch player data for all picks so we can set lineupPosition
+    const allPlayerIds = picks
+      .map((entry: { playerId?: string }) => entry.playerId)
+      .filter(Boolean)
+      .map((id: string) => new ObjectId(id));
+    const players = allPlayerIds.length
+      ? await db.collection('players_view').find({ _id: { $in: allPlayerIds } }).toArray()
+      : [];
+    const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
+
     const lineupOps: any[] = [];
     for (const [teamId, teamPicks] of picksByTeam.entries()) {
       const sorted = [...teamPicks].sort((a, b) => a.pick.overallPick - b.pick.overallPick);
-      const roster = sorted.map((entry, index) => ({
-        player: toObjectId(entry.playerId),
-        lineupPosition: null,
-        rosterOrder: index + 1,
-        acqType: 'draft',
-      }));
+      const roster = sorted.map((entry, index) => {
+        const player = playerMap.get(entry.playerId);
+        const eligiblePositions = player ? getDraftEligiblePositions(player as unknown as DraftPlayer) : [];
+        return {
+          player: toObjectId(entry.playerId),
+          lineupPosition: eligiblePositions.length > 0 ? eligiblePositions[0] : null,
+          rosterOrder: index + 1,
+          acqType: 'draft',
+        };
+      });
 
       lineupOps.push({
         updateOne: {
