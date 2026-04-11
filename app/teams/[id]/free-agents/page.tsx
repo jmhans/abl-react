@@ -41,6 +41,15 @@ export default function FreeAgentsPage() {
   const [adding, setAdding] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [showAll, setShowAll] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Fetch admin status
+  useEffect(() => {
+    fetch('/api/admin/me')
+      .then(r => r.json())
+      .then((data: any) => setIsAdmin(data?.isAdmin || false))
+      .catch(() => {});
+  }, []);
 
   // Fetch IL positions on mount
   useEffect(() => {
@@ -49,7 +58,8 @@ export default function FreeAgentsPage() {
         const res = await fetch(`/api/teams/${teamId}/il-positions`);
         const data = await res.json();
         setIlPositions(data.ilPositions || []);
-        if (data.ilPlayerCount === 0) {
+        // Only show the IL error for non-admins; admins can bypass this requirement
+        if (data.ilPlayerCount === 0 && !isAdmin) {
           setError('You must have IL players on your roster to add free agents.');
         }
       } catch (err) {
@@ -57,7 +67,7 @@ export default function FreeAgentsPage() {
       }
     };
     fetchILPositions();
-  }, [teamId]);
+  }, [teamId, isAdmin]);
 
   // Fetch free agents when page or search changes
   useEffect(() => {
@@ -122,27 +132,33 @@ export default function FreeAgentsPage() {
   };
 
   const handleAddPlayer = async (playerId: string, playerName: string, playerEligible: string[]) => {
-    if (ilPositions.length === 0) {
+    // Admins can bypass the IL requirement
+    if (!isAdmin && ilPositions.length === 0) {
       setMessage('❌ You must have IL players on your roster to add free agents.');
       return;
     }
 
-    // Find best position match
-    const matchingPos = playerEligible.find(p => ilPositions.includes(p));
-    if (!matchingPos) {
-      setMessage(`❌ Player not eligible for any of your IL positions (${ilPositions.join(', ')})`);
-      return;
+    let position: string | undefined;
+    if (ilPositions.length > 0) {
+      const matchingPos = playerEligible.find(p => ilPositions.includes(p));
+      if (!matchingPos && !isAdmin) {
+        setMessage(`❌ Player not eligible for any of your IL positions (${ilPositions.join(', ')})`);
+        return;
+      }
+      position = matchingPos || playerEligible[0];
+    } else {
+      // Admin mode with no IL positions: use first eligible position
+      position = playerEligible[0];
     }
 
     try {
       setAdding(playerId);
+      const body: Record<string, any> = { playerId, position };
+      if (isAdmin) body.adminOverride = true;
       const res = await fetch(`/api/teams/${teamId}/roster/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId,
-          position: matchingPos
-        })
+        body: JSON.stringify(body)
       });
 
       const data = await res.json();
@@ -172,13 +188,21 @@ export default function FreeAgentsPage() {
         <h1 className="text-4xl font-bold text-gray-900 mb-4">Free Agents</h1>
 
         {/* IL Status */}
-        <div className={`p-4 rounded-lg mb-6 ${ilPositions.length > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-          <p className="font-semibold text-lg">
-            {ilPositions.length > 0
-              ? `✅ Available IL Positions: ${ilPositions.join(', ')}`
-              : '❌ No IL players on roster - Cannot add free agents'}
-          </p>
-        </div>
+        {isAdmin ? (
+          <div className="p-4 rounded-lg mb-6 bg-purple-50 border border-purple-200">
+            <p className="font-semibold text-purple-900">
+              🔑 Admin Mode — IL requirement bypassed. You can add any free agent directly.
+            </p>
+          </div>
+        ) : (
+          <div className={`p-4 rounded-lg mb-6 ${ilPositions.length > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+            <p className="font-semibold text-lg">
+              {ilPositions.length > 0
+                ? `✅ Available IL Positions: ${ilPositions.join(', ')}`
+                : '❌ No IL players on roster - Cannot add free agents'}
+            </p>
+          </div>
+        )}
 
         {/* Message */}
         {message && (
@@ -303,7 +327,7 @@ export default function FreeAgentsPage() {
                   <td className="px-4 py-4 text-center">
                     <button
                       onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
-                      disabled={adding === player._id || ilPositions.length === 0}
+                      disabled={adding === player._id || (!isAdmin && ilPositions.length === 0)}
                       className="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {adding === player._id ? 'Adding...' : 'Add'}

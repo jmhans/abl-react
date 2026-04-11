@@ -122,7 +122,15 @@ export default function FreeAgentsPage() {
   const [sortCol, setSortCol] = useState<SortColKey | null>(null);
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const fetchIdRef = useRef(0);
+
+  useEffect(() => {
+    fetch('/api/admin/me')
+      .then(r => r.json())
+      .then((data: any) => setIsAdmin(data?.isAdmin || false))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch(`/api/seasons?league=${league}&year=${season}`)
@@ -137,7 +145,8 @@ export default function FreeAgentsPage() {
         const res = await fetch(`/api/teams/${teamId}/il-positions`);
         const data = await res.json();
         setIlPositions(data.ilPositions || []);
-        if (data.ilPlayerCount === 0) {
+        // Only show the IL error for non-admins; admins can bypass this requirement
+        if (data.ilPlayerCount === 0 && !isAdmin) {
           setError('You must have IL players on your roster to add free agents.');
         }
       } catch (err) {
@@ -145,7 +154,7 @@ export default function FreeAgentsPage() {
       }
     };
     fetchILPositions();
-  }, [teamId]);
+  }, [teamId, isAdmin]);
 
   // Load available projection systems — identical pattern to draft page
   useEffect(() => {
@@ -324,21 +333,33 @@ export default function FreeAgentsPage() {
   };
 
   const handleAddPlayer = async (playerId: string, playerName: string, playerEligible: string[]) => {
-    if (ilPositions.length === 0) {
+    // Admins can bypass the IL requirement
+    if (!isAdmin && ilPositions.length === 0) {
       setMessage('❌ You must have IL players on your roster to add free agents.');
       return;
     }
-    const matchingPos = playerEligible.find(p => ilPositions.includes(p));
-    if (!matchingPos) {
-      setMessage(`❌ Player not eligible for any of your IL positions (${ilPositions.join(', ')})`);
-      return;
+
+    let position: string | undefined;
+    if (ilPositions.length > 0) {
+      const matchingPos = playerEligible.find(p => ilPositions.includes(p));
+      if (!matchingPos && !isAdmin) {
+        setMessage(`❌ Player not eligible for any of your IL positions (${ilPositions.join(', ')})`);
+        return;
+      }
+      position = matchingPos || playerEligible[0];
+    } else {
+      // Admin mode with no IL positions: use first eligible position
+      position = playerEligible[0];
     }
+
     try {
       setAdding(playerId);
+      const body: Record<string, any> = { playerId, position };
+      if (isAdmin) body.adminOverride = true;
       const res = await fetch(`/api/teams/${teamId}/roster/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId, position: matchingPos }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -371,17 +392,27 @@ export default function FreeAgentsPage() {
           </div>
         )}
 
-        <div
-          className={`p-4 rounded-lg mb-6 ${
-            ilPositions.length > 0 ? 'bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700'
-          }`}
-        >
-          <p className={`font-semibold text-lg ${ilPositions.length > 0 ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'}`}>
-            {ilPositions.length > 0
-              ? `✅ Available IL Positions: ${ilPositions.join(', ')}`
-              : '❌ No IL players on roster - Cannot add free agents'}
-          </p>
-        </div>
+        {isAdmin && (
+          <div className="bg-purple-50 dark:bg-purple-900 border border-purple-200 dark:border-purple-700 rounded-lg p-4 mb-6">
+            <p className="font-semibold text-purple-900 dark:text-purple-100">
+              🔑 Admin Mode — IL requirement bypassed. You can add any free agent directly.
+            </p>
+          </div>
+        )}
+
+        {!isAdmin && (
+          <div
+            className={`p-4 rounded-lg mb-6 ${
+              ilPositions.length > 0 ? 'bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700'
+            }`}
+          >
+            <p className={`font-semibold text-lg ${ilPositions.length > 0 ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'}`}>
+              {ilPositions.length > 0
+                ? `✅ Available IL Positions: ${ilPositions.join(', ')}`
+                : '❌ No IL players on roster - Cannot add free agents'}
+            </p>
+          </div>
+        )}
 
         {message && (
           <div
@@ -555,7 +586,7 @@ export default function FreeAgentsPage() {
                   ) : (
                     <button
                       onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
-                      disabled={adding === player._id || ilPositions.length === 0}
+                      disabled={adding === player._id || (!isAdmin && ilPositions.length === 0)}
                       className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {adding === player._id ? '…' : 'Add'}
