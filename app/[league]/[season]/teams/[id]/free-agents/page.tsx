@@ -123,6 +123,8 @@ export default function FreeAgentsPage() {
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [allTeams, setAllTeams] = useState<{ _id: string; name: string }[]>([]);
+  const [adminTargetTeamId, setAdminTargetTeamId] = useState<string>('');
   const fetchIdRef = useRef(0);
 
   useEffect(() => {
@@ -131,6 +133,18 @@ export default function FreeAgentsPage() {
       .then((data: any) => setIsAdmin(data?.isAdmin || false))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin || !league || !season) return;
+    fetch(`/api/teams?league=${encodeURIComponent(league)}&season=${encodeURIComponent(season)}`)
+      .then(r => r.json())
+      .then((data: any[]) => {
+        setAllTeams(data.map((t: any) => ({ _id: t._id, name: t.name || t._id })));
+        // Default to the team in the URL if present, otherwise first team
+        setAdminTargetTeamId(prev => prev || teamId);
+      })
+      .catch(() => {});
+  }, [isAdmin, league, season, teamId]);
 
   useEffect(() => {
     fetch(`/api/seasons?league=${league}&year=${season}`)
@@ -339,6 +353,13 @@ export default function FreeAgentsPage() {
       return;
     }
 
+    // Admins must have selected a target team
+    const targetTeamId = isAdmin ? adminTargetTeamId : teamId;
+    if (isAdmin && !targetTeamId) {
+      setMessage('❌ Please select a team to add the player to.');
+      return;
+    }
+
     let position: string | undefined;
     if (ilPositions.length > 0) {
       const matchingPos = playerEligible.find(p => ilPositions.includes(p));
@@ -356,7 +377,7 @@ export default function FreeAgentsPage() {
       setAdding(playerId);
       const body: Record<string, any> = { playerId, position };
       if (isAdmin) body.adminOverride = true;
-      const res = await fetch(`/api/teams/${teamId}/roster/add`, {
+      const res = await fetch(`/api/teams/${targetTeamId}/roster/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -365,7 +386,8 @@ export default function FreeAgentsPage() {
       if (!res.ok) {
         setMessage(`❌ ${data.error || 'Failed to add player'}`);
       } else {
-        setMessage(`✅ Added ${playerName} to roster!`);
+        const targetName = allTeams.find(t => t._id === targetTeamId)?.name || targetTeamId;
+        setMessage(`✅ Added ${playerName} to ${isAdmin ? targetName : 'roster'}!`);
         setTimeout(() => { setMessage(''); fetchPlayers(); }, 2000);
       }
     } catch (err) {
@@ -394,9 +416,24 @@ export default function FreeAgentsPage() {
 
         {isAdmin && (
           <div className="bg-purple-50 dark:bg-purple-900 border border-purple-200 dark:border-purple-700 rounded-lg p-4 mb-6">
-            <p className="font-semibold text-purple-900 dark:text-purple-100">
-              🔑 Admin Mode — IL requirement bypassed. You can add any free agent directly.
+            <p className="font-semibold text-purple-900 dark:text-purple-100 mb-2">
+              🔑 Admin Mode — IL requirement bypassed.
             </p>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <label className="text-sm font-medium text-purple-800 dark:text-purple-200 whitespace-nowrap">
+                Add player to:
+              </label>
+              <select
+                value={adminTargetTeamId}
+                onChange={e => setAdminTargetTeamId(e.target.value)}
+                className="rounded border border-purple-300 dark:border-purple-600 bg-white dark:bg-purple-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">— select team —</option>
+                {allTeams.map(t => (
+                  <option key={t._id} value={t._id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -586,10 +623,10 @@ export default function FreeAgentsPage() {
                   ) : (
                     <button
                       onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
-                      disabled={adding === player._id || (!isAdmin && ilPositions.length === 0)}
-                      className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={adding === player._id || (!isAdmin && ilPositions.length === 0) || (isAdmin && !adminTargetTeamId)}
+                      className={`rounded px-2 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isAdmin ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                     >
-                      {adding === player._id ? '…' : 'Add'}
+                      {adding === player._id ? '…' : isAdmin ? 'Add★' : 'Add'}
                     </button>
                   )}
                 </div>
