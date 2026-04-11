@@ -168,57 +168,79 @@ export function enrichPlayersWithEligibility(players: any[]): any[] {
     eligible: getEligiblePositions(player)
   }));
 }
-export async function getNextRosterEffectiveDate(db: Db): Promise<Date> {
-  try {
-    // Find next scheduled game
-    const nextGames = await db.collection('games')
-      .find({ 
-        gameDate: { $gte: new Date() },
-        gameType: 'R' // Regular season only
-      })
-      .sort({ gameDate: 1 })
-      .limit(1)
-      .toArray();
-    
-    if (nextGames.length === 0) {
-      // No upcoming games - use tomorrow's date for development/testing/off-season
-      // This gives users a day to make roster changes before locking
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return getNoonCTAsUTC(tomorrow);
-    }
-    
-    const nextGameDate = new Date(nextGames[0].gameDate);
-    
-    // Return noon CT on that game date
-    return getNoonCTAsUTC(nextGameDate);
-    
-  } catch (error) {
-    console.error('Error getting next roster effective date:', error);
-    throw error;
+/**
+ * Get the first MLB regular-season game start time for a given official date.
+ * Uses the mlbgameschemas collection (kept fresh by the sync-mlb-schedule cron).
+ * Falls back to noon CT on that day when no non-TBD games are found.
+ *
+ * @param officialDate  YYYY-MM-DD string matching mlbgameschemas.officialDate
+ */
+export async function getFirstMlbGameTimeForDate(db: Db, officialDate: string): Promise<Date> {
+  const first = await db.collection('mlbgameschemas')
+    .find({
+      officialDate,
+      gameType: 'R',
+      'status.startTimeTBD': { $ne: true },
+    })
+    .sort({ gameDate: 1 })
+    .limit(1)
+    .toArray();
+
+  if (first.length > 0) {
+    return new Date(first[0].gameDate as string);
   }
+
+  // Fallback: noon CT on that day
+  const [year, month, day] = officialDate.split('-').map(Number);
+  return getNoonCTAsUTC(new Date(year, month - 1, day));
+}
+
+/**
+ * Returns the YYYY-MM-DD date string for the next upcoming ABL game day.
+ * This is the value stored in lineups.effectiveDate.
+ */
+export async function getNextRosterGameDate(db: Db): Promise<string> {
+  const nextGames = await db.collection('games')
+    .find({ gameDate: { $gte: new Date() }, gameType: 'R' })
+    .sort({ gameDate: 1 })
+    .limit(1)
+    .toArray();
+
+  if (nextGames.length === 0) {
+    // Off-season / no upcoming games — use tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().slice(0, 10);
+  }
+
+  return new Date(nextGames[0].gameDate).toISOString().slice(0, 10);
 }
 
 /**
  * Get roster for a specific team and game date
  * Used by game scoring logic
- * Returns the most recent roster with effectiveDate <= gameDate
+ * Returns the most recent roster with effectiveDate <= game's official date
  */
-export async function getRosterForGame(db: Db, teamId: string, gameDate: Date) {
+export async function getRosterForGame(db: Db, teamId: string, gameDateOrOfficialDate: Date | string) {
   try {
     const { ObjectId } = require('mongodb');
-    
+
+    // Accept either a Date (extract YYYY-MM-DD) or an already-formatted string
+    const officialDate = typeof gameDateOrOfficialDate === 'string'
+      ? gameDateOrOfficialDate.slice(0, 10)
+      : new Date(gameDateOrOfficialDate).toISOString().slice(0, 10);
+
     const lineups = await db.collection('lineups')
-      .find({ 
-        ablTeam: new ObjectId(teamId), 
-        effectiveDate: { $lte: gameDate } 
+      .find({
+        ablTeam: new ObjectId(teamId),
+        effectiveDate: { $lte: officialDate },
       })
       .sort({ effectiveDate: -1 })
       .limit(1)
       .toArray();
-    
+
     return lineups[0] || null;
-    
+
   } catch (error) {
     console.error('Error getting roster for game:', error);
     throw error;
@@ -227,30 +249,31 @@ export async function getRosterForGame(db: Db, teamId: string, gameDate: Date) {
 
 /**
  * Check if roster is currently locked for the next game
- * Rosters lock when current time passes the effectiveDate (noon CT on game day)
+ * Rosters lock when current time passes the first MLB game start on that day
  */
 export async function isRosterLocked(db: Db): Promise<boolean> {
-  const effectiveDate = await getNextRosterEffectiveDate(db);
-  
-  if (!effectiveDate) {
-    // No upcoming games, roster editing not relevant
-    return true;
-  }
-  
-  return new Date() >= effectiveDate;
+  const gameDate = await getNextRosterGameDate(db);
+  const lockTime = await getFirstMlbGameTimeForDate(db, gameDate);
+  return new Date() >= lockTime;
 }
 
 /**
  * Get time remaining until roster lock
- * Returns milliseconds, or null if no upcoming game
+ * Returns milliseconds, or null if there are no upcoming games
  */
 export async function getTimeUntilLock(db: Db): Promise<number | null> {
-  const effectiveDate = await getNextRosterEffectiveDate(db);
-  
-  if (!effectiveDate) {
-    return null;
-  }
-  
-  const remaining = effectiveDate.getTime() - Date.now();
+  const gameDate = await getNextRosterGameDate(db);
+  const lockTime = await getFirstMlbGameTimeForDate(db, gameDate);
+  const remaining = lockTime.getTime() - Date.now();
   return Math.max(0, remaining);
+}
+
+/**
+ * Get the lock time (as ISO string) for the next roster game date.
+ * Exposed so API routes can include it in responses.
+ */
+export async function getNextRosterLockTime(db: Db): Promise<string> {
+  const gameDate = await getNextRosterGameDate(db);
+  const lockTime = await getFirstMlbGameTimeForDate(db, gameDate);
+  return lockTime.toISOString();
 }

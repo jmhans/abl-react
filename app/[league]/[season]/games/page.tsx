@@ -48,7 +48,6 @@ function formatRuns(value: number | null): string | null {
 function findScoreForTeam(scores: any[] | undefined, game: Game, side: 'away' | 'home') {
   const teamId = side === 'away' ? game.awayTeam?._id : game.homeTeam?._id;
   const location = side === 'away' ? 'A' : 'H';
-
   return (Array.isArray(scores) ? scores : []).find((score: any) => {
     const scoreTeamId = score?.team?._id || score?.team?.toString?.() || score?.team;
     if (teamId && scoreTeamId && String(scoreTeamId) === String(teamId)) return true;
@@ -63,16 +62,23 @@ export default function GamesPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchGames() {
+    async function load() {
       try {
-        const response = await fetch(`/api/games?view=summary&${leagueSeasonQuery(ctx)}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch games');
-        }
-        const data = await response.json();
-        setGames(data);
+        const [gamesRes, myLeaguesRes] = await Promise.all([
+          fetch(`/api/games?view=summary&${leagueSeasonQuery(ctx)}`),
+          fetch('/api/auth/my-leagues').catch(() => null),
+        ]);
+        if (!gamesRes.ok) throw new Error('Failed to fetch games');
+        setGames(await gamesRes.json());
+
+        const myLeaguesData = myLeaguesRes?.ok ? await myLeaguesRes.json() : [];
+        const myEntry = (Array.isArray(myLeaguesData) ? myLeaguesData : []).find(
+          (e: any) => e.league?.slug === league && String(e.season?.year) === String(season)
+        );
+        if (myEntry?.team?._id) setUserTeamId(myEntry.team._id);
       } catch (err) {
         setError('Failed to load games');
         console.error(err);
@@ -80,8 +86,7 @@ export default function GamesPage() {
         setLoading(false);
       }
     }
-
-    fetchGames();
+    load();
   }, [league, season]);
 
   if (loading) {
@@ -100,7 +105,7 @@ export default function GamesPage() {
     );
   }
 
-  // Group games by date
+  // Group by date, sort dates ascending (earliest first)
   const gamesByDate = games.reduce((acc, game) => {
     const date = new Date(game.gameDate).toLocaleDateString();
     if (!acc[date]) acc[date] = [];
@@ -109,82 +114,86 @@ export default function GamesPage() {
   }, {} as Record<string, Game[]>);
 
   const dates = Object.keys(gamesByDate).sort((a, b) =>
-    new Date(b).getTime() - new Date(a).getTime()
+    new Date(a).getTime() - new Date(b).getTime()
   );
 
   return (
     <div className="max-w-5xl mx-auto px-3 md:px-4 py-6 md:py-8">
-      <div className="mb-6 md:mb-8">
-        <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-3 md:mb-4 inline-block text-sm md:text-base">
+      <div className="mb-4 md:mb-6">
+        <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-2 inline-block text-sm">
           ← Back to Home
         </Link>
-        <h1 className="text-2xl md:text-4xl font-bold text-gray-900">ABL Games</h1>
-        <p className="text-gray-600 mt-1 md:mt-2 text-sm md:text-base">{games.length} games total</p>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">ABL Games</h1>
+        <p className="text-gray-500 text-xs mt-0.5">{games.length} games total</p>
       </div>
 
-      <div className="space-y-4 md:space-y-8">
-        {dates.map(date => (
-          <div key={date} className="bg-white rounded-lg shadow-md p-3 md:p-6">
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-3 md:mb-4">{date}</h2>
-            <div className="space-y-2 md:space-y-4">
-              {gamesByDate[date].map(game => {
-                const hasResult = !!game.result?.winner;
-                const result = hasResult ? game.result! : null;
-                const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
-                const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
+      <div className="space-y-4">
+        {dates.map(date => {
+          // Sort: user's games first, then others
+          const sorted = [...gamesByDate[date]].sort((a, b) => {
+            const aIsMyGame = userTeamId && (a.awayTeam?._id === userTeamId || a.homeTeam?._id === userTeamId) ? -1 : 0;
+            const bIsMyGame = userTeamId && (b.awayTeam?._id === userTeamId || b.homeTeam?._id === userTeamId) ? -1 : 0;
+            return aIsMyGame - bIsMyGame;
+          });
 
-                return (
-                  <Link
-                    key={game._id}
-                    href={`/${league}/${season}/games/${game._id}`}
-                    className="block border border-gray-200 rounded-lg p-3 md:p-4 hover:border-blue-500 hover:shadow-md transition-all"
-                  >
-                    <div className="flex justify-between items-center gap-3 md:gap-4">
-                      {/* Team Names - Left */}
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-sm md:text-base font-semibold ${result?.winner?._id === game.awayTeam._id ? 'text-green-600' : ''}`}>
-                          {game.awayTeam.location} {game.awayTeam.nickname}
-                        </div>
-                        <div className={`text-sm md:text-base font-semibold ${result?.winner?._id === game.homeTeam._id ? 'text-green-600' : ''}`}>
-                          {game.homeTeam.location} {game.homeTeam.nickname}
-                        </div>
-                        {game.description && (
-                          <p className="text-xs md:text-sm text-gray-600 mt-1">{game.description}</p>
-                        )}
+          return (
+            <div key={date}>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 px-1">{date}</h2>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {sorted.map(game => {
+                  const isMyGame = !!userTeamId && (game.awayTeam?._id === userTeamId || game.homeTeam?._id === userTeamId);
+                  const hasResult = !!game.result?.winner;
+                  const result = hasResult ? game.result! : null;
+                  const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
+                  const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
+
+                  return (
+                    <Link
+                      key={game._id}
+                      href={`/${league}/${season}/games/${game._id}`}
+                      className={`flex-shrink-0 w-44 rounded-lg border p-2.5 hover:shadow-md transition-all text-xs ${
+                        isMyGame
+                          ? 'border-blue-400 bg-blue-50 hover:border-blue-500'
+                          : 'border-gray-200 bg-white hover:border-blue-400'
+                      }`}
+                    >
+                      {/* Away team */}
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className={`font-medium truncate ${result?.winner?._id === game.awayTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.awayTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
+                          {game.awayTeam?.nickname}
+                        </span>
+                        <span className="font-mono text-gray-700 shrink-0">{awayScore ?? '—'}</span>
                       </div>
-
-                      {/* Scores - Center Right */}
-                      <div className="text-right font-mono text-sm md:text-base space-y-1">
-                        <div className="text-gray-900">{awayScore != null ? awayScore : '—'}</div>
-                        <div className="text-gray-900">{homeScore != null ? homeScore : '—'}</div>
+                      {/* Home team */}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={`font-medium truncate ${result?.winner?._id === game.homeTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.homeTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
+                          {game.homeTeam?.nickname}
+                        </span>
+                        <span className="font-mono text-gray-700 shrink-0">{homeScore ?? '—'}</span>
                       </div>
-
-                      {/* Status - Far Right */}
-                      <div className="shrink-0">
+                      {/* Status */}
+                      <div className="mt-1.5">
                         {hasResult ? (
-                          <span className="inline-block bg-green-100 text-green-800 px-2 md:px-3 py-0.5 md:py-1 rounded text-xs md:text-sm font-medium">
-                            Final
-                          </span>
+                          <span className="text-green-700 font-medium">Final</span>
                         ) : (
-                          <span className="inline-block bg-gray-100 text-gray-600 px-2 md:px-3 py-0.5 md:py-1 rounded text-xs md:text-sm">
-                            Scheduled
-                          </span>
+                          <span className="text-gray-400">Scheduled</span>
                         )}
                       </div>
-                    </div>
-                  </Link>
-                );
-              })}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {games.length === 0 && (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-500 text-base md:text-lg">No games found</p>
+          <p className="text-gray-500 text-sm">No games found</p>
         </div>
       )}
     </div>
   );
 }
+

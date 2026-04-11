@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getNextRosterEffectiveDate, isRosterLocked } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate, isRosterLocked } from '@/app/lib/roster-utils';
 
 // DELETE /api/teams/:id/roster/:playerId - Drop player from roster
 export async function DELETE(
@@ -21,7 +21,7 @@ export async function DELETE(
       );
     }
 
-    const effectiveDate = await getNextRosterEffectiveDate(db);
+    const effectiveDate = await getNextRosterGameDate(db);
 
     // Get current roster
     let lineup = await db.collection('lineups').findOne({

@@ -33,6 +33,7 @@ interface RosterData {
   _id?: string;
   ablTeam: string;
   effectiveDate: string;
+  lockTime: string;
   roster: RosterItem[];
   updatedAt: string;
   locked: boolean;
@@ -403,9 +404,9 @@ export default function TeamRosterPage() {
                   Next Game: {new Date(roster.nextGame.gameDate).toLocaleString()}
                 </p>
               )}
-              {roster.effectiveDate && (
+              {roster.lockTime && (
                 <p className="text-sm text-gray-600">
-                  Lock Time: {new Date(roster.effectiveDate).toLocaleString()}
+                  Lock Time: {new Date(roster.lockTime).toLocaleString()}
                 </p>
               )}
             </div>

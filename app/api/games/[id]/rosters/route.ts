@@ -101,13 +101,62 @@ export async function GET(
 
     // Check if game has a pre-computed result
     if (!game.result || !game.result.scores) {
+      // Game hasn't been played yet — return the current (most recent) lineups for both teams
+      const gameOfficialDate = new Date(game.gameDate).toISOString().slice(0, 10);
+
+      const lineups = await db.collection('lineups')
+        .aggregate([
+          {
+            $match: {
+              ablTeam: { $in: [game.homeTeam, game.awayTeam] },
+              effectiveDate: { $lte: gameOfficialDate },
+            },
+          },
+          { $sort: { effectiveDate: -1 } },
+          {
+            $group: {
+              _id: '$ablTeam',
+              roster: { $first: '$roster' },
+              effectiveDate: { $first: '$effectiveDate' },
+            },
+          },
+        ])
+        .toArray();
+
+      const lineupMap = new Map(lineups.map(l => [l._id.toString(), l.roster || []]));
+
+      const populatePlayers = async (roster: any[]) => {
+        if (!roster.length) return [];
+        const playerIds = roster.map(r => r.player);
+        const players = await db.collection('players_cache').find({ _id: { $in: playerIds } }).toArray();
+        const playerMap = new Map(players.map(p => [p._id.toString(), p]));
+        return roster
+          .sort((a, b) => (a.rosterOrder ?? 0) - (b.rosterOrder ?? 0))
+          .map((r, idx) => {
+            const p = playerMap.get(r.player.toString());
+            return {
+              _id: r.player,
+              name: p?.name ?? '(unknown)',
+              position: r.lineupPosition,
+              eligible: p?.eligible ?? [],
+              mlbTeam: p?.team ?? null,
+              lineupPosition: r.lineupPosition,
+              lineupOrder: idx + 1,
+              acqType: r.acqType,
+            };
+          });
+      };
+
+      const homeRoster = await populatePlayers(lineupMap.get(game.homeTeam.toString()) ?? []);
+      const awayRoster = await populatePlayers(lineupMap.get(game.awayTeam.toString()) ?? []);
+
       return NextResponse.json({
-        homeTeam: [],
-        awayTeam: [],
+        homeTeam: homeRoster,
+        awayTeam: awayRoster,
         home_score: normalizeTeamScore(null),
         away_score: normalizeTeamScore(null),
         result: {},
-        status: 'scheduled'
+        status: 'scheduled',
       });
     }
 
@@ -213,27 +262,20 @@ export async function PUT(
 
     // Option 2: Fetch rosters from team roster documents for the game date
     const gameDate = new Date(game.gameDate);
-    const gameNoonCT = new Date(
-      gameDate.getFullYear(),
-      gameDate.getMonth(),
-      gameDate.getDate(),
-      12,
-      0,
-      0
-    );
+    const officialDate = gameDate.toISOString().slice(0, 10);
 
-    // Get the effective date (noon CT on game day or before)
+    // Get the lineup effective on or before this game's date (string comparison on YYYY-MM-DD)
     const rosters = await db
       .collection('rosters')
       .find({
         $or: [
           {
             ablTeam: game.homeTeam,
-            effectiveDate: { $lte: gameNoonCT }
+            effectiveDate: { $lte: officialDate }
           },
           {
             ablTeam: game.awayTeam,
-            effectiveDate: { $lte: gameNoonCT }
+            effectiveDate: { $lte: officialDate }
           }
         ]
       })
