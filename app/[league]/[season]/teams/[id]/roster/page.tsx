@@ -665,7 +665,9 @@ export default function TeamRosterPage() {
             {roster.roster.map((item, index) => {
               const isDrafted =
                 item.acqType === 'draft' ||
-                item.acqType === 'supp_draft';
+                item.acqType === 'supp_draft' ||
+                item.player.ablstatus?.acqType === 'draft' ||
+                item.player.ablstatus?.acqType === 'supp_draft';
               const canDrag = !roster.locked && isOwner;
               const canDrop = !roster.locked && !isDrafted && isOwner;
               const b = item.player.stats?.batting;

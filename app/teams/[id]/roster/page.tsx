@@ -465,7 +465,9 @@ export default function TeamRosterPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {roster.roster.map((item, index) => {
               const isDrafted = item.acqType === 'draft' || 
-                               item.acqType === 'supp_draft';
+                               item.acqType === 'supp_draft' ||
+                               item.player.ablstatus?.acqType === 'draft' ||
+                               item.player.ablstatus?.acqType === 'supp_draft';
               const canDrag = !roster.locked && isOwner;
               const canDrop = !roster.locked && !isDrafted && isOwner;
 
