@@ -606,6 +606,80 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   };
 }
 
+export async function ensureRostersLockedForGames(db: Db, games: any[], officialDate: string) {
+  // Collect unique team IDs across all games
+  const allTeamIds = new Set<string>();
+  for (const game of games) {
+    if (game.homeTeam) allTeamIds.add(game.homeTeam.toString());
+    if (game.awayTeam) allTeamIds.add(game.awayTeam.toString());
+  }
+
+  if (allTeamIds.size === 0) return { locked: 0, alreadySet: 0 };
+
+  // Fetch the most recent lineup per team on or before the game date (one aggregation)
+  const teamObjectIds = Array.from(allTeamIds).map((id) => new ObjectId(id));
+  const lineupDocs = await db
+    .collection('lineups')
+    .aggregate([
+      { $match: { ablTeam: { $in: teamObjectIds }, effectiveDate: { $lte: officialDate } } },
+      { $sort: { ablTeam: 1, effectiveDate: -1 } },
+      { $group: { _id: '$ablTeam', roster: { $first: '$roster' }, effectiveDate: { $first: '$effectiveDate' } } },
+    ])
+    .toArray();
+
+  // Build teamId -> roster map
+  const rosterByTeam = new Map<string, any[]>();
+  for (const doc of lineupDocs) {
+    rosterByTeam.set(doc._id.toString(), doc.roster || []);
+  }
+
+  let locked = 0;
+  let alreadySet = 0;
+
+  for (const game of games) {
+    const homeId = game.homeTeam?.toString();
+    const awayId = game.awayTeam?.toString();
+    const hasHome = Array.isArray(game.homeTeamRoster) && game.homeTeamRoster.length > 0;
+    const hasAway = Array.isArray(game.awayTeamRoster) && game.awayTeamRoster.length > 0;
+
+    if (hasHome && hasAway) {
+      alreadySet++;
+      continue;
+    }
+
+    const homeRoster = rosterByTeam.get(homeId) ?? [];
+    const awayRoster = rosterByTeam.get(awayId) ?? [];
+
+    if (homeRoster.length === 0 && awayRoster.length === 0) continue;
+
+    // Normalise roster items to { player, lineupPosition, rosterOrder }
+    const normalise = (roster: any[]) =>
+      roster.map((item) => ({
+        player: item.player,
+        lineupPosition: item.lineupPosition ?? null,
+        rosterOrder: item.rosterOrder ?? 0,
+      }));
+
+    const normalised = {
+      ...(!hasHome && homeRoster.length > 0 ? { homeTeamRoster: normalise(homeRoster) } : {}),
+      ...(!hasAway && awayRoster.length > 0 ? { awayTeamRoster: normalise(awayRoster) } : {}),
+    };
+
+    if (Object.keys(normalised).length > 0) {
+      // Write to DB so subsequent processes (admin recalc, etc.) also have rosters
+      await db.collection('games').updateOne(
+        { _id: game._id },
+        { $set: { ...normalised, rostersLockedAt: new Date() } }
+      );
+      // Also mutate the in-memory object so the caller sees them immediately
+      Object.assign(game, normalised);
+      locked++;
+    }
+  }
+
+  return { locked, alreadySet };
+}
+
 export async function recalculateAblGamesForDate(db: Db, gameDate: Date) {
   const dayStart = new Date(Date.UTC(gameDate.getUTCFullYear(), gameDate.getUTCMonth(), gameDate.getUTCDate(), 0, 0, 0, 0));
   const dayEnd = new Date(Date.UTC(gameDate.getUTCFullYear(), gameDate.getUTCMonth(), gameDate.getUTCDate(), 23, 59, 59, 999));
@@ -616,6 +690,10 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date) {
     .sort({ gameDate: 1, _id: 1 })
     .allowDiskUse(true)
     .toArray();
+
+  // Ensure rosters are locked onto game docs before scoring
+  const officialDate = formatDateYmd(gameDate);
+  const rosterLockSummary = await ensureRostersLockedForGames(db, games, officialDate);
 
   let processed = 0;
   let skipped = 0;
@@ -640,6 +718,7 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date) {
     processed,
     skipped,
     errors,
+    rosterLockSummary,
   };
 }
 
