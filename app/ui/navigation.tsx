@@ -253,6 +253,7 @@ export default function Navigation() {
           ) : (
             user && <div className="px-4 py-2 text-xs text-gray-400">No team this season</div>
           )}
+          <Link href="/feedback" className={navLinkClass('/feedback')}>Feedback</Link>
           {isAdmin && (
             <Link
               href={`/admin${currentLeagueSlug && currentSeasonYear ? `?league=${currentLeagueSlug}&season=${currentSeasonYear}` : ''}`}
