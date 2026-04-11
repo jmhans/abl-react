@@ -181,6 +181,7 @@ export default function GameDetailPage() {
   }
 
   const isLive = rosters?.status === 'live';
+  const isScheduled = rosters?.status === 'scheduled';
   const awayFinal = rosters?.away_score?.final;
   const homeFinal = rosters?.home_score?.final;
   const awayRuns = getAblRuns(awayFinal);
@@ -272,16 +273,24 @@ export default function GameDetailPage() {
         )}
 
         {!isLive && (
-          <div className="text-center py-8 bg-gray-50 rounded-lg">
-            <p className="text-gray-500">Game not yet played</p>
+          <div className="text-center py-4 bg-gray-50 rounded-lg">
+            <p className="text-gray-500 text-sm">{isScheduled ? 'Scheduled — rosters below reflect current lineups' : 'Game not yet played'}</p>
           </div>
         )}
       </div>
 
-      {isLive && rosters && (
+      {(isLive || isScheduled) && rosters && (
         <div className="grid md:grid-cols-2 gap-8">
-          <RosterCard title={`${game.awayTeam.nickname} Lineup`} players={rosters.awayTeam} />
-          <RosterCard title={`${game.homeTeam.nickname} Lineup`} players={rosters.homeTeam} />
+          <RosterCard
+            title={`${game.awayTeam.nickname} ${isScheduled ? 'Current Lineup' : 'Lineup'}`}
+            players={rosters.awayTeam}
+            isProjected={isScheduled}
+          />
+          <RosterCard
+            title={`${game.homeTeam.nickname} ${isScheduled ? 'Current Lineup' : 'Lineup'}`}
+            players={rosters.homeTeam}
+            isProjected={isScheduled}
+          />
         </div>
       )}
     </div>
@@ -301,7 +310,7 @@ function statLine(s: PlayerStats): string {
   return parts.join(', ');
 }
 
-function RosterCard({ title, players }: { title: string; players: Player[] }) {
+function RosterCard({ title, players, isProjected }: { title: string; players: Player[]; isProjected?: boolean }) {
   const sortedPlayers = [...players].sort((a, b) => (a.lineupOrder || 999) - (b.lineupOrder || 999));
 
   return (
@@ -309,9 +318,12 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
       <h3 className="text-xl font-bold text-gray-900 mb-4">{title}</h3>
       <div className="space-y-2">
         {sortedPlayers.map((player, idx) => {
-          const isInactive = !player.playedPosition;
+          const isInactive = !isProjected && !player.playedPosition;
           const ablPositions = player.eligible?.join(',') || player.position || '';
           const nameTag = [player.mlbTeam, ablPositions].filter(Boolean).join(' - ');
+          const posLabel = isProjected
+            ? (player.lineupPosition || player.position || '—')
+            : (player.playedPosition || 'Inactive');
           return (
             <div
               key={player._id}
@@ -326,8 +338,8 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
                     {player.name}{nameTag ? <span className="font-normal text-gray-400"> ({nameTag})</span> : ''}
                   </div>
                   <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {player.playedPosition || 'Inactive'}
-                    {player.ablPlayedType && (
+                    {posLabel}
+                    {!isProjected && player.ablPlayedType && (
                       <span className={`ml-1 px-1 rounded text-[10px] font-semibold uppercase tracking-wide ${
                         player.ablPlayedType === 'STARTER' ? 'bg-green-100 text-green-700' :
                         player.ablPlayedType === 'SUB'     ? 'bg-yellow-100 text-yellow-700' :
