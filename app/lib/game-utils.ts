@@ -389,20 +389,33 @@ export async function calculateGameResultLive(
   isFinal: boolean = true,
 ) {
   // Build a map of MLB team abbreviation → abstractGameState for today's schedule.
-  // This lets the activation algorithm know which players' games are still pending.
+  // When isFinal=false (live day), fetch fresh game states directly from the MLB Stats API
+  // using ?hydrate=team so we get the team abbreviation field. The mlbgameschemas collection
+  // only syncs once in the morning and its team documents lack the abbreviation field, so we
+  // bypass it here to ensure accurate live state.
   const ablDate = deriveAblDate(gameDate);
-  const mlbGameDocs = await db.collection('mlbgameschemas')
-    .find({ officialDate: ablDate, gameType: 'R' })
-    .project({ 'teams.away.team.abbreviation': 1, 'teams.home.team.abbreviation': 1, 'status.abstractGameState': 1 })
-    .toArray();
-
   const teamGameStates = new Map<string, string>();
-  for (const g of mlbGameDocs) {
-    const state: string = g.status?.abstractGameState ?? 'Final';
-    const away: string = g.teams?.away?.team?.abbreviation ?? '';
-    const home: string = g.teams?.home?.team?.abbreviation ?? '';
-    if (away) teamGameStates.set(away, state);
-    if (home) teamGameStates.set(home, state);
+  if (!isFinal) {
+    try {
+      const scheduleUrl =
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${ablDate}&gameType=R&hydrate=team`;
+      const resp = await fetch(scheduleUrl, { cache: 'no-store' });
+      if (resp.ok) {
+        const data = await resp.json();
+        for (const dateEntry of (data.dates ?? []) as any[]) {
+          for (const game of (dateEntry.games ?? []) as any[]) {
+            const state: string = game.status?.abstractGameState ?? 'Final';
+            const away: string = game.teams?.away?.team?.abbreviation ?? '';
+            const home: string = game.teams?.home?.team?.abbreviation ?? '';
+            if (away) teamGameStates.set(away, state);
+            if (home) teamGameStates.set(home, state);
+          }
+        }
+      }
+    } catch {
+      // Network failure — leave map empty. Supplements may be added for players on
+      // pending-game teams but that is the safe fallback vs crashing the calculation.
+    }
   }
 
   // 1. Fetch stats (attaches mlbGameState to each player)
