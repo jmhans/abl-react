@@ -256,6 +256,13 @@ export function activateRoster(roster: any[], isFinal: boolean = true): any[] {
     let posPAs = positionPAs(rosterPos);
     let posGs  = positionGs(rosterPos);
 
+    // If any already-active player at this slot has a pending game (Preview/Live), the slot
+    // is being held by that player — stop here without adding subs or supplements.
+    // This happens in Pass 2 when Pass 1 placed a pending player to hold the slot.
+    if (!isFinal && active().filter(p => p.ablRosterPosition === rosterPos).some(isPending)) {
+      return;
+    }
+
     // possibles: bench players eligible for this slot, in original roster order
     const possibles = bench().filter(p => canPlaySlot(p.lineupPosition, pos));
     let playedType = (pos === 'XTRA') ? 'XTRA' : (posGs === 0 ? 'STARTER' : 'SUB');
@@ -268,8 +275,13 @@ export function activateRoster(roster: any[], isFinal: boolean = true): any[] {
           posPAs += calcAPA(nextPlyr.dailyStats);
           posGs  += nextPlyr.dailyStats?.g || 0;
           if (playedType === 'STARTER') playedType = 'SUB';
+        } else if (!isFinal && isPending(nextPlyr)) {
+          // Game hasn't started yet — activate this player to hold the slot and stop.
+          // A later refresh will fill in their real stats once the game begins/ends.
+          activatePlayer(nextPlyr, pos, rosterPos, playedType);
+          break;
         }
-        // If player has no game, skip them and continue loop
+        // g=0 and not pending (game is over, player didn't appear): skip and continue
       } else {
         // No eligible bench players remain — check if any were skipped due to pending games.
         // If so, and this is a live (non-final) calculation, stop here rather than inserting
