@@ -508,6 +508,7 @@ export async function calculateGameResultLive(
             _id: p.player._id,
             name: p.player.name,
             eligible: p.player.eligible,
+            team: p.player.team,
           }
         : p.player,
       lineupPosition: p.lineupPosition,
