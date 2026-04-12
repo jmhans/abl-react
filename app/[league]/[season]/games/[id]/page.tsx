@@ -27,6 +27,7 @@ interface PlayerStats {
   sf?: number;
   po?: number;
   e?: number;
+  pb?: number;
   abl_points?: number;
 }
 
@@ -107,6 +108,7 @@ export default function GameDetailPage() {
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [recalcMessage, setRecalcMessage] = useState<string | null>(null);
   const [teamStatusMap, setTeamStatusMap] = useState<TeamStatusMap>(new Map());
+  const [showDetails, setShowDetails] = useState(false);
 
   const fetchGame = useCallback(async () => {
     try {
@@ -329,6 +331,112 @@ export default function GameDetailPage() {
           />
         </div>
       )}
+
+      {isLive && rosters && (
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => setShowDetails(v => !v)}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            {showDetails ? 'Hide Details' : 'Show Details'}
+          </button>
+        </div>
+      )}
+
+      {isLive && showDetails && rosters && (
+        <div className="mt-6 space-y-8">
+          <StatDetailTable
+            title={`${game.awayTeam.nickname} — Stat Detail`}
+            players={rosters.awayTeam}
+          />
+          <StatDetailTable
+            title={`${game.homeTeam.nickname} — Stat Detail`}
+            players={rosters.homeTeam}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STAT_COLS: { key: keyof PlayerStats; label: string }[] = [
+  { key: 'ab',  label: 'AB' },
+  { key: 'h',   label: 'H' },
+  { key: '2b',  label: '2B' },
+  { key: '3b',  label: '3B' },
+  { key: 'hr',  label: 'HR' },
+  { key: 'bb',  label: 'BB' },
+  { key: 'hbp', label: 'HBP' },
+  { key: 'sb',  label: 'SB' },
+  { key: 'cs',  label: 'CS' },
+  { key: 'sac', label: 'SAC' },
+  { key: 'sf',  label: 'SF' },
+  { key: 'e',   label: 'E' },
+  { key: 'pb',  label: 'PB' },
+  { key: 'abl_points', label: 'Pts' },
+];
+
+function StatDetailTable({ title, players }: { title: string; players: Player[] }) {
+  const active = [...players]
+    .filter(p => p.playedPosition)
+    .sort((a, b) => (a.lineupOrder || 999) - (b.lineupOrder || 999));
+
+  // Totals row
+  const totals: Record<string, number> = {};
+  for (const col of STAT_COLS) {
+    totals[col.key] = active.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-4 overflow-x-auto">
+      <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
+      <table className="w-full text-xs border-collapse min-w-[600px]">
+        <thead>
+          <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+            <th className="text-left py-2 px-2 font-semibold w-36">Player</th>
+            <th className="text-left py-2 px-1 font-semibold w-14">Pos</th>
+            {STAT_COLS.map(c => (
+              <th key={c.key} className={`text-right py-2 px-1 font-semibold ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {active.map(p => {
+            const s = p.dailyStats || {};
+            const isSynth = p.name === 'supp' || p.name === 'four';
+            return (
+              <tr key={p._id} className={`border-t ${isSynth ? 'text-gray-400 italic' : 'text-gray-800'}`}>
+                <td className="py-1.5 px-2 font-medium">
+                  {p.name}
+                  {p.mlbTeam && !isSynth && (
+                    <span className="ml-1 text-[10px] font-bold text-gray-400">{p.mlbTeam}</span>
+                  )}
+                </td>
+                <td className="py-1.5 px-1 text-gray-500">{p.playedPosition}</td>
+                {STAT_COLS.map(c => {
+                  const val = (s[c.key] as number) || 0;
+                  const highlight = c.key === 'abl_points' ? 'text-blue-600 font-semibold' : val > 0 ? 'text-gray-900' : 'text-gray-300';
+                  return (
+                    <td key={c.key} className={`text-right py-1.5 px-1 ${highlight}`}>
+                      {c.key === 'abl_points' ? val.toFixed(1) : val || '—'}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50 text-gray-700">
+            <td className="py-2 px-2" colSpan={2}>Total</td>
+            {STAT_COLS.map(c => (
+              <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
+                {c.key === 'abl_points' ? totals[c.key].toFixed(1) : totals[c.key] || '—'}
+              </td>
+            ))}
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }
