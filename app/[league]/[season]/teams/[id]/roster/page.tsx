@@ -583,7 +583,7 @@ export default function TeamRosterPage() {
               </button>
             )}
             <button
-              onClick={fetchRoster}
+              onClick={() => fetchRoster(asOfDate || undefined)}
               className="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-300 transition-colors text-sm"
             >
               Discard
