@@ -93,7 +93,7 @@ export default function StandingsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-3 py-6 md:px-4 md:py-8">
+    <div className="w-full px-3 py-6 md:px-4 md:py-8">
       <div className="mb-6 md:mb-8">
         <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-3 md:mb-4 inline-block text-sm md:text-base">
           ← Back to Home
