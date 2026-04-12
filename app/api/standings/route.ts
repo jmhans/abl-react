@@ -143,6 +143,7 @@ export async function GET(request: NextRequest) {
         h: team.h,
         hr: team.hr,
         e: team.e,
+        pb: team.pb,
         abl_runs: team.abl_runs,
         gb: gb.toFixed(1),
         wpct: wpct.toFixed(3),
