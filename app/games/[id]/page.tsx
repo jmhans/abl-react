@@ -41,6 +41,19 @@ interface Player {
   lineupOrder?: number;
 }
 
+interface MlbGameStatus {
+  awayTeam: string;
+  homeTeam: string;
+  state: 'Preview' | 'Live' | 'Final';
+  inning: number | null;
+  inningState: string | null;
+  awayRuns: number | null;
+  homeRuns: number | null;
+}
+
+/** team abbr → game status */
+type TeamStatusMap = Map<string, MlbGameStatus>;
+
 interface GameRoster {
   homeTeam: Player[];
   awayTeam: Player[];
@@ -93,6 +106,7 @@ export default function GameDetailPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [recalcMessage, setRecalcMessage] = useState<string | null>(null);
+  const [teamStatusMap, setTeamStatusMap] = useState<TeamStatusMap>(new Map());
 
   const fetchGame = useCallback(async () => {
     try {
@@ -116,6 +130,23 @@ export default function GameDetailPage() {
 
       setGame(gameData);
       setRosters(rostersData);
+
+      // Fetch live MLB game statuses for the game date
+      try {
+        const dateStr = new Date(gameData.gameDate).toISOString().slice(0, 10);
+        const mlbResp = await fetch(`/api/mlb/schedule?date=${dateStr}`);
+        if (mlbResp.ok) {
+          const mlbData = await mlbResp.json();
+          const map = new Map<string, MlbGameStatus>();
+          for (const g of (mlbData.games ?? []) as MlbGameStatus[]) {
+            if (g.awayTeam) map.set(g.awayTeam, g);
+            if (g.homeTeam) map.set(g.homeTeam, g);
+          }
+          setTeamStatusMap(map);
+        }
+      } catch {
+        // non-critical — status badges simply won't show
+      }
     } catch (err) {
       setError('Failed to load game details');
       console.error(err);
@@ -280,10 +311,12 @@ export default function GameDetailPage() {
           <RosterCard
             title={`${game.awayTeam.nickname} Lineup`}
             players={rosters.awayTeam}
+            teamStatusMap={teamStatusMap}
           />
           <RosterCard
             title={`${game.homeTeam.nickname} Lineup`}
             players={rosters.homeTeam}
+            teamStatusMap={teamStatusMap}
           />
         </div>
       )}
@@ -304,7 +337,21 @@ function statLine(s: PlayerStats): string {
   return parts.join(', ');
 }
 
-function RosterCard({ title, players }: { title: string; players: Player[] }) {
+function mlbGameBadge(status: MlbGameStatus | undefined, teamAbbr: string): string | null {
+  if (!status) return null;
+  const { state, inning, inningState, awayRuns, homeRuns, awayTeam } = status;
+  if (state === 'Preview') return null; // no badge needed — game just hasn't started
+  const score = awayRuns !== null && homeRuns !== null
+    ? (teamAbbr === awayTeam ? `${awayRuns}-${homeRuns}` : `${homeRuns}-${awayRuns}`)
+    : null;
+  if (state === 'Final') return score ? `Final ${score}` : 'Final';
+  // Live
+  const half = inningState === 'Top' ? 'T' : inningState === 'Bottom' ? 'B' : inningState === 'Middle' ? 'M' : inningState === 'End' ? 'E' : '';
+  const inn = inning ? `${half}${inning}` : '';
+  return [inn, score].filter(Boolean).join(' · ');
+}
+
+function RosterCard({ title, players, teamStatusMap }: { title: string; players: Player[]; teamStatusMap: TeamStatusMap }) {
   const sortedPlayers = [...players]
     .sort((a, b) => (a.lineupOrder || 999) - (b.lineupOrder || 999));
 
@@ -315,7 +362,11 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
         {sortedPlayers.map((player, idx) => {
           const isInactive = !player.playedPosition;
           const ablPositions = player.eligible?.join(',') || player.position || '';
-          const nameTag = [player.mlbTeam, ablPositions].filter(Boolean).join(' - ');
+          const mlbStatus = player.mlbTeam ? teamStatusMap.get(player.mlbTeam) : undefined;
+          const badge = player.mlbTeam ? mlbGameBadge(mlbStatus, player.mlbTeam) : null;
+          const badgeColor = !mlbStatus || mlbStatus.state === 'Preview' ? ''
+            : mlbStatus.state === 'Final' ? 'text-gray-500'
+            : 'text-emerald-600 font-medium';
           return (
           <div
             key={player._id}
@@ -325,7 +376,10 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
               <span className={`font-mono w-6 ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>{idx + 1}</span>
               <div>
                 <div className={`font-semibold ${isInactive ? 'text-gray-400' : ''}`}>
-                  {player.name}{nameTag ? <span className="font-normal text-gray-400"> ({nameTag})</span> : ''}
+                  {player.name}
+                  {player.mlbTeam && (
+                    <span className="ml-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide">{player.mlbTeam}</span>
+                  )}
                 </div>
                 <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>
                   {player.playedPosition || 'Inactive'}
@@ -335,6 +389,9 @@ function RosterCard({ title, players }: { title: string; players: Player[] }) {
                       player.ablPlayedType === 'SUB'     ? 'bg-yellow-100 text-yellow-700' :
                       'bg-purple-100 text-purple-700'
                     }`}>{player.ablPlayedType === 'SUB' ? 'Supp' : player.ablPlayedType === 'STARTER' ? 'Starter' : 'Xtra'}</span>
+                  )}
+                  {badge && (
+                    <span className={`ml-2 text-[10px] ${badgeColor}`}>{badge}</span>
                   )}
                 </div>
               </div>
