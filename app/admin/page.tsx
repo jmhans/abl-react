@@ -15,6 +15,17 @@ interface AdminCard {
 // Cards whose hrefs need league/season context forwarded
 const LEAGUE_SCOPED = new Set(['/admin/new-draft', '/admin/recalculate']);
 
+const DEV_CARDS: AdminCard[] = [
+  {
+    href: '/admin/dev-tools',
+    title: 'Dev Tools',
+    description: 'Local/preview utilities — refresh the dev database from production (one-way, never touches prod).',
+    accent: 'border-l-amber-500',
+    iconBg: 'bg-amber-100',
+    icon: '🛠️',
+  },
+];
+
 const SITE_CARDS: AdminCard[] = [
   {
     href: '/admin/co-owner-users',
@@ -172,6 +183,14 @@ export default function AdminPage() {
           </p>
         </div>
         <CardGrid cards={LEAGUE_CARDS} leagueQuery={leagueQuery} />
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Dev Tools</h2>
+          <p className="text-xs text-gray-400">Local and preview environment utilities. Blocked on production.</p>
+        </div>
+        <CardGrid cards={DEV_CARDS} leagueQuery="" />
       </section>
     </div>
   );

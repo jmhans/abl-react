@@ -45,6 +45,7 @@ interface RosterData {
     homeTeam: any;
     awayTeam: any;
   };
+  asOf?: string | null;
 }
 
 export default function TeamRosterPage() {
@@ -75,6 +76,7 @@ export default function TeamRosterPage() {
   const [removingCoOwner, setRemovingCoOwner] = useState<string | null>(null);
   const [coOwnerError, setCoOwnerError] = useState('');
   const [showRulesPopover, setShowRulesPopover] = useState(false);
+  const [asOfDate, setAsOfDate] = useState('');
 
   useEffect(() => {
     fetchUserAndRoster();
@@ -125,10 +127,13 @@ export default function TeamRosterPage() {
     }
   };
 
-  const fetchRoster = async () => {
+  const fetchRoster = async (date?: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/teams/${teamId}/roster`);
+      const url = date
+        ? `/api/teams/${teamId}/roster?asOf=${encodeURIComponent(date)}`
+        : `/api/teams/${teamId}/roster`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch roster');
       const data = await res.json();
       setRoster(data);
@@ -138,6 +143,11 @@ export default function TeamRosterPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAsOfDateChange = (date: string) => {
+    setAsOfDate(date);
+    fetchRoster(date || undefined);
   };
 
   const handleDragStart = (index: number) => {
@@ -503,6 +513,39 @@ export default function TeamRosterPage() {
           </div>
         )}
 
+        {/* As-of date picker for historical roster viewing */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <label htmlFor="asOfDate" className="text-sm font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+            View roster as of:
+          </label>
+          <input
+            id="asOfDate"
+            type="date"
+            value={asOfDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={e => handleAsOfDateChange(e.target.value)}
+            className="text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          {asOfDate && (
+            <button
+              onClick={() => handleAsOfDateChange('')}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Reset to current
+            </button>
+          )}
+        </div>
+
+        {asOfDate && roster && (
+          <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-2 mb-4 text-sm text-blue-900 dark:text-blue-100">
+            📅 Viewing roster as of <strong>{new Date(roster.effectiveDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong>
+            {roster.effectiveDate !== asOfDate && (
+              <span className="text-blue-700 dark:text-blue-300"> (most recent before {new Date(asOfDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })})</span>
+            )}
+            {' '}— <em>read-only</em>
+          </div>
+        )}
+
         <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg mb-4 text-sm ${roster.locked ? 'bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700' : 'bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700'}`}>
           <span className={`font-semibold ${roster.locked ? 'text-red-900 dark:text-red-100' : 'text-green-900 dark:text-green-100'}`}>{roster.locked ? '🔒 Roster Locked' : '🟢 Roster Open'}</span>
           {!roster.locked && roster.timeUntilLock && (
@@ -540,7 +583,7 @@ export default function TeamRosterPage() {
               </button>
             )}
             <button
-              onClick={fetchRoster}
+              onClick={() => fetchRoster(asOfDate || undefined)}
               className="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg hover:bg-gray-300 transition-colors text-sm"
             >
               Discard
