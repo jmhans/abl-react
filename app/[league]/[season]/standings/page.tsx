@@ -31,6 +31,7 @@ interface Standing {
   sb?: number;
   cs?: number;
   e?: number;
+  pb?: number;
   era?: number;
   hr_allowed?: number;
   batAvg?: string;
@@ -255,6 +256,7 @@ function StandardStandingsTable({
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">SF</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">AVG</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">E</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">PB</th>
         </tr>
       </thead>
       <tbody className="bg-white divide-y divide-gray-200">
@@ -295,6 +297,7 @@ function StandardStandingsTable({
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.sf || 0}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.batAvg}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.e || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.pb || 0}</td>
           </tr>
         ))}
       </tbody>
