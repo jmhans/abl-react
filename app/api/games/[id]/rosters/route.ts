@@ -141,6 +141,7 @@ export async function GET(
               eligible: p?.eligible ?? [],
               mlbTeam: p?.team ?? null,
               lineupPosition: r.lineupPosition,
+              rosterOrder: r.rosterOrder ?? 0,
               lineupOrder: idx + 1,
               acqType: r.acqType,
             };
@@ -196,6 +197,7 @@ export async function GET(
         ablPlayedType: p.ablPlayedType ?? null,
         lineupOrder: p.lineupOrder,
         lineupPosition: p.lineupPosition,
+        rosterOrder: p.rosterOrder,
         dailyStats: p.dailyStats
       }));
     };
