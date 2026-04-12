@@ -614,6 +614,15 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
     activeGames.length === 0 ||
     activeGames.every((game: any) => game?.status?.abstractGameState === 'Final');
 
+  // At least one MLB game must have started (Live or Final) before ABL results should
+  // be calculated. If all games are still in 'Preview', MLB stats haven't recorded yet
+  // and we should leave ABL games in 'Scheduled' status.
+  const anyMlbGamesStarted =
+    activeGames.some((game: any) =>
+      game?.status?.abstractGameState === 'Live' ||
+      game?.status?.abstractGameState === 'Final',
+    );
+
   // ── Supplemental season-stats refresh ─────────────────────────────────────
   // After processing individual boxscores, fetch the full-season batting totals
   // from the MLB Stats API.  This mirrors what the admin sync-batting tool does
@@ -666,6 +675,7 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
     statlinesUpdated,
     gameSummaries,
     allMlbGamesComplete,
+    anyMlbGamesStarted,
   };
 }
 
@@ -707,7 +717,6 @@ export async function ensureRostersLockedForGames(db: Db, games: any[], official
 
     if (hasHome && hasAway) {
       alreadySet++;
-      continue;
     }
 
     const homeRoster = rosterByTeam.get(homeId) ?? [];
@@ -724,8 +733,8 @@ export async function ensureRostersLockedForGames(db: Db, games: any[], official
       }));
 
     const normalised = {
-      ...(!hasHome && homeRoster.length > 0 ? { homeTeamRoster: normalise(homeRoster) } : {}),
-      ...(!hasAway && awayRoster.length > 0 ? { awayTeamRoster: normalise(awayRoster) } : {}),
+      ...(homeRoster.length > 0 ? { homeTeamRoster: normalise(homeRoster) } : {}),
+      ...(awayRoster.length > 0 ? { awayTeamRoster: normalise(awayRoster) } : {}),
     };
 
     if (Object.keys(normalised).length > 0) {
@@ -791,7 +800,10 @@ export async function runDailyStatRefresh(db: Db, gameDate: Date, options?: { re
   const refreshSummary = await refreshMlbStatsForDate(db, gameDate);
 
   let recalcSummary: any = null;
-  if (options?.recalculate !== false) {
+  // Only recalculate ABL game results once at least one MLB game has actually started.
+  // If all MLB games are still in 'Preview' (no stats recorded yet), skip recalculation
+  // so ABL games remain in 'Scheduled' status rather than flipping to 'In Progress'.
+  if (options?.recalculate !== false && refreshSummary.anyMlbGamesStarted) {
     recalcSummary = await recalculateAblGamesForDate(db, gameDate, {
       isFinal: refreshSummary.allMlbGamesComplete,
     });
