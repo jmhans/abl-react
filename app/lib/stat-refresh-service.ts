@@ -717,7 +717,6 @@ export async function ensureRostersLockedForGames(db: Db, games: any[], official
 
     if (hasHome && hasAway) {
       alreadySet++;
-      continue;
     }
 
     const homeRoster = rosterByTeam.get(homeId) ?? [];
@@ -734,8 +733,8 @@ export async function ensureRostersLockedForGames(db: Db, games: any[], official
       }));
 
     const normalised = {
-      ...(!hasHome && homeRoster.length > 0 ? { homeTeamRoster: normalise(homeRoster) } : {}),
-      ...(!hasAway && awayRoster.length > 0 ? { awayTeamRoster: normalise(awayRoster) } : {}),
+      ...(homeRoster.length > 0 ? { homeTeamRoster: normalise(homeRoster) } : {}),
+      ...(awayRoster.length > 0 ? { awayTeamRoster: normalise(awayRoster) } : {}),
     };
 
     if (Object.keys(normalised).length > 0) {
