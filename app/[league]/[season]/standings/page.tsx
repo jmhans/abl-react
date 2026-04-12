@@ -245,8 +245,15 @@ function StandardStandingsTable({
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">ABL Runs</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">AB</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">H</th>
-          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">AVG</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2B</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">3B</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">HR</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">BB</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">HBP</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">SB(net)</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">SH</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">SF</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">AVG</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">E</th>
         </tr>
       </thead>
@@ -278,8 +285,15 @@ function StandardStandingsTable({
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.ab || 0}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.h || 0}</td>
-            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.batAvg}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team['2b'] || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team['3b'] || 0}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.hr || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.bb || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.hbp || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{(team.sb || 0) - (team.cs || 0)}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.sac || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.sf || 0}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.batAvg}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.e || 0}</td>
           </tr>
         ))}
