@@ -62,7 +62,7 @@ export function calculateAblPoints(stats: any): number {
  *   - Creates mlbID index
  * Returns count of docs processed.
  */
-const SEASON_START = new Date('2026-03-26T00:00:00Z');
+export const SEASON_START = new Date('2026-03-26T00:00:00Z');
 
 export async function rebuildPlayersCache(db: Db): Promise<number> {
   await db.collection('players_view').aggregate([{ $out: 'players_cache' }]).toArray();

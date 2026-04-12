@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore, getFirstMlbGameTimeForDate } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore, getFirstMlbGameTimeForDate, SEASON_START } from '@/app/lib/roster-utils';
 
 // GET /api/teams/:id/roster?asOf=YYYY-MM-DD - Get roster for team (current or historical)
 export async function GET(
@@ -70,11 +70,20 @@ export async function GET(
         .find({ _id: { $in: playerIds } })
         .toArray();
 
-      // Calculate ABL scores and create player lookup map
-      players = players.map((p: any) => ({
-        ...p,
-        abl: calculateAblScore(p.stats)
-      }));
+      // Calculate ABL scores and create player lookup map.
+      // Strip stats that pre-date the current season (e.g. an IL player who
+      // still has last year's stats stored) so the roster shows accurate
+      // 2026-season numbers only.
+      players = players.map((p: any) => {
+        const lastUpdate = p.lastStatUpdate ? new Date(p.lastStatUpdate) : null;
+        const statsAreStale = !lastUpdate || lastUpdate < SEASON_START;
+        const stats = statsAreStale ? undefined : p.stats;
+        return {
+          ...p,
+          stats,
+          abl: calculateAblScore(stats),
+        };
+      });
 
       const playerMap = new Map(players.map((p: any) => [p._id.toString(), p]));
 

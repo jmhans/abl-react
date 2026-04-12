@@ -289,12 +289,19 @@ function buildPlayerAndStatlineDocs(game: any, teamAbbr: string, boxscorePlayer:
 
   const gameDate = new Date(game.gameDate);
 
-  const playerDoc = {
+  // Only include season stats if the boxscore provides non-empty batting data.
+  // An empty seasonStats (null or all-zero) must NOT overwrite existing player
+  // stats — this can happen when the MLB API hasn't fully populated seasonStats
+  // yet (e.g. season debut, recently called-up players, or mid-game snapshots).
+  const newStats = slimSeasonStats(boxscorePlayer?.seasonStats);
+  const hasSeasonStats = Object.keys(newStats.batting).length > 0;
+
+  const playerDoc: Record<string, any> = {
     name: boxscorePlayer?.person?.fullName || '',
     team: teamAbbr,
     status: boxscorePlayer?.status?.description || '',
-    stats: slimSeasonStats(boxscorePlayer?.seasonStats),
     lastStatUpdate: gameDate,
+    ...(hasSeasonStats ? { stats: newStats } : {}),
   };
 
   const statlineDoc = {
@@ -472,12 +479,17 @@ async function processResumedGameWithPlayByPlay(db: Db, game: any) {
 
     const gameDateForDoc = acc.firstEventAt || new Date(game.gameDate);
 
-    const playerDoc = {
+    // Only include season stats if the boxscore provides non-empty batting data.
+    // An empty seasonStats must NOT overwrite existing player stats.
+    const newStatsResume = slimSeasonStats(boxscorePlayer?.seasonStats);
+    const hasSeasonStatsResume = Object.keys(newStatsResume.batting).length > 0;
+
+    const playerDoc: Record<string, any> = {
       name: boxscorePlayer?.person?.fullName || '',
       team: meta.teamAbbr,
       status: boxscorePlayer?.status?.description || '',
-      stats: slimSeasonStats(boxscorePlayer?.seasonStats),
       lastStatUpdate: new Date(game.gameDate),
+      ...(hasSeasonStatsResume ? { stats: newStatsResume } : {}),
     };
 
     const statlineDoc = {
@@ -601,6 +613,51 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   const allMlbGamesComplete =
     activeGames.length === 0 ||
     activeGames.every((game: any) => game?.status?.abstractGameState === 'Final');
+
+  // ── Supplemental season-stats refresh ─────────────────────────────────────
+  // After processing individual boxscores, fetch the full-season batting totals
+  // from the MLB Stats API.  This mirrors what the admin sync-batting tool does
+  // and acts as a safety net: if any player's seasonStats were missing or empty
+  // in their boxscore (e.g. season debut, called-up mid-game), we still land on
+  // the correct season-to-date numbers.  Uses a partial $set on stats.batting so
+  // we never accidentally wipe other sub-fields.
+  const season = gameDate.getUTCFullYear();
+  const seasonStatsUrl = `${MLB_API_BASE}/stats?stats=season&group=hitting&gameType=R&season=${season}&sportId=1&limit=5000`;
+  try {
+    const seasonStatsData = await fetchJson(seasonStatsUrl);
+    const splits: any[] = seasonStatsData?.stats?.[0]?.splits ?? [];
+
+    const seasonStatOps: any[] = [];
+    for (const split of splits) {
+      const mlbId = String(split.player?.id ?? '');
+      const posAbbr: string = split.position?.abbreviation ?? '';
+      if (!mlbId || posAbbr === 'P') continue;
+
+      const batting: Record<string, number> = {};
+      for (const field of SEASON_STAT_BATTING_FIELDS) {
+        const v = toNumber(split.stat?.[field]);
+        if (v !== 0) batting[field] = v;
+      }
+      if (Object.keys(batting).length === 0) continue;
+
+      seasonStatOps.push({
+        updateOne: {
+          filter: { mlbID: mlbId },
+          update: { $set: { 'stats.batting': batting, lastStatUpdate: new Date() } },
+        },
+      });
+    }
+
+    if (seasonStatOps.length > 0) {
+      const BATCH = 500;
+      for (let i = 0; i < seasonStatOps.length; i += BATCH) {
+        await db.collection('players').bulkWrite(seasonStatOps.slice(i, i + BATCH), { ordered: false });
+      }
+      playersUpdated += seasonStatOps.length;
+    }
+  } catch (err) {
+    console.warn('[refreshMlbStatsForDate] Supplemental season-stats fetch failed:', err);
+  }
 
   return {
     date: dateYmd,
