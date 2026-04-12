@@ -106,6 +106,7 @@ export async function calculateAndStoreLiveGameResult(db: Db, game: any, options
     homeRosterWithPlayers,
     awayRosterWithPlayers,
     new Date(game.gameDate),
+    isFinal,
   );
 
   if (!save) {

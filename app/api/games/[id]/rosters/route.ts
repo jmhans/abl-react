@@ -261,74 +261,12 @@ export async function PUT(
       return NextResponse.json(updateResult.value, { status: 200 });
     }
 
-    // Option 2: Fetch rosters from team roster documents for the game date
-    const gameDate = new Date(game.gameDate);
-    const officialDate = gameDate.toISOString().slice(0, 10);
-
-    // Get the lineup effective on or before this game's date (string comparison on YYYY-MM-DD)
-    const rosters = await db
-      .collection('rosters')
-      .find({
-        $or: [
-          {
-            ablTeam: game.homeTeam,
-            effectiveDate: { $lte: officialDate }
-          },
-          {
-            ablTeam: game.awayTeam,
-            effectiveDate: { $lte: officialDate }
-          }
-        ]
-      })
-      .sort({ effectiveDate: -1 })
-      .limit(2)
-      .toArray();
-
-    const homeRoster = rosters.find(r => r.ablTeam.toString() === game.homeTeam.toString());
-    const awayRoster = rosters.find(r => r.ablTeam.toString() === game.awayTeam.toString());
-
-    if (!homeRoster || !awayRoster) {
-      return NextResponse.json(
-        {
-          error: 'Could not find rosters for both teams',
-          found: {
-            home: !!homeRoster,
-            away: !!awayRoster
-          }
-        },
-        { status: 400 }
-      );
-    }
-
-    // Extract roster items (flatten from the roster document structure)
-    const homeTeamRoster = homeRoster.roster?.map((item: any) => ({
-      player: item.player?._id || item.player,
-      lineupPosition: item.lineupPosition,
-      rosterOrder: item.rosterOrder
-    })) || [];
-
-    const awayTeamRoster = awayRoster.roster?.map((item: any) => ({
-      player: item.player?._id || item.player,
-      lineupPosition: item.lineupPosition,
-      rosterOrder: item.rosterOrder
-    })) || [];
-
-    // Update game with rosters
-    const updateResult = await db.collection('games').findOneAndUpdate(
-      { _id: new ObjectId(id) },
-      {
-        $set: {
-          homeTeamRoster,
-          awayTeamRoster,
-          rostersUpdatedAt: new Date()
-        }
-      },
-      { returnDocument: 'after' }
+    // Roster lookup from legacy 'rosters' collection has been removed (collection is empty).
+    // Callers must supply homeTeamRoster and awayTeamRoster in the request body.
+    return NextResponse.json(
+      { error: 'homeTeamRoster and awayTeamRoster must be provided in the request body' },
+      { status: 400 }
     );
-
-    if (!updateResult) {
-      return NextResponse.json({ error: 'Failed to update game' }, { status: 500 });
-    }
 
     return NextResponse.json(updateResult.value, { status: 200 });
   } catch (error) {

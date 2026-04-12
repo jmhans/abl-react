@@ -129,8 +129,16 @@ function parseFlatEntry(entry: any, mlbId: string, gamePk: string): any {
  * Fetch from the `statlines` collection and attach dailyStats to each roster player.
  * Supports both the new compact date-keyed format and the legacy per-game-doc format.
  * Multiple statlines on the same day (doubleheaders) are summed.
+ *
+ * If teamGameStates is provided, also attaches mlbGameState to each player so the
+ * activation algorithm can distinguish "hasn't played yet" from "finished playing".
  */
-export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): Promise<any[]> {
+export async function getStatsForRoster(
+  db: Db,
+  roster: any[],
+  gameDate: Date,
+  teamGameStates?: Map<string, string>,
+): Promise<any[]> {
   const ablDate = deriveAblDate(gameDate);
 
   // New compact format: single doc per date keyed by _id = ablDate
@@ -140,6 +148,8 @@ export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): 
     const entries = dateDoc.p as Record<string, any>;
     return roster.map(player => {
       const mlbID = String(player.player?.mlbID || player.mlbID || '');
+      const teamAbbr: string = player.player?.team || '';
+      const mlbGameState = teamGameStates?.get(teamAbbr) ?? 'Final';
       const prefix = mlbID + '_';
       const playerStats = Object.entries(entries)
         .filter(([key]) => key.startsWith(prefix))
@@ -150,7 +160,7 @@ export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): 
           total.abl_points = calculateAblPoints(total);
           return total;
         }, emptyStats());
-      return { ...player, dailyStats: playerStats };
+      return { ...player, mlbGameState, dailyStats: playerStats };
     });
   }
 
@@ -162,6 +172,8 @@ export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): 
 
   return roster.map(player => {
     const mlbID = player.player?.mlbID || player.mlbID;
+    const teamAbbr: string = player.player?.team || '';
+    const mlbGameState = teamGameStates?.get(teamAbbr) ?? 'Final';
     const playerStats = statlineDocs
       .filter(sl => String(sl.mlbId) === String(mlbID))
       .map(parseDailyStats)
@@ -171,7 +183,7 @@ export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): 
         total.abl_points = calculateAblPoints(total);
         return total;
       }, emptyStats());
-    return { ...player, dailyStats: playerStats };
+    return { ...player, mlbGameState, dailyStats: playerStats };
   });
 }
 
@@ -188,10 +200,15 @@ export async function getStatsForRoster(db: Db, roster: any[], gameDate: Date): 
  *   - posGs > 0 → supplement with 0-for-(2-posPAs)
  *   - posGs == 0 → supplement with 0-for-4
  *
+ * When isFinal=false (live/in-progress day), supplementation is suppressed whenever any
+ * remaining eligible bench player has an MLB game that is still Preview or Live. In that
+ * case we stop padding and wait — the slot will be completed on a later refresh once their
+ * game has finished.
+ *
  * Returns the full roster (active + bench + any supplementals) with:
  *   ablstatus, playedPosition, ablRosterPosition, lineupOrder set.
  */
-export function activateRoster(roster: any[]): any[] {
+export function activateRoster(roster: any[], isFinal: boolean = true): any[] {
   const lineup: any[] = roster.map(p => ({
     ...p,
     ablstatus: 'bench' as string,
@@ -229,6 +246,12 @@ export function activateRoster(roster: any[]): any[] {
       .reduce((sum, p) => sum + (p.dailyStats?.g || 0), 0);
   }
 
+  /** Returns true if a player's MLB game is still in progress or not yet started. */
+  function isPending(p: any): boolean {
+    const state = p.mlbGameState as string | undefined;
+    return state === 'Preview' || state === 'Live';
+  }
+
   function startNextPlayer(pos: string, rosterPos: number, starterOnly: boolean) {
     let posPAs = positionPAs(rosterPos);
     let posGs  = positionGs(rosterPos);
@@ -248,7 +271,17 @@ export function activateRoster(roster: any[]): any[] {
         }
         // If player has no game, skip them and continue loop
       } else {
-        // No eligible bench players remain — insert supplemental
+        // No eligible bench players remain — check if any were skipped due to pending games.
+        // If so, and this is a live (non-final) calculation, stop here rather than inserting
+        // a dummy supplement line. The slot will be completed on a later refresh.
+        if (!isFinal) {
+          const hasPendingEligible = bench()
+            .filter(p => canPlaySlot(p.lineupPosition, pos))
+            .some(p => isPending(p));
+          if (hasPendingEligible) break;
+        }
+
+        // Insert supplemental
         if (posGs > 0) {
           // At least one player played: supplement to reach 2 APAs
           lineup.push({
@@ -353,16 +386,34 @@ export async function calculateGameResultLive(
   homeRosterRaw: any[],
   awayRosterRaw: any[],
   gameDate: Date,
+  isFinal: boolean = true,
 ) {
-  // 1. Fetch stats
+  // Build a map of MLB team abbreviation → abstractGameState for today's schedule.
+  // This lets the activation algorithm know which players' games are still pending.
+  const ablDate = deriveAblDate(gameDate);
+  const mlbGameDocs = await db.collection('mlbgameschemas')
+    .find({ officialDate: ablDate, gameType: 'R' })
+    .project({ 'teams.away.team.abbreviation': 1, 'teams.home.team.abbreviation': 1, 'status.abstractGameState': 1 })
+    .toArray();
+
+  const teamGameStates = new Map<string, string>();
+  for (const g of mlbGameDocs) {
+    const state: string = g.status?.abstractGameState ?? 'Final';
+    const away: string = g.teams?.away?.team?.abbreviation ?? '';
+    const home: string = g.teams?.home?.team?.abbreviation ?? '';
+    if (away) teamGameStates.set(away, state);
+    if (home) teamGameStates.set(home, state);
+  }
+
+  // 1. Fetch stats (attaches mlbGameState to each player)
   const [homeWithStats, awayWithStats] = await Promise.all([
-    getStatsForRoster(db, homeRosterRaw, gameDate),
-    getStatsForRoster(db, awayRosterRaw, gameDate),
+    getStatsForRoster(db, homeRosterRaw, gameDate, teamGameStates),
+    getStatsForRoster(db, awayRosterRaw, gameDate, teamGameStates),
   ]);
 
-  // 2. Activate rosters
-  let homeLineup = activateRoster(homeWithStats);
-  let awayLineup = activateRoster(awayWithStats);
+  // 2. Activate rosters — pass isFinal so supplementation is suppressed for pending games
+  let homeLineup = activateRoster(homeWithStats, isFinal);
+  let awayLineup = activateRoster(awayWithStats, isFinal);
 
   function computeScores(homeActive: any[], awayActive: any[], includeXtra: boolean) {
     const hPlayers = includeXtra ? homeActive : homeActive.filter(p => p.playedPosition !== 'XTRA');
@@ -397,8 +448,8 @@ export async function calculateGameResultLive(
     Math.abs(finalScores.home.abl_runs - finalScores.away.abl_runs) <= 0.5 &&
     (benchWithStats(homeLineup).length + benchWithStats(awayLineup).length > 0)
   ) {
-    homeLineup = activateRosterXtra(homeLineup, nextRosterPos(homeLineup));
-    awayLineup = activateRosterXtra(awayLineup, nextRosterPos(awayLineup));
+    homeLineup = activateRosterXtra(homeLineup, nextRosterPos(homeLineup), isFinal);
+    awayLineup = activateRosterXtra(awayLineup, nextRosterPos(awayLineup), isFinal);
 
     finalScores = computeScores(
       homeLineup.filter(p => p.ablstatus === 'active'),
@@ -471,7 +522,7 @@ export async function calculateGameResultLive(
  * Add one XTRA activation step to an already-activated lineup.
  * Used in the XTRA tie-breaking loop.
  */
-export function activateRosterXtra(lineup: any[], rosterPos: number): any[] {
+export function activateRosterXtra(lineup: any[], rosterPos: number, isFinal: boolean = true): any[] {
   let orderCounter = lineup.filter(p => p.ablstatus === 'active').length;
   const bench = lineup.filter(p => p.ablstatus !== 'active');
   const possibles = bench.filter(p => canPlaySlot(p.lineupPosition, 'XTRA'));
@@ -495,6 +546,16 @@ export function activateRosterXtra(lineup: any[], rosterPos: number): any[] {
         posGs  += nextPlyr.dailyStats?.g || 0;
       }
     } else {
+      // Suppress supplemental if any remaining eligible player has a pending game
+      if (!isFinal) {
+        const hasPendingEligible = lineup
+          .filter(p => p.ablstatus !== 'active' && canPlaySlot(p.lineupPosition, 'XTRA'))
+          .some(p => {
+            const state = p.mlbGameState as string | undefined;
+            return state === 'Preview' || state === 'Live';
+          });
+        if (hasPendingEligible) break;
+      }
       if (posGs > 0) {
         lineup.push({
           player: { name: 'supp' },
