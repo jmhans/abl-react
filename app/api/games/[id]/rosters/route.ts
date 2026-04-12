@@ -267,8 +267,6 @@ export async function PUT(
       { error: 'homeTeamRoster and awayTeamRoster must be provided in the request body' },
       { status: 400 }
     );
-
-    return NextResponse.json(updateResult.value, { status: 200 });
   } catch (error) {
     console.error('Error updating game rosters:', error);
     return NextResponse.json(
