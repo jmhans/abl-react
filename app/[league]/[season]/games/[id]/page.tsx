@@ -42,6 +42,7 @@ interface Player {
   playedPosition?: string;
   lineupPosition?: string;
   lineupOrder?: number;
+  rosterOrder?: number;
 }
 
 interface MlbGameStatus {
@@ -377,45 +378,57 @@ const STAT_COLS: { key: keyof PlayerStats; label: string }[] = [
 ];
 
 function StatDetailTable({ title, players }: { title: string; players: Player[] }) {
-  const active = [...players]
-    .filter(p => p.playedPosition)
-    .sort((a, b) => (a.lineupOrder || 999) - (b.lineupOrder || 999));
+  const sorted = [...players].sort((a, b) => (a.rosterOrder ?? 999) - (b.rosterOrder ?? 999));
 
-  // Totals row
+  // Totals only over players who counted (have a playedPosition)
+  const qualifying = sorted.filter(p => p.playedPosition);
   const totals: Record<string, number> = {};
   for (const col of STAT_COLS) {
-    totals[col.key] = active.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
+    totals[col.key] = qualifying.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
   }
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 overflow-x-auto">
       <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
-      <table className="w-full text-xs border-collapse min-w-[600px]">
+      <table className="w-full text-xs border-collapse min-w-[700px]">
         <thead>
           <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+            <th className="text-right py-2 px-1 font-semibold w-8">#</th>
             <th className="text-left py-2 px-2 font-semibold w-36">Player</th>
-            <th className="text-left py-2 px-1 font-semibold w-14">Pos</th>
+            <th className="text-left py-2 px-1 font-semibold w-12">Roster</th>
+            <th className="text-left py-2 px-1 font-semibold w-12">Played</th>
             {STAT_COLS.map(c => (
               <th key={c.key} className={`text-right py-2 px-1 font-semibold ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>{c.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {active.map(p => {
+          {sorted.map(p => {
             const s = p.dailyStats || {};
             const isSynth = p.name === 'supp' || p.name === 'four';
+            const inGame = !!p.playedPosition;
+            const rowCls = isSynth
+              ? 'border-t text-gray-400 italic'
+              : inGame
+                ? 'border-t text-gray-900 bg-green-50'
+                : 'border-t text-gray-400';
             return (
-              <tr key={p._id} className={`border-t ${isSynth ? 'text-gray-400 italic' : 'text-gray-800'}`}>
+              <tr key={p._id ?? p.name} className={rowCls}>
+                <td className="text-right py-1.5 px-1 text-gray-400">{isSynth ? '' : (p.rosterOrder ?? '')}</td>
                 <td className="py-1.5 px-2 font-medium">
                   {p.name}
                   {p.mlbTeam && !isSynth && (
                     <span className="ml-1 text-[10px] font-bold text-gray-400">{p.mlbTeam}</span>
                   )}
                 </td>
-                <td className="py-1.5 px-1 text-gray-500">{p.playedPosition}</td>
+                <td className="py-1.5 px-1 text-gray-500">{p.lineupPosition}</td>
+                <td className={`py-1.5 px-1 font-medium ${inGame ? 'text-green-700' : 'text-gray-300'}`}>{p.playedPosition || '—'}</td>
                 {STAT_COLS.map(c => {
                   const val = (s[c.key] as number) || 0;
-                  const highlight = c.key === 'abl_points' ? 'text-blue-600 font-semibold' : val > 0 ? 'text-gray-900' : 'text-gray-300';
+                  const dimmed = !inGame && !isSynth;
+                  const highlight = dimmed
+                    ? 'text-gray-300'
+                    : c.key === 'abl_points' ? 'text-blue-600 font-semibold' : val > 0 ? 'text-gray-900' : 'text-gray-300';
                   return (
                     <td key={c.key} className={`text-right py-1.5 px-1 ${highlight}`}>
                       {c.key === 'abl_points' ? val.toFixed(1) : val || '—'}
@@ -428,7 +441,8 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50 text-gray-700">
-            <td className="py-2 px-2" colSpan={2}>Total</td>
+            <td className="py-2 px-1" />
+            <td className="py-2 px-2" colSpan={3}>Total (qualifying)</td>
             {STAT_COLS.map(c => (
               <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
                 {c.key === 'abl_points' ? totals[c.key].toFixed(1) : totals[c.key] || '—'}

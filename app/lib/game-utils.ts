@@ -514,6 +514,7 @@ export async function calculateGameResultLive(
           }
         : p.player,
       lineupPosition: p.lineupPosition,
+      rosterOrder: p.rosterOrder,
       ablstatus: p.ablstatus,
       playedPosition: p.playedPosition,
       ablRosterPosition: p.ablRosterPosition,
