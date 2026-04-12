@@ -47,13 +47,20 @@ export async function GET(request: NextRequest) {
         return stage;
       });
 
-      // Prepend the season $match and run directly on the games collection
+      // Prepend the season $match and run directly on the games collection.
+      // 'result.isFinal': {$ne:false} excludes in-progress results while keeping
+      // records that pre-date the isFinal field (where the field is absent → treated as final).
       standings = await db.collection('games')
-        .aggregate([{ $match: { seasonId } }, ...scopedStandingsPipeline])
+        .aggregate([{ $match: { seasonId, 'result.isFinal': { $ne: false } } }, ...scopedStandingsPipeline])
         .toArray();
     } else {
-      // Fallback: no season context — return all data from the unfiltered view
-      standings = await db.collection('standings_view').find({}).toArray();
+      // Fallback: no season context — run the view pipeline inline so we can
+      // inject the isFinal filter (excludes in-progress game results).
+      const standingsDef = await db.listCollections({ name: 'standings_view' }).next() as any;
+      const standingsPipeline: any[] = standingsDef?.options?.pipeline ?? [];
+      standings = await db.collection('games')
+        .aggregate([{ $match: { 'result.isFinal': { $ne: false } } }, ...standingsPipeline])
+        .toArray();
     }
 
     // Calculate games behind (GB)

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore, getFirstMlbGameTimeForDate } from '@/app/lib/roster-utils';
 
-// GET /api/teams/:id/roster - Get current roster for team
+// GET /api/teams/:id/roster?asOf=YYYY-MM-DD - Get roster for team (current or historical)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,13 +12,32 @@ export async function GET(
     const db = await connectToDatabase();
     const { id: teamId } = await params;
 
-    // Get next game date
-    const gameDate = await getNextRosterGameDate(db);
-    const lockTime = await getNextRosterLockTime(db);
+    // Optional asOf date for historical roster view (YYYY-MM-DD)
+    const { searchParams } = new URL(request.url);
+    const asOfParam = searchParams.get('asOf');
+    const asOf = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam) ? asOfParam : null;
 
-    // Check if roster is locked
-    const locked = await isRosterLocked(db);
-    const timeUntilLock = await getTimeUntilLock(db);
+    let gameDate: string;
+    let lockTime: string;
+    let locked: boolean;
+    let timeUntilLock: number | null;
+
+    if (asOf) {
+      // Historical view: lock time is the first game start on that date
+      gameDate = asOf;
+      const lockTimeDate = await getFirstMlbGameTimeForDate(db, asOf);
+      lockTime = lockTimeDate.toISOString();
+      // Historical dates are always considered locked (their lock time has passed)
+      locked = new Date() >= lockTimeDate;
+      const remaining = lockTimeDate.getTime() - Date.now();
+      timeUntilLock = remaining > 0 ? remaining : null;
+    } else {
+      // Current view
+      gameDate = await getNextRosterGameDate(db);
+      lockTime = await getNextRosterLockTime(db);
+      locked = await isRosterLocked(db);
+      timeUntilLock = await getTimeUntilLock(db);
+    }
 
     // Find the most recent lineup on or before the next game date.
     // This shows the current roster even when no changes have been made yet
@@ -69,15 +88,19 @@ export async function GET(
         .sort((a: any, b: any) => a.rosterOrder - b.rosterOrder); // Ensure correct order
     }
 
-    // Get next game info
-    const nextGames = await db.collection('games')
-      .find({ 
-        gameDate: { $gte: new Date() },
-        gameType: 'R'
-      })
-      .sort({ gameDate: 1 })
-      .limit(1)
-      .toArray();
+    // Get next game info (only relevant for current view)
+    let nextGame = null;
+    if (!asOf) {
+      const nextGames = await db.collection('games')
+        .find({ 
+          gameDate: { $gte: new Date() },
+          gameType: 'R'
+        })
+        .sort({ gameDate: 1 })
+        .limit(1)
+        .toArray();
+      nextGame = nextGames[0] || null;
+    }
 
     if (!lineup) {
       return NextResponse.json(
@@ -95,7 +118,8 @@ export async function GET(
       updatedAt: lineup.updatedAt,
       locked: locked,
       timeUntilLock: timeUntilLock,
-      nextGame: nextGames[0] || null
+      nextGame: nextGame,
+      asOf: asOf ?? null,
     });
 
   } catch (error) {
