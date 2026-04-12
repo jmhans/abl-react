@@ -263,8 +263,10 @@ export function activateRoster(roster: any[], isFinal: boolean = true): any[] {
       return;
     }
 
-    // possibles: bench players eligible for this slot, in original roster order
-    const possibles = bench().filter(p => canPlaySlot(p.lineupPosition, pos));
+    // possibles: bench players eligible for this slot, sorted by rosterOrder ascending
+    const possibles = bench()
+      .filter(p => canPlaySlot(p.lineupPosition, pos))
+      .sort((a, b) => (a.rosterOrder ?? 0) - (b.rosterOrder ?? 0));
     let playedType = (pos === 'XTRA') ? 'XTRA' : (posGs === 0 ? 'STARTER' : 'SUB');
 
     while (starterOnly ? posGs < 1 : posPAs < 2) {
