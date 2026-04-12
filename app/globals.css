@@ -283,6 +283,7 @@ input::placeholder {
   .bg-gray-200 { @apply bg-gray-700; }
   
   /* Light color backgrounds need darker variants */
+  .bg-blue-50 { @apply bg-blue-950; }
   .bg-emerald-100 { @apply bg-emerald-900; }
   .bg-indigo-100 { @apply bg-indigo-900; }
   .bg-teal-100 { @apply bg-teal-900; }
@@ -299,8 +300,11 @@ input::placeholder {
   
   /* Light text colors need to be lighter in dark mode */
   .text-gray-900 { @apply text-gray-100; }
+  .text-gray-800 { @apply text-gray-100; }
   .text-gray-700 { @apply text-gray-200; }
   .text-gray-500 { @apply text-gray-400; }
+  .text-green-700 { @apply text-green-400; }
+  .text-yellow-600 { @apply text-yellow-400; }
   
   /* Border colors for dark mode */
   .border-gray-100 { @apply border-gray-700; }
