@@ -58,9 +58,16 @@ export async function GET() {
       }
     }
 
-    // 4. Return active seasons the user hasn't joined
+    // 4. Return active seasons the user hasn't joined and that still have open spots
     const available = activeSeasons
-      .filter((s) => !joinedSeasonIds.has(s._id.toString()))
+      .filter((s) => {
+        if (joinedSeasonIds.has(s._id.toString())) return false;
+        // Exclude seasons that have reached max capacity
+        const maxTeams: number = s.maxTeams ?? 10;
+        const currentTeamCount: number = (s.teamIds ?? []).length;
+        if (currentTeamCount >= maxTeams) return false;
+        return true;
+      })
       .map((s) => {
         const league = leagueMap.get(s.leagueId?.toString());
         if (!league) return null;
