@@ -23,6 +23,7 @@ export default async function RootPage() {
 
         if (myTeams.length > 0) {
           const myTeamIds = myTeams.map((t) => t._id);
+          // teamIds in seasons may be stored as ObjectId or string — include both to ensure a match
           const myTeamIdStrings = myTeamIds.map((id) => id.toString());
 
           // Find the newest active season that contains any of the user's teams
