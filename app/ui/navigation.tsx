@@ -184,10 +184,28 @@ export default function Navigation() {
             <div className="px-4 py-3 border-b border-gray-100">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">League</p>
               {activeLeagues.length === 1 ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-800">{activeLeagues[0].league?.name ?? currentLeagueSlug.toUpperCase()}</span>
-                  <span className="text-xs text-gray-400">{activeLeagues[0].season?.year}</span>
-                </div>
+                (() => {
+                  const entry = activeLeagues[0];
+                  if (!entry.league) return null;
+                  const href = `/${entry.league.slug}/${entry.season.year}`;
+                  const isCurrent =
+                    entry.league.slug === currentLeagueSlug &&
+                    String(entry.season.year) === currentSeasonYear;
+                  return isCurrent ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-800">{entry.league.name}</span>
+                      <span className="text-xs text-gray-400">{entry.season.year}</span>
+                    </div>
+                  ) : (
+                    <Link
+                      href={href}
+                      className="flex items-center justify-between rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      <span className="font-semibold">{entry.league.name}</span>
+                      <span className="text-xs opacity-60">{entry.season.year}</span>
+                    </Link>
+                  );
+                })()
               ) : activeLeagues.length > 1 ? (
                 <div className="space-y-1">
                   {activeLeagues.map((entry) => {
