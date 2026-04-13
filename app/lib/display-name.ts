@@ -79,3 +79,26 @@ export async function upsertUserProfileDisplayName(db: Db, userId: string, displ
 
   return sanitized;
 }
+
+/**
+ * Initializes the display name for a user profile only on first creation.
+ * If a profile already exists (e.g. user has set a custom display name),
+ * the existing display name is preserved.
+ */
+export async function initUserProfileDisplayName(db: Db, userId: string, displayName: string): Promise<void> {
+  const sanitized = sanitizeDisplayName(displayName, userId);
+  const now = new Date();
+
+  await db.collection<UserProfileDoc>('user_profiles').updateOne(
+    { userId },
+    {
+      $setOnInsert: {
+        userId,
+        displayName: sanitized,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    { upsert: true }
+  );
+}
