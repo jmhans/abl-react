@@ -291,6 +291,7 @@ input::placeholder {
   .bg-purple-100 { @apply bg-purple-900; }
   .bg-orange-100 { @apply bg-orange-900; }
   .bg-green-100 { @apply bg-green-900; }
+  .bg-green-50 { @apply bg-green-950; }
   .bg-red-100 { @apply bg-red-900; }
   .bg-blue-100 { @apply bg-blue-900; }
   .bg-rose-100 { @apply bg-rose-900; }
@@ -302,9 +303,12 @@ input::placeholder {
   .text-gray-900 { @apply text-gray-100; }
   .text-gray-800 { @apply text-gray-100; }
   .text-gray-700 { @apply text-gray-200; }
+  .text-gray-600 { @apply text-gray-300; }
   .text-gray-500 { @apply text-gray-400; }
   .text-green-700 { @apply text-green-400; }
   .text-yellow-600 { @apply text-yellow-400; }
+  .text-yellow-700 { @apply text-yellow-300; }
+  .text-purple-700 { @apply text-purple-300; }
   
   /* Border colors for dark mode */
   .border-gray-100 { @apply border-gray-700; }
