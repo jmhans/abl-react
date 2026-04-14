@@ -152,6 +152,7 @@ export default function StandingsPage() {
                   <span>GB: {index === 0 ? '–' : team.gb}</span>
                   {team.l10 && <span>L10: {team.l10}</span>}
                   {team.abl_runs != null && <span>{team.abl_runs.toFixed(1)} R/G</span>}
+                  {team.era != null && <span>ERA: {team.era.toFixed(2)}</span>}
                 </div>
               </div>
             ))
@@ -202,6 +203,9 @@ export default function StandingsPage() {
             <p>
               <strong>ABL Runs:</strong> Average ABL runs per game
             </p>
+            <p>
+              <strong>ERA:</strong> Average earned runs allowed per game (runs against minus errors and passed balls)
+            </p>
           </>
         ) : (
           <>
@@ -244,6 +248,7 @@ function StandardStandingsTable({
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">L10</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Streak</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">ABL Runs</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">ERA</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">AB</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">H</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2B</th>
@@ -284,6 +289,9 @@ function StandardStandingsTable({
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.abl_runs?.toFixed(1) || '0.0'}
+            </td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+              {team.era != null ? team.era.toFixed(2) : '-'}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.ab || 0}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.h || 0}</td>
