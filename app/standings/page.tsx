@@ -145,6 +145,9 @@ export default function StandingsPage() {
             <p>
               <strong>ABL Runs:</strong> Average ABL runs per game
             </p>
+            <p>
+              <strong>ERA:</strong> Average earned runs allowed per game (excluding E/PB adjustments)
+            </p>
           </>
         ) : (
           <>
@@ -192,6 +195,9 @@ function StandardStandingsTable({ standings }: { standings: Standing[] }) {
           </th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
             ABL Runs
+          </th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+            ERA
           </th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
             AB
@@ -267,6 +273,9 @@ function StandardStandingsTable({ standings }: { standings: Standing[] }) {
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.abl_runs?.toFixed(1) || '0.0'}
+            </td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+              {team.era != null ? team.era.toFixed(2) : '-'}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.ab || 0}
