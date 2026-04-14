@@ -526,7 +526,10 @@ export default function TeamRosterPage() {
                   </td>
                   <td className="px-3 py-4 text-sm">
                     <div className="font-medium text-gray-900">{item.player.name}</div>
-                    <div className="text-xs text-gray-500">#{item.player.mlbID}</div>
+                    <div className="text-xs text-gray-500">
+                      {item.player.team}
+                      {item.player.eligible?.length ? ` - ${item.player.eligible.join(',')}` : ''}
+                    </div>
                   </td>
                   <td className="px-3 py-4 text-center text-sm text-gray-900">
                     {item.player.team}
