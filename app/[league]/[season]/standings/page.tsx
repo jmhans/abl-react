@@ -204,7 +204,7 @@ export default function StandingsPage() {
               <strong>ABL Runs:</strong> Average ABL runs per game
             </p>
             <p>
-              <strong>ERA:</strong> Average earned runs allowed per game (excluding E/PB adjustments)
+              <strong>ERA:</strong> Average earned runs allowed per game (runs against minus errors and passed balls)
             </p>
           </>
         ) : (
