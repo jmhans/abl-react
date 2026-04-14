@@ -380,7 +380,7 @@ const STAT_COLS: { key: keyof PlayerStats; label: string }[] = [
 function StatDetailTable({ title, players }: { title: string; players: Player[] }) {
   const sorted = [...players].sort((a, b) => (a.rosterOrder ?? 999) - (b.rosterOrder ?? 999));
   const STARTER_PLAYED_TYPE = 'STARTER';
-  const SUPP_PLAYED_TYPE = 'SUB';
+  const SUB_PLAYED_TYPE = 'SUB';
   const calcTotals = (activePlayers: Player[]): Record<string, number> => {
     const result: Record<string, number> = {};
     for (const col of STAT_COLS) {
@@ -390,7 +390,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
   };
   const isRegulationPlayer = (player: Player) =>
     player.ablPlayedType === STARTER_PLAYED_TYPE ||
-    player.ablPlayedType === SUPP_PLAYED_TYPE ||
+    player.ablPlayedType === SUB_PLAYED_TYPE ||
     (!player.ablPlayedType && player.playedPosition !== 'XTRA');
 
   // Totals only over players who counted (have a playedPosition)
