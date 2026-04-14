@@ -377,28 +377,34 @@ const STAT_COLS: { key: keyof PlayerStats; label: string }[] = [
   { key: 'abl_points', label: 'Pts' },
 ];
 
-function StatDetailTable({ title, players }: { title: string; players: Player[] }) {
-  const sorted = [...players].sort((a, b) => (a.rosterOrder ?? 999) - (b.rosterOrder ?? 999));
-  const STARTER_PLAYED_TYPE = 'STARTER';
-  const SUB_PLAYED_TYPE = 'SUB';
-  const calcTotals = (activePlayers: Player[]): Record<string, number> => {
-    const result: Record<string, number> = {};
-    for (const col of STAT_COLS) {
-      result[col.key] = activePlayers.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
-    }
-    return result;
-  };
-  const isRegulationPlayer = (player: Player) =>
+const STARTER_PLAYED_TYPE = 'STARTER';
+const SUB_PLAYED_TYPE = 'SUB';
+
+function calcStatTotals(activePlayers: Player[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const col of STAT_COLS) {
+    result[col.key] = activePlayers.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
+  }
+  return result;
+}
+
+function isRegulationPlayer(player: Player): boolean {
+  return (
     player.ablPlayedType === STARTER_PLAYED_TYPE ||
     player.ablPlayedType === SUB_PLAYED_TYPE ||
     // Legacy rows may be missing ablPlayedType; treat non-XTRA played slots as regulation.
-    (!player.ablPlayedType && player.playedPosition !== 'XTRA');
+    (!player.ablPlayedType && player.playedPosition !== 'XTRA')
+  );
+}
+
+function StatDetailTable({ title, players }: { title: string; players: Player[] }) {
+  const sorted = [...players].sort((a, b) => (a.rosterOrder ?? 999) - (b.rosterOrder ?? 999));
 
   // Totals only over players who counted (have a playedPosition)
   const qualifying = sorted.filter(p => p.playedPosition);
   const regulationOnlyQualifying = qualifying.filter(isRegulationPlayer);
-  const totals = calcTotals(qualifying);
-  const regulationTotals = calcTotals(regulationOnlyQualifying);
+  const totals = calcStatTotals(qualifying);
+  const regulationTotals = calcStatTotals(regulationOnlyQualifying);
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 overflow-x-auto">
