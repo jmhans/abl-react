@@ -379,14 +379,14 @@ const STAT_COLS: { key: keyof PlayerStats; label: string }[] = [
 
 function StatDetailTable({ title, players }: { title: string; players: Player[] }) {
   const sorted = [...players].sort((a, b) => (a.rosterOrder ?? 999) - (b.rosterOrder ?? 999));
+  const isRegulationPlayer = (player: Player) =>
+    player.ablPlayedType === 'STARTER' ||
+    player.ablPlayedType === 'SUB' ||
+    (!player.ablPlayedType && player.playedPosition !== 'XTRA');
 
   // Totals only over players who counted (have a playedPosition)
   const qualifying = sorted.filter(p => p.playedPosition);
-  const regulationOnlyQualifying = qualifying.filter((p) =>
-    p.ablPlayedType === 'STARTER' ||
-    p.ablPlayedType === 'SUB' ||
-    (!p.ablPlayedType && p.playedPosition !== 'XTRA')
-  );
+  const regulationOnlyQualifying = qualifying.filter(isRegulationPlayer);
   const totals: Record<string, number> = {};
   const regulationTotals: Record<string, number> = {};
   for (const col of STAT_COLS) {
@@ -449,7 +449,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
         <tfoot>
           <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50 text-gray-700">
             <td className="py-2 px-1" />
-            <td className="py-2 px-2" colSpan={3}>Total (qualifying)</td>
+            <th className="py-2 px-2 text-left" colSpan={3} scope="row">Total (qualifying)</th>
             {STAT_COLS.map(c => (
               <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
                 {c.key === 'abl_points' ? totals[c.key].toFixed(1) : totals[c.key] || '—'}
@@ -458,7 +458,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
           </tr>
           <tr className="border-t border-gray-200 font-semibold bg-gray-50 text-gray-700">
             <td className="py-2 px-1" />
-            <td className="py-2 px-2" colSpan={3}>Total (regulation)</td>
+            <th className="py-2 px-2 text-left" colSpan={3} scope="row">Total (regulation)</th>
             {STAT_COLS.map(c => (
               <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
                 {c.key === 'abl_points' ? regulationTotals[c.key].toFixed(1) : regulationTotals[c.key] || '—'}
