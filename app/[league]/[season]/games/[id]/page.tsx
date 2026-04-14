@@ -461,7 +461,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
         <tfoot>
           <tr className="border-t-2 border-gray-300 font-semibold bg-gray-50 text-gray-700">
             <td className="py-2 px-1" />
-            <th className="py-2 px-2 text-left" colSpan={3} scope="row">Total (qualifying)</th>
+            <th className="py-2 px-2 text-center" colSpan={3} scope="row">Total (qualifying)</th>
             {STAT_COLS.map(c => (
               <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
                 {c.key === 'abl_points' ? totals[c.key].toFixed(1) : totals[c.key] || '—'}
@@ -470,7 +470,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
           </tr>
           <tr className="border-t border-gray-200 font-semibold bg-gray-50 text-gray-700">
             <td className="py-2 px-1" />
-            <th className="py-2 px-2 text-left" colSpan={3} scope="row">Total (regulation)</th>
+            <th className="py-2 px-2 text-center" colSpan={3} scope="row">Total (regulation)</th>
             {STAT_COLS.map(c => (
               <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
                 {c.key === 'abl_points' ? regulationTotals[c.key].toFixed(1) : regulationTotals[c.key] || '—'}
