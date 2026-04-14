@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
     const seasonSlug = searchParams.get('season');
 
     let standings: any[];
-    let baseMatch: Record<string, unknown>;
+    let baseMatch: Record<string, unknown> = { 'result.isFinal': { $ne: false } };
 
     if (leagueSlug && seasonSlug) {
       // Resolve the season to get its ObjectId
