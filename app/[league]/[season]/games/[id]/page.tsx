@@ -382,7 +382,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
 
   // Totals only over players who counted (have a playedPosition)
   const qualifying = sorted.filter(p => p.playedPosition);
-  const regulationQualifying = qualifying.filter((p) =>
+  const regulationOnlyQualifying = qualifying.filter((p) =>
     p.ablPlayedType === 'STARTER' ||
     p.ablPlayedType === 'SUB' ||
     (!p.ablPlayedType && p.playedPosition !== 'XTRA')
@@ -391,7 +391,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
   const regulationTotals: Record<string, number> = {};
   for (const col of STAT_COLS) {
     totals[col.key] = qualifying.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
-    regulationTotals[col.key] = regulationQualifying.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
+    regulationTotals[col.key] = regulationOnlyQualifying.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
   }
 
   return (
