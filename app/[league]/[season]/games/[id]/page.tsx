@@ -382,9 +382,16 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
 
   // Totals only over players who counted (have a playedPosition)
   const qualifying = sorted.filter(p => p.playedPosition);
+  const regulationQualifying = qualifying.filter((p) =>
+    p.ablPlayedType === 'STARTER' ||
+    p.ablPlayedType === 'SUB' ||
+    (!p.ablPlayedType && p.playedPosition !== 'XTRA')
+  );
   const totals: Record<string, number> = {};
+  const regulationTotals: Record<string, number> = {};
   for (const col of STAT_COLS) {
     totals[col.key] = qualifying.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
+    regulationTotals[col.key] = regulationQualifying.reduce((sum, p) => sum + ((p.dailyStats?.[col.key] as number) || 0), 0);
   }
 
   return (
@@ -446,6 +453,15 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
             {STAT_COLS.map(c => (
               <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
                 {c.key === 'abl_points' ? totals[c.key].toFixed(1) : totals[c.key] || '—'}
+              </td>
+            ))}
+          </tr>
+          <tr className="border-t border-gray-200 font-semibold bg-gray-50 text-gray-700">
+            <td className="py-2 px-1" />
+            <td className="py-2 px-2" colSpan={3}>Total (regulation)</td>
+            {STAT_COLS.map(c => (
+              <td key={c.key} className={`text-right py-2 px-1 ${c.key === 'abl_points' ? 'text-blue-600' : ''}`}>
+                {c.key === 'abl_points' ? regulationTotals[c.key].toFixed(1) : regulationTotals[c.key] || '—'}
               </td>
             ))}
           </tr>
