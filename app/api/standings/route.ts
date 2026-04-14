@@ -81,7 +81,7 @@ function calculateEra(team: Record<string, unknown>, runsAgainstFromGames?: numb
   if (runsAgainst === null) return null;
 
   const errors = toFiniteNumber(team.e) ?? 0;
-  const passedBalls = toFiniteNumber(team.pb) ?? 0; // pb in standings data represents passed balls (catcher miscues), not pitcher balks.
+  const passedBalls = toFiniteNumber(team.pb) ?? 0; // pb in standings data represents passed balls.
   // Product requirement: ERA here is earned runs allowed per game using RA - E - PB, clamped to 0 if adjustments exceed runs.
   const earnedRunsAllowed = Math.max(0, runsAgainst - errors - passedBalls);
   return earnedRunsAllowed / gamesPlayed;
