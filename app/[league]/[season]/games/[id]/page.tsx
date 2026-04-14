@@ -391,6 +391,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
   const isRegulationPlayer = (player: Player) =>
     player.ablPlayedType === STARTER_PLAYED_TYPE ||
     player.ablPlayedType === SUB_PLAYED_TYPE ||
+    // Legacy rows may be missing ablPlayedType; treat non-XTRA played slots as regulation.
     (!player.ablPlayedType && player.playedPosition !== 'XTRA');
 
   // Totals only over players who counted (have a playedPosition)
