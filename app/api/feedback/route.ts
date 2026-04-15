@@ -7,13 +7,37 @@ const REPO_NAME = 'abl-react';
 const FEEDBACK_LABEL = 'feedback';
 const GITHUB_API = 'https://api.github.com';
 
-// GET /api/feedback — list open issues labelled 'feedback'
-export async function GET() {
+// How far back to show closed issues by default (30 days)
+const CLOSED_HISTORY_DAYS = 30;
+
+// GET /api/feedback — list issues labelled 'feedback'
+// Query params:
+//   state = 'open' | 'closed' | 'all'  (default: 'open')
+export async function GET(request: NextRequest) {
   if (!GITHUB_TOKEN) {
     return NextResponse.json({ error: 'Feedback not configured' }, { status: 503 });
   }
 
-  const url = `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/issues?labels=${FEEDBACK_LABEL}&state=open&per_page=50&sort=created&direction=desc`;
+  const { searchParams } = new URL(request.url);
+  const rawState = searchParams.get('state') ?? 'open';
+  const state = ['open', 'closed', 'all'].includes(rawState) ? rawState : 'open';
+
+  const params = new URLSearchParams({
+    labels: FEEDBACK_LABEL,
+    state,
+    per_page: '50',
+    sort: 'created',
+    direction: 'desc',
+  });
+
+  // For closed or all, limit to the past CLOSED_HISTORY_DAYS days so the list
+  // doesn't grow unbounded. The UI provides a link to GitHub for older items.
+  if (state === 'closed' || state === 'all') {
+    const since = new Date(Date.now() - CLOSED_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    params.set('since', since);
+  }
+
+  const url = `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/issues?${params.toString()}`;
 
   const res = await fetch(url, {
     headers: {
@@ -35,13 +59,27 @@ export async function GET() {
     number: issue.number,
     title: issue.title,
     body: issue.body,
-    state: issue.state,
+    state: issue.state as 'open' | 'closed',
     createdAt: issue.created_at,
+    closedAt: issue.closed_at ?? null,
     url: issue.html_url,
-    user: issue.user?.login ?? null,
+    submittedBy: extractSubmittedBy(issue.body),
   }));
 
   return NextResponse.json(mapped);
+}
+
+// Parse the "Submitted by: <name>" footer that the POST handler embeds in the body.
+// Caps the name at 100 chars and strips any characters that aren't typical in
+// display names, to prevent unexpected content from being surfaced in the UI.
+function extractSubmittedBy(body: string | null | undefined): string | null {
+  if (!body) return null;
+  const match = body.match(/\*Submitted by: (.+?)\*/);
+  if (!match) return null;
+  const raw = match[1].trim().slice(0, 100);
+  // Allow letters, digits, spaces, and common name punctuation only.
+  // @ is excluded intentionally – these are display names, not email addresses.
+  return /^[\w\s.,'\-+]+$/u.test(raw) ? raw : null;
 }
 
 // POST /api/feedback — create a new issue (requires auth)
