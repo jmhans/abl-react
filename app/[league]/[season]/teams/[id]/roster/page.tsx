@@ -1,9 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
+
+type PosEntry = { pos: string; ct: number };
+type PosLogData = { positionsLog: PosEntry[]; eligiblePositions: string[] };
+
+const ELIGIBILITY_THRESHOLD = 10;
+const STANDARD_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'] as const;
 
 interface Player {
   _id: string;
@@ -77,6 +83,9 @@ export default function TeamRosterPage() {
   const [coOwnerError, setCoOwnerError] = useState('');
   const [showRulesPopover, setShowRulesPopover] = useState(false);
   const [asOfDate, setAsOfDate] = useState('');
+  const [rosterView, setRosterView] = useState<'stats' | 'eligibility'>('stats');
+  const [posLogs, setPosLogs] = useState<Map<string, PosLogData>>(new Map());
+  const [posLogsLoading, setPosLogsLoading] = useState(false);
 
   useEffect(() => {
     fetchUserAndRoster();
@@ -148,6 +157,40 @@ export default function TeamRosterPage() {
   const handleAsOfDateChange = (date: string) => {
     setAsOfDate(date);
     fetchRoster(date || undefined);
+  };
+
+  const posLogsRef = useRef<Map<string, PosLogData>>(new Map());
+
+  const fetchPosLogs = useCallback(async (rosterItems: RosterItem[]) => {
+    const needed = rosterItems.filter(item => !posLogsRef.current.has(item.player.mlbID) && item.player.mlbID);
+    if (needed.length === 0) return;
+    setPosLogsLoading(true);
+    try {
+      const results = await Promise.all(
+        needed.map(async item => {
+          const res = await fetch(`/api/players/${item.player.mlbID}/position-log`);
+          const data: PosLogData = res.ok ? await res.json() : { positionsLog: [], eligiblePositions: [] };
+          return { mlbID: item.player.mlbID, data };
+        })
+      );
+      setPosLogs(prev => {
+        const next = new Map(prev);
+        results.forEach(({ mlbID, data }) => {
+          next.set(mlbID, data);
+          posLogsRef.current.set(mlbID, data);
+        });
+        return next;
+      });
+    } finally {
+      setPosLogsLoading(false);
+    }
+  }, []);
+
+  const handleViewChange = (view: 'stats' | 'eligibility') => {
+    setRosterView(view);
+    if (view === 'eligibility' && roster) {
+      fetchPosLogs(roster.roster);
+    }
   };
 
   const handleDragStart = (index: number) => {
@@ -725,7 +768,34 @@ export default function TeamRosterPage() {
         </div>
       </div>
 
+      {/* View toggle */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => handleViewChange('stats')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            rosterView === 'stats'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Current Stats
+        </button>
+        <button
+          onClick={() => handleViewChange('eligibility')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            rosterView === 'eligibility'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Position Eligibility
+        </button>
+      </div>
+
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        {rosterView === 'eligibility' && posLogsLoading && (
+          <div className="text-center py-4 text-sm text-gray-500">Loading position data…</div>
+        )}
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -734,14 +804,22 @@ export default function TeamRosterPage() {
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pos</th>
-              <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">G</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">AB</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">H</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HR</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">BB</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">SB(net)</th>
-              <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HBP</th>
+              {rosterView === 'stats' ? (
+                <>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">G</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">AB</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">H</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HR</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">BB</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">SB(net)</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HBP</th>
+                </>
+              ) : (
+                STANDARD_POSITIONS.map(pos => (
+                  <th key={pos} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">{pos}</th>
+                ))
+              )}
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -836,16 +914,43 @@ export default function TeamRosterPage() {
                       <span className="text-sm">{item.lineupPosition || '--'}</span>
                     )}
                   </td>
-                  <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
-                    {item.player.abl?.toFixed(2) ?? '—'}
-                  </td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
-                  <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
+                  {rosterView === 'stats' ? (
+                    <>
+                      <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                        {item.player.abl?.toFixed(2) ?? '—'}
+                      </td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
+                    </>
+                  ) : (
+                    <>
+                      {STANDARD_POSITIONS.map(pos => {
+                        const log = posLogs.get(item.player.mlbID);
+                        const entry = log?.positionsLog.find(e => e.pos === pos);
+                        const ct = entry?.ct ?? 0;
+                        const eligible = ct >= ELIGIBILITY_THRESHOLD;
+                        const hasGames = ct > 0;
+                        return (
+                          <td key={pos} className="px-3 py-4 text-center text-sm tabular-nums">
+                            {!log ? (
+                              <span className="text-gray-300">…</span>
+                            ) : hasGames ? (
+                              <span className={eligible ? 'text-green-700 font-semibold' : 'text-gray-500'}>
+                                {ct}{eligible ? ' ✓' : ''}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </>
+                  )}
                   <td className="px-3 py-4 text-center">
                     {canDrop ? (
                       <button
