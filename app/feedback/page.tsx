@@ -227,12 +227,12 @@ export default function FeedbackPage() {
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">
                     #{issue.number}
-                    {' '}·{' '}
+                    {' '}&middot;{' '}
                     {issue.state === 'closed' && issue.closedAt
                       ? `Closed ${new Date(issue.closedAt).toLocaleDateString()}`
                       : `Opened ${new Date(issue.createdAt).toLocaleDateString()}`}
                     {issue.submittedBy && (
-                      <> · Submitted by <span className="text-gray-500 dark:text-gray-300">{issue.submittedBy}</span></>
+                      <> &middot; Submitted by <span className="text-gray-500 dark:text-gray-300">{issue.submittedBy}</span></>
                     )}
                   </p>
                 </div>

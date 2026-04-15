@@ -78,7 +78,8 @@ function extractSubmittedBy(body: string | null | undefined): string | null {
   if (!match) return null;
   const raw = match[1].trim().slice(0, 100);
   // Allow letters, digits, spaces, and common name punctuation only.
-  return /^[\w\s.,'\-@+]+$/u.test(raw) ? raw : null;
+  // @ is excluded intentionally – these are display names, not email addresses.
+  return /^[\w\s.,'\-+]+$/u.test(raw) ? raw : null;
 }
 
 // POST /api/feedback — create a new issue (requires auth)
