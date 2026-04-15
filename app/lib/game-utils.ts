@@ -359,13 +359,23 @@ export function calculateTeamScore(
   isHome: boolean,
   oppErrors: number,
   oppPBs: number,
-): { abl_runs: number; abl_points: number; ab: number; e: number; pb: number; opp_e: number; opp_pb: number } {
-  let abl_points = 0, ab = 0, e = 0, pb = 0;
+): { abl_runs: number; abl_points: number; ab: number; h: number; '2b': number; '3b': number; hr: number; bb: number; hbp: number; sac: number; sf: number; sb: number; cs: number; e: number; pb: number; opp_e: number; opp_pb: number } {
+  let abl_points = 0, ab = 0, h = 0, doubles = 0, triples = 0, hr = 0, bb = 0, hbp = 0, sac = 0, sf = 0, sb = 0, cs = 0, e = 0, pb = 0;
 
   for (const p of activePlayers) {
     const ds = p.dailyStats || {};
     abl_points += ds.abl_points || 0;
     ab  += ds.ab  || 0;
+    h   += ds.h   || 0;
+    doubles += ds['2b'] || 0;
+    triples += ds['3b'] || 0;
+    hr  += ds.hr  || 0;
+    bb  += ds.bb  || 0;
+    hbp += ds.hbp || 0;
+    sac += ds.sac || 0;
+    sf  += ds.sf  || 0;
+    sb  += ds.sb  || 0;
+    cs  += ds.cs  || 0;
 
     // DH and XTRA player errors/PBs do NOT count toward team totals
     if (p.playedPosition !== 'DH' && p.playedPosition !== 'XTRA') {
@@ -378,7 +388,7 @@ export function calculateTeamScore(
     ? abl_points / ab - 4.5 + oppErrors * 0.5 + oppPBs * 0.2 + (isHome ? 0.5 : 0)
     : (isHome ? 0.5 : 0) - 4.5;
 
-  return { abl_runs, abl_points, ab, e, pb, opp_e: oppErrors, opp_pb: oppPBs };
+  return { abl_runs, abl_points, ab, h, '2b': doubles, '3b': triples, hr, bb, hbp, sac, sf, sb, cs, e, pb, opp_e: oppErrors, opp_pb: oppPBs };
 }
 
 // === LIVE GAME RESULT (FORWARD USE) ===
@@ -696,6 +706,32 @@ export async function calculateGameResult(
     const awayTotalPoints = awayRosteredPlayers.reduce((sum: number, s: any) => sum + s.points, 0);
     const awayTotalAB = awayRosteredPlayers.reduce((sum: number, s: any) => sum + s.ab, 0);
 
+    // Sum hitting stats for each team
+    const sumStat = (players: any[], field: string) =>
+      players.reduce((sum: number, s: any) => sum + (s.dailyStats?.[field] || 0), 0);
+
+    const homeTotalH   = sumStat(homeRosteredPlayers, 'h');
+    const homeTotal2B  = sumStat(homeRosteredPlayers, '2b');
+    const homeTotal3B  = sumStat(homeRosteredPlayers, '3b');
+    const homeTotalHR  = sumStat(homeRosteredPlayers, 'hr');
+    const homeTotalBB  = sumStat(homeRosteredPlayers, 'bb');
+    const homeTotalHBP = sumStat(homeRosteredPlayers, 'hbp');
+    const homeTotalSAC = sumStat(homeRosteredPlayers, 'sac');
+    const homeTotalSF  = sumStat(homeRosteredPlayers, 'sf');
+    const homeTotalSB  = sumStat(homeRosteredPlayers, 'sb');
+    const homeTotalCS  = sumStat(homeRosteredPlayers, 'cs');
+
+    const awayTotalH   = sumStat(awayRosteredPlayers, 'h');
+    const awayTotal2B  = sumStat(awayRosteredPlayers, '2b');
+    const awayTotal3B  = sumStat(awayRosteredPlayers, '3b');
+    const awayTotalHR  = sumStat(awayRosteredPlayers, 'hr');
+    const awayTotalBB  = sumStat(awayRosteredPlayers, 'bb');
+    const awayTotalHBP = sumStat(awayRosteredPlayers, 'hbp');
+    const awayTotalSAC = sumStat(awayRosteredPlayers, 'sac');
+    const awayTotalSF  = sumStat(awayRosteredPlayers, 'sf');
+    const awayTotalSB  = sumStat(awayRosteredPlayers, 'sb');
+    const awayTotalCS  = sumStat(awayRosteredPlayers, 'cs');
+
     // Count opponent errors
     const computedHomeOpponentErrors = awayRosteredPlayers.reduce((sum: number, s: any) =>
       sum + (s.dailyStats?.e || 0), 0);
@@ -733,6 +769,16 @@ export async function calculateGameResult(
             abl_runs: homeTeamFinalScore,
             abl_points: homeTotalPoints,
             ab: homeTotalAB,
+            h: homeTotalH,
+            '2b': homeTotal2B,
+            '3b': homeTotal3B,
+            hr: homeTotalHR,
+            bb: homeTotalBB,
+            hbp: homeTotalHBP,
+            sac: homeTotalSAC,
+            sf: homeTotalSF,
+            sb: homeTotalSB,
+            cs: homeTotalCS,
             opp_e: homeOpponentErrors
           },
           players: homeScores
@@ -745,6 +791,16 @@ export async function calculateGameResult(
             abl_runs: awayTeamFinalScore,
             abl_points: awayTotalPoints,
             ab: awayTotalAB,
+            h: awayTotalH,
+            '2b': awayTotal2B,
+            '3b': awayTotal3B,
+            hr: awayTotalHR,
+            bb: awayTotalBB,
+            hbp: awayTotalHBP,
+            sac: awayTotalSAC,
+            sf: awayTotalSF,
+            sb: awayTotalSB,
+            cs: awayTotalCS,
             opp_e: awayOpponentErrors
           },
           players: awayScores

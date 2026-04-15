@@ -20,6 +20,19 @@ interface GameForEra {
   result?: GameResult;
 }
 
+interface HittingStats {
+  h: number;
+  '2b': number;
+  '3b': number;
+  hr: number;
+  bb: number;
+  hbp: number;
+  sac: number;
+  sf: number;
+  sb: number;
+  cs: number;
+}
+
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return value;
@@ -116,6 +129,44 @@ function buildRunsAgainstMap(games: GameForEra[]): Map<string, number> {
   return runsAgainstByTeam;
 }
 
+function buildHittingStatsMap(games: any[]): Map<string, HittingStats> {
+  const statsByTeam = new Map<string, HittingStats>();
+
+  for (const game of games) {
+    const scores = game.result?.scores;
+    if (!scores) continue;
+
+    for (const score of scores) {
+      const teamId = String(score.team);
+      const players: any[] = score.players || [];
+
+      const current = statsByTeam.get(teamId) ?? { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0 };
+
+      for (const player of players) {
+        // Only count activated players (same logic as game calculation)
+        const pos = player.playedPosition;
+        if (!pos || pos === 'INJ') continue;
+
+        const ds = player.dailyStats || {};
+        current.h    += ds.h    || 0;
+        current['2b'] += ds['2b'] || 0;
+        current['3b'] += ds['3b'] || 0;
+        current.hr   += ds.hr   || 0;
+        current.bb   += ds.bb   || 0;
+        current.hbp  += ds.hbp  || 0;
+        current.sac  += ds.sac  || 0;
+        current.sf   += ds.sf   || 0;
+        current.sb   += ds.sb   || 0;
+        current.cs   += ds.cs   || 0;
+      }
+
+      statsByTeam.set(teamId, current);
+    }
+  }
+
+  return statsByTeam;
+}
+
 // GET /api/standings?league=abl&season=2025 - Get season-scoped standings
 export async function GET(request: NextRequest) {
   try {
@@ -194,6 +245,22 @@ export async function GET(request: NextRequest) {
       .toArray() as GameForEra[];
     const runsAgainstByTeam = buildRunsAgainstMap(gamesForEra);
 
+    // Aggregate hitting stats from game player data (covers existing games that may not
+    // have these fields stored in regulation, as well as all newly calculated games).
+    const gamesForHitting = await db.collection('games')
+      .find(
+        baseMatch,
+        {
+          projection: {
+            'result.scores.team': 1,
+            'result.scores.players.playedPosition': 1,
+            'result.scores.players.dailyStats': 1,
+          },
+        }
+      )
+      .toArray();
+    const hittingStatsByTeam = buildHittingStatsMap(gamesForHitting);
+
     // Calculate games behind (GB)
     // Find the best record
     const topRecord = standings.reduce((best, team) => {
@@ -205,7 +272,6 @@ export async function GET(request: NextRequest) {
     const enrichedStandings = standings.map(team => {
       const gb = (topRecord - ((team.w || 0) - (team.l || 0))) / 2;
       const wpct = team.g > 0 ? team.w / team.g : 0;
-      const batAvg = team.ab > 0 ? team.h / team.ab : 0;
       
       // Calculate streak from outcomes array
       let streak = '';
@@ -265,7 +331,13 @@ export async function GET(request: NextRequest) {
       const dougluckExcessW = (team.w || 0) - dougluckw;
       const teamId = String(team.tm?._id ?? team._id ?? '');
       const era = calculateEra(team, runsAgainstByTeam.get(teamId));
-      
+      const hitting = hittingStatsByTeam.get(teamId) ?? { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0 };
+
+      // Use player-aggregated hitting stats (computed directly from game player data
+      // so they are correct for both existing and newly calculated games).
+      const h = hitting.h;
+      const batAvg = team.ab > 0 ? h / team.ab : 0;
+
       return {
         _id: team._id,
         tm: team.tm,
@@ -273,8 +345,16 @@ export async function GET(request: NextRequest) {
         w: team.w,
         l: team.l,
         ab: team.ab,
-        h: team.h,
-        hr: team.hr,
+        h,
+        '2b': hitting['2b'],
+        '3b': hitting['3b'],
+        hr: hitting.hr,
+        bb: hitting.bb,
+        hbp: hitting.hbp,
+        sac: hitting.sac,
+        sf: hitting.sf,
+        sb: hitting.sb,
+        cs: hitting.cs,
         e: team.e,
         pb: team.pb,
         abl_runs: team.abl_runs,
