@@ -33,6 +33,10 @@ interface HittingStats {
   cs: number;
 }
 
+function emptyHittingStats(): HittingStats {
+  return { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0 };
+}
+
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return value;
@@ -140,7 +144,7 @@ function buildHittingStatsMap(games: any[]): Map<string, HittingStats> {
       const teamId = String(score.team);
       const players: any[] = score.players || [];
 
-      const current = statsByTeam.get(teamId) ?? { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0 };
+      const current = statsByTeam.get(teamId) ?? emptyHittingStats();
 
       for (const player of players) {
         // Only count activated players (same logic as game calculation)
@@ -331,7 +335,7 @@ export async function GET(request: NextRequest) {
       const dougluckExcessW = (team.w || 0) - dougluckw;
       const teamId = String(team.tm?._id ?? team._id ?? '');
       const era = calculateEra(team, runsAgainstByTeam.get(teamId));
-      const hitting = hittingStatsByTeam.get(teamId) ?? { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0 };
+      const hitting = hittingStatsByTeam.get(teamId) ?? emptyHittingStats();
 
       // Use player-aggregated hitting stats (computed directly from game player data
       // so they are correct for both existing and newly calculated games).

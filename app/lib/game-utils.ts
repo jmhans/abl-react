@@ -346,6 +346,26 @@ export function activateRoster(roster: any[], isFinal: boolean = true): any[] {
 
 // === SCORE CALCULATION ===
 
+export interface TeamScoreResult {
+  abl_runs: number;
+  abl_points: number;
+  ab: number;
+  h: number;
+  '2b': number;
+  '3b': number;
+  hr: number;
+  bb: number;
+  hbp: number;
+  sac: number;
+  sf: number;
+  sb: number;
+  cs: number;
+  e: number;
+  pb: number;
+  opp_e: number;
+  opp_pb: number;
+}
+
 /**
  * Calculate team score from an activated roster.
  *
@@ -359,8 +379,10 @@ export function calculateTeamScore(
   isHome: boolean,
   oppErrors: number,
   oppPBs: number,
-): { abl_runs: number; abl_points: number; ab: number; h: number; '2b': number; '3b': number; hr: number; bb: number; hbp: number; sac: number; sf: number; sb: number; cs: number; e: number; pb: number; opp_e: number; opp_pb: number } {
-  let abl_points = 0, ab = 0, h = 0, doubles = 0, triples = 0, hr = 0, bb = 0, hbp = 0, sac = 0, sf = 0, sb = 0, cs = 0, e = 0, pb = 0;
+): TeamScoreResult {
+  let abl_points = 0, ab = 0, e = 0, pb = 0;
+  let h = 0, doubles = 0, triples = 0, hr = 0;
+  let bb = 0, hbp = 0, sac = 0, sf = 0, sb = 0, cs = 0;
 
   for (const p of activePlayers) {
     const ds = p.dailyStats || {};
