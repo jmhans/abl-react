@@ -2,6 +2,120 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { resolveLeagueContext } from '@/app/lib/league-context';
 
+interface GameScoreLine {
+  team?: string;
+  final?: {
+    abl_runs?: number;
+  };
+  regulation?: {
+    abl_runs?: number;
+  };
+}
+
+interface GameResult {
+  scores?: GameScoreLine[];
+}
+
+interface GameForEra {
+  result?: GameResult;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value;
+}
+
+function getRunsAgainstFromOutcome(outcome: Record<string, unknown>): number | null {
+  const candidates = [
+    outcome.runsAgainst,
+    outcome.runs_allowed,
+    outcome.runsAllowed,
+    outcome.ra,
+    outcome.opp_abl_runs,
+    outcome.opponentRuns,
+    outcome.oppRuns,
+  ];
+
+  for (const candidate of candidates) {
+    const value = toFiniteNumber(candidate);
+    if (value !== null) return value;
+  }
+
+  return null;
+}
+
+function calculateEra(team: Record<string, unknown>, runsAgainstFromGames?: number): number | null {
+  const existingEra = toFiniteNumber(team.era);
+  if (existingEra !== null) return existingEra;
+
+  const gamesPlayed = toFiniteNumber(team.g);
+  if (!gamesPlayed || gamesPlayed <= 0) return null;
+
+  const runsAgainstCandidates = [
+    runsAgainstFromGames,
+    team.runsAgainst,
+    team.runs_allowed,
+    team.runsAllowed,
+    team.ra,
+    team.opp_abl_runs,
+  ];
+
+  let runsAgainst: number | null = null;
+  for (const candidate of runsAgainstCandidates) {
+    const value = toFiniteNumber(candidate);
+    if (value !== null) {
+      runsAgainst = value;
+      break;
+    }
+  }
+
+  if (runsAgainst === null && Array.isArray(team.outcomes)) {
+    const summedRunsAgainst = team.outcomes.reduce((total: number, outcome) => {
+      if (!outcome || typeof outcome !== 'object') return total;
+      const outcomeRunsAgainst = getRunsAgainstFromOutcome(outcome as Record<string, unknown>);
+      return total + (outcomeRunsAgainst ?? 0);
+    }, 0);
+    runsAgainst = summedRunsAgainst > 0 ? summedRunsAgainst : null;
+  }
+
+  if (runsAgainst === null) return null;
+
+  const errors = toFiniteNumber(team.e) ?? 0;
+  // standings_view `pb` is passed balls and is included with `e` as unearned-run adjustments.
+  const passedBalls = toFiniteNumber(team.pb) ?? 0;
+  // Clamp to 0 for edge-case data where E + PB exceeds runs against.
+  const earnedRunsAllowed = Math.max(0, runsAgainst - errors - passedBalls);
+  return earnedRunsAllowed / gamesPlayed;
+}
+
+function extractRuns(scoreLine: GameScoreLine | undefined): number {
+  if (!scoreLine) return 0;
+  return scoreLine.final?.abl_runs ?? scoreLine.regulation?.abl_runs ?? 0;
+}
+
+function buildRunsAgainstMap(games: GameForEra[]): Map<string, number> {
+  const runsAgainstByTeam = new Map<string, number>();
+
+  for (const game of games) {
+    const scores = game.result?.scores;
+    if (!scores || scores.length < 2) continue;
+
+    const first = scores[0];
+    const second = scores[1];
+    if (!first?.team || !second?.team) continue;
+
+    const firstTeamId = String(first.team);
+    const secondTeamId = String(second.team);
+    const firstAllowed = extractRuns(second);
+    const secondAllowed = extractRuns(first);
+
+    runsAgainstByTeam.set(firstTeamId, (runsAgainstByTeam.get(firstTeamId) || 0) + firstAllowed);
+    runsAgainstByTeam.set(secondTeamId, (runsAgainstByTeam.get(secondTeamId) || 0) + secondAllowed);
+  }
+
+  return runsAgainstByTeam;
+}
+
 // GET /api/standings?league=abl&season=2025 - Get season-scoped standings
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +125,7 @@ export async function GET(request: NextRequest) {
     const seasonSlug = searchParams.get('season');
 
     let standings: any[];
+    let baseMatch: Record<string, unknown> = { 'result.isFinal': { $ne: false } };
 
     if (leagueSlug && seasonSlug) {
       // Resolve the season to get its ObjectId
@@ -50,18 +165,34 @@ export async function GET(request: NextRequest) {
       // Prepend the season $match and run directly on the games collection.
       // 'result.isFinal': {$ne:false} excludes in-progress results while keeping
       // records that pre-date the isFinal field (where the field is absent → treated as final).
+      baseMatch = { seasonId, 'result.isFinal': { $ne: false } };
       standings = await db.collection('games')
-        .aggregate([{ $match: { seasonId, 'result.isFinal': { $ne: false } } }, ...scopedStandingsPipeline])
+        .aggregate([{ $match: baseMatch }, ...scopedStandingsPipeline])
         .toArray();
     } else {
       // Fallback: no season context — run the view pipeline inline so we can
       // inject the isFinal filter (excludes in-progress game results).
       const standingsDef = await db.listCollections({ name: 'standings_view' }).next() as any;
       const standingsPipeline: any[] = standingsDef?.options?.pipeline ?? [];
+      baseMatch = { 'result.isFinal': { $ne: false } };
       standings = await db.collection('games')
-        .aggregate([{ $match: { 'result.isFinal': { $ne: false } } }, ...standingsPipeline])
+        .aggregate([{ $match: baseMatch }, ...standingsPipeline])
         .toArray();
     }
+
+    const gamesForEra = await db.collection('games')
+      .find(
+        baseMatch,
+        {
+          projection: {
+            'result.scores.team': 1,
+            'result.scores.final.abl_runs': 1,
+            'result.scores.regulation.abl_runs': 1,
+          },
+        }
+      )
+      .toArray() as GameForEra[];
+    const runsAgainstByTeam = buildRunsAgainstMap(gamesForEra);
 
     // Calculate games behind (GB)
     // Find the best record
@@ -132,6 +263,8 @@ export async function GET(request: NextRequest) {
       const dougluckw = team.AdvancedStandings?.avgW || 0;
       const dougluckl = team.AdvancedStandings?.avgL || 0;
       const dougluckExcessW = (team.w || 0) - dougluckw;
+      const teamId = String(team.tm?._id ?? team._id ?? '');
+      const era = calculateEra(team, runsAgainstByTeam.get(teamId));
       
       return {
         _id: team._id,
@@ -145,6 +278,7 @@ export async function GET(request: NextRequest) {
         e: team.e,
         pb: team.pb,
         abl_runs: team.abl_runs,
+        era,
         gb: gb.toFixed(1),
         wpct: wpct.toFixed(3),
         batAvg: batAvg.toFixed(3),

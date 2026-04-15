@@ -185,7 +185,7 @@ export default function GamesPage() {
   );
 
   return (
-    <div className="max-w-5xl mx-auto px-3 md:px-4 py-6 md:py-8">
+    <div className="max-w-full mx-auto px-3 md:px-4 py-6 md:py-8">
       <div className="mb-4 md:mb-6">
         <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-2 inline-block text-sm">
           ← Back to Home

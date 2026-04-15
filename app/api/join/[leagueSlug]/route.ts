@@ -77,6 +77,15 @@ export async function POST(
       );
     }
 
+    // Check if the season is full
+    const maxTeams: number = season.maxTeams ?? 10;
+    if ((season.teamIds ?? []).length >= maxTeams) {
+      return NextResponse.json(
+        { error: 'league_full', message: 'This league is full and not accepting new members.' },
+        { status: 409 }
+      );
+    }
+
     // Check if this user already owns a team in this season
     const existingTeamIds: ObjectId[] = (season.teamIds ?? []).map((id: any) =>
       id instanceof ObjectId ? id : new ObjectId(id)

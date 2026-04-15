@@ -16,14 +16,19 @@ export default async function RootPage() {
       const userId: string | undefined = JSON.parse(sessionCookie.value).user?.sub;
 
       if (userId) {
-        const myTeam = await db
+        const myTeams = await db
           .collection('ablteams')
-          .findOne({ 'owners.userId': userId });
+          .find({ 'owners.userId': userId })
+          .toArray();
 
-        if (myTeam) {
-          // Prefer the newest active season this user's team belongs to
+        if (myTeams.length > 0) {
+          const myTeamIds = myTeams.map((t) => t._id);
+          // teamIds in seasons may be stored as ObjectId or string — include both to ensure a match
+          const myTeamIdStrings = myTeamIds.map((id) => id.toString());
+
+          // Find the newest active season that contains any of the user's teams
           const season = await db.collection('seasons').findOne(
-            { teamIds: myTeam._id, isActive: true },
+            { teamIds: { $in: [...myTeamIds, ...myTeamIdStrings] }, isActive: true },
             { sort: { year: -1 } }
           );
 
