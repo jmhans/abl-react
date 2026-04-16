@@ -7,6 +7,10 @@ import { initUserProfileDisplayName, sanitizeDisplayName } from '@/app/lib/displ
 const AUTH0_ROLES_CLAIM_NAMESPACE = process.env.AUTH0_ROLES_CLAIM_NAMESPACE || 'https://abl.app';
 const AUTH0_ROLES_CLAIM_KEY = `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles`;
 
+const AUTH0_SCOPES = 'openid profile email offline_access';
+const DEFAULT_TOKEN_EXPIRY_SECONDS = 86400; // 24 hours
+const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
+
 function decodeJwtPayload(token?: string): Record<string, unknown> | null {
   if (!token) return null;
 
@@ -74,7 +78,7 @@ export async function GET(
       `response_type=code&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}&` +
       `redirect_uri=${encodeURIComponent(`${origin}/api/auth/callback`)}&` +
-      `scope=${encodeURIComponent('openid profile email offline_access')}&` +
+      `scope=${encodeURIComponent(AUTH0_SCOPES)}&` +
       `state=${encodeURIComponent(state)}`;
     return redirect(loginUrl);
   }
@@ -176,13 +180,13 @@ export async function GET(
       response.cookies.set('appSession', JSON.stringify({
         user: sessionUser,
         refresh_token: tokens.refresh_token,
-        expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 86400),
+        expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? DEFAULT_TOKEN_EXPIRY_SECONDS),
       }), {
         httpOnly: true,
         secure: true,
         sameSite: 'lax',
         path: '/',
-        maxAge: 60 * 60 * 24 * 90, // 90 days — kept alive by token refresh
+        maxAge: SESSION_COOKIE_MAX_AGE,
       });
 
       return response;
@@ -211,15 +215,23 @@ export async function GET(
       return new Response('No refresh token', { status: 401 });
     }
 
+    const clientId = process.env.AUTH0_CLIENT_ID;
+    const clientSecret = process.env.AUTH0_CLIENT_SECRET;
+    const issuerBaseUrl = process.env.AUTH0_ISSUER_BASE_URL;
+    if (!clientId || !clientSecret || !issuerBaseUrl) {
+      console.error('Missing Auth0 environment variables for token refresh');
+      return new Response('Server configuration error', { status: 500 });
+    }
+
     try {
       const refreshParams = new URLSearchParams({
         grant_type: 'refresh_token',
-        client_id: process.env.AUTH0_CLIENT_ID!,
-        client_secret: process.env.AUTH0_CLIENT_SECRET!,
+        client_id: clientId,
+        client_secret: clientSecret,
         refresh_token: session.refresh_token,
       });
 
-      const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
+      const tokenResponse = await fetch(`${issuerBaseUrl}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: refreshParams,
@@ -228,9 +240,7 @@ export async function GET(
       if (!tokenResponse.ok) {
         const err = await tokenResponse.text();
         console.error('Token refresh failed:', err);
-        // Clear the stale session so the user is prompted to log in again
-        const response = new Response('Refresh failed', { status: 401 });
-        return response;
+        return new Response('Refresh failed', { status: 401 });
       }
 
       const tokens = await tokenResponse.json();
@@ -238,14 +248,17 @@ export async function GET(
       const updatedSession = {
         ...session,
         refresh_token: tokens.refresh_token ?? session.refresh_token,
-        expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 86400),
+        expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? DEFAULT_TOKEN_EXPIRY_SECONDS),
       };
 
-      const response = new Response('OK', { status: 200 });
-      response.headers.set(
-        'Set-Cookie',
-        `appSession=${encodeURIComponent(JSON.stringify(updatedSession))}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 90}`
-      );
+      const response = NextResponse.json({ ok: true });
+      response.cookies.set('appSession', JSON.stringify(updatedSession), {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: SESSION_COOKIE_MAX_AGE,
+      });
       return response;
     } catch (error) {
       console.error('Token refresh error:', error);

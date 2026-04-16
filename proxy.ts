@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server';
 
 // How many seconds before expiry to proactively refresh the access token
 const REFRESH_THRESHOLD_SECONDS = 5 * 60; // 5 minutes
+const DEFAULT_TOKEN_EXPIRY_SECONDS = 86400; // 24 hours
+const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
 
 export async function proxy(request: NextRequest) {
   const sessionCookie = request.cookies.get('appSession');
@@ -29,16 +31,24 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const clientId = process.env.AUTH0_CLIENT_ID;
+  const clientSecret = process.env.AUTH0_CLIENT_SECRET;
+  const issuerBaseUrl = process.env.AUTH0_ISSUER_BASE_URL;
+  if (!clientId || !clientSecret || !issuerBaseUrl) {
+    // Missing env vars — skip refresh and let the request proceed
+    return NextResponse.next();
+  }
+
   // Token has expired or is about to — silently refresh using the stored refresh token
   try {
     const refreshParams = new URLSearchParams({
       grant_type: 'refresh_token',
-      client_id: process.env.AUTH0_CLIENT_ID!,
-      client_secret: process.env.AUTH0_CLIENT_SECRET!,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: session.refresh_token,
     });
 
-    const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
+    const tokenResponse = await fetch(`${issuerBaseUrl}/oauth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: refreshParams,
@@ -56,7 +66,7 @@ export async function proxy(request: NextRequest) {
     const updatedSession = {
       ...session,
       refresh_token: tokens.refresh_token ?? session.refresh_token,
-      expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 86400),
+      expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? DEFAULT_TOKEN_EXPIRY_SECONDS),
     };
 
     const response = NextResponse.next();
@@ -65,7 +75,7 @@ export async function proxy(request: NextRequest) {
       secure: true,
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 90, // 90 days
+      maxAge: SESSION_COOKIE_MAX_AGE,
     });
     return response;
   } catch {
