@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { initUserProfileDisplayName, sanitizeDisplayName } from '@/app/lib/display-name';
 
@@ -50,13 +51,30 @@ export async function GET(
     // Support ?returnTo=/some/path — encoded into OAuth state so it survives the redirect round-trip
     const returnTo = url.searchParams.get('returnTo') || '/';
     const safeReturnTo = returnTo.startsWith('/') ? returnTo : '/';
+
+    // If a valid session already exists, skip Auth0 and go directly to destination
+    const cookieStore = await cookies();
+    const existingSession = cookieStore.get('appSession');
+    if (existingSession?.value) {
+      try {
+        const session = JSON.parse(existingSession.value);
+        const now = Math.floor(Date.now() / 1000);
+        // Use the session if it has no expiry (legacy) or has not yet expired
+        if (!session.expires_at || session.expires_at > now) {
+          return redirect(`${origin}${safeReturnTo}`);
+        }
+      } catch {
+        // malformed cookie — fall through to Auth0
+      }
+    }
+
     const state = Buffer.from(JSON.stringify({ returnTo: safeReturnTo })).toString('base64url');
 
     const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
       `response_type=code&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}&` +
       `redirect_uri=${encodeURIComponent(`${origin}/api/auth/callback`)}&` +
-      `scope=openid profile email&` +
+      `scope=${encodeURIComponent('openid profile email offline_access')}&` +
       `state=${encodeURIComponent(state)}`;
     return redirect(loginUrl);
   }
@@ -155,18 +173,83 @@ export async function GET(
       }
 
       const response = NextResponse.redirect(redirectTo);
-      response.cookies.set('appSession', JSON.stringify({ user: sessionUser }), {
+      response.cookies.set('appSession', JSON.stringify({
+        user: sessionUser,
+        refresh_token: tokens.refresh_token,
+        expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 86400),
+      }), {
         httpOnly: true,
         secure: true,
         sameSite: 'lax',
         path: '/',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
+        maxAge: 60 * 60 * 24 * 90, // 90 days — kept alive by token refresh
       });
 
       return response;
     } catch (error) {
       console.error('Auth callback error:', error);
       return redirect('/?error=callback_failed');
+    }
+  }
+
+  if (route === 'refresh') {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('appSession');
+
+    if (!sessionCookie?.value) {
+      return new Response('No session', { status: 401 });
+    }
+
+    let session: { user: unknown; refresh_token?: string; expires_at?: number };
+    try {
+      session = JSON.parse(sessionCookie.value);
+    } catch {
+      return new Response('Invalid session', { status: 401 });
+    }
+
+    if (!session.refresh_token) {
+      return new Response('No refresh token', { status: 401 });
+    }
+
+    try {
+      const refreshParams = new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: process.env.AUTH0_CLIENT_ID!,
+        client_secret: process.env.AUTH0_CLIENT_SECRET!,
+        refresh_token: session.refresh_token,
+      });
+
+      const tokenResponse = await fetch(`${process.env.AUTH0_ISSUER_BASE_URL}/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: refreshParams,
+      });
+
+      if (!tokenResponse.ok) {
+        const err = await tokenResponse.text();
+        console.error('Token refresh failed:', err);
+        // Clear the stale session so the user is prompted to log in again
+        const response = new Response('Refresh failed', { status: 401 });
+        return response;
+      }
+
+      const tokens = await tokenResponse.json();
+
+      const updatedSession = {
+        ...session,
+        refresh_token: tokens.refresh_token ?? session.refresh_token,
+        expires_at: Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 86400),
+      };
+
+      const response = new Response('OK', { status: 200 });
+      response.headers.set(
+        'Set-Cookie',
+        `appSession=${encodeURIComponent(JSON.stringify(updatedSession))}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 90}`
+      );
+      return response;
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      return new Response('Refresh error', { status: 500 });
     }
   }
 
