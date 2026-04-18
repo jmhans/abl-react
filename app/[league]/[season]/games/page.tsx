@@ -145,7 +145,19 @@ export default function GamesPage() {
           setRefreshMsg({ text: data.error || 'Refresh failed', ok: false });
         }
       } else {
-        setRefreshMsg({ text: `Scores updated — ${data.gamesRecalculated} game${data.gamesRecalculated !== 1 ? 's' : ''} recalculated.`, ok: true });
+        const { gamesRecalculated, gamesSkipped, mlbGamesActive, mlbGamesComplete, playersUpdated } = data;
+        let msg: string;
+        if (!mlbGamesActive) {
+          msg = `Stats refreshed — MLB games haven't started yet today (${playersUpdated} player${playersUpdated !== 1 ? 's' : ''} updated).`;
+        } else if (gamesRecalculated > 0) {
+          const finalLabel = mlbGamesComplete ? ' (final)' : ' (in progress)';
+          msg = `Scores updated — ${gamesRecalculated} game${gamesRecalculated !== 1 ? 's' : ''} recalculated${finalLabel}.`;
+        } else if (gamesSkipped > 0) {
+          msg = `Stats refreshed — ${gamesSkipped} game${gamesSkipped !== 1 ? 's' : ''} couldn't be calculated (lineups may be missing).`;
+        } else {
+          msg = `Stats refreshed — no ABL games found for today (${playersUpdated} player${playersUpdated !== 1 ? 's' : ''} updated).`;
+        }
+        setRefreshMsg({ text: msg, ok: true });
         startCooldownTimer(300);
         await fetchGames();
       }

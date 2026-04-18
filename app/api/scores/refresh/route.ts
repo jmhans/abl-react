@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { runDailyStatRefresh } from '@/app/lib/stat-refresh-service';
 import { getSessionUserFromCookies } from '@/app/lib/admin-auth';
+import { deriveAblDate } from '@/app/lib/abl-date';
 
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 const COOLDOWN_KEY = 'scores_refresh_cooldown';
@@ -39,14 +40,23 @@ export async function POST(_request: NextRequest) {
   );
 
   try {
-    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const result = await runDailyStatRefresh(db, todayUtc, { recalculate: true });
+    // Use the ABL date boundary (08:00Z cutoff) instead of raw UTC midnight.
+    // MLB games regularly finish after midnight UTC (e.g. 11 PM ET = 3 AM UTC),
+    // so using today's UTC date would miss games that belong to the current ABL day.
+    const ablDateStr = deriveAblDate(now);
+    const [year, month, day] = ablDateStr.split('-').map(Number);
+    const gameDate = new Date(Date.UTC(year, month - 1, day));
+    const result = await runDailyStatRefresh(db, gameDate, { recalculate: true });
 
     return NextResponse.json({
       ok: true,
       refreshedAt: now.toISOString(),
+      ablDate: ablDateStr,
+      mlbGamesActive: result.refreshSummary?.anyMlbGamesStarted ?? false,
+      mlbGamesComplete: result.refreshSummary?.allMlbGamesComplete ?? false,
       playersUpdated: result.refreshSummary?.playersUpdated ?? 0,
       gamesRecalculated: result.recalcSummary?.processed ?? 0,
+      gamesSkipped: result.recalcSummary?.skipped ?? 0,
     });
   } catch (err) {
     // On error, clear the cooldown so they can try again
