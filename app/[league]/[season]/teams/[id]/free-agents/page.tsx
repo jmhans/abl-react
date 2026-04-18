@@ -125,6 +125,7 @@ export default function FreeAgentsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [allTeams, setAllTeams] = useState<{ _id: string; name: string }[]>([]);
   const [adminTargetTeamId, setAdminTargetTeamId] = useState<string>('');
+  const [adminBackDate, setAdminBackDate] = useState<string>('');
   const fetchIdRef = useRef(0);
 
   useEffect(() => {
@@ -376,7 +377,10 @@ export default function FreeAgentsPage() {
     try {
       setAdding(playerId);
       const body: Record<string, any> = { playerId, position };
-      if (isAdmin) body.adminOverride = true;
+      if (isAdmin) {
+        body.adminOverride = true;
+        if (adminBackDate) body.effectiveDate = adminBackDate;
+      }
       const res = await fetch(`/api/teams/${targetTeamId}/roster/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -433,6 +437,25 @@ export default function FreeAgentsPage() {
                   <option key={t._id} value={t._id}>{t.name}</option>
                 ))}
               </select>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <label className="text-sm font-medium text-purple-800 dark:text-purple-200 whitespace-nowrap">
+                Back-date to:
+              </label>
+              <input
+                type="date"
+                value={adminBackDate}
+                onChange={e => setAdminBackDate(e.target.value)}
+                className="rounded border border-purple-300 dark:border-purple-600 bg-white dark:bg-purple-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              {adminBackDate && (
+                <button
+                  onClick={() => setAdminBackDate('')}
+                  className="text-xs text-purple-600 dark:text-purple-300 hover:underline"
+                >
+                  clear (use next game date)
+                </button>
+              )}
             </div>
           </div>
         )}
