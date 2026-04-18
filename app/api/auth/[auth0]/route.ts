@@ -10,6 +10,10 @@ const AUTH0_ROLES_CLAIM_KEY = `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles`;
 const AUTH0_SCOPES = 'openid profile email offline_access';
 const DEFAULT_TOKEN_EXPIRY_SECONDS = 86400; // 24 hours
 const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
+const LAST_LOGIN_HINT_COOKIE_NAME = 'lastLoginHint';
+const LAST_LOGIN_HINT_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+// Basic email format check: local@domain.tld with no whitespace or control characters
+const SIMPLE_EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 function decodeJwtPayload(token?: string): Record<string, unknown> | null {
   if (!token) return null;
@@ -39,6 +43,16 @@ function extractRolesFromClaims(claims: Record<string, unknown> | null): string[
   const standardRoles = toStringArray(claims.roles);
 
   return Array.from(new Set([...namespacedRoles, ...standardRoles]));
+}
+
+interface UserInfo {
+  sub?: string;
+  name?: string;
+  nickname?: string;
+  email?: string;
+  email_verified?: boolean;
+  picture?: string;
+  [key: string]: unknown;
 }
 
 export async function GET(
@@ -74,12 +88,15 @@ export async function GET(
 
     const state = Buffer.from(JSON.stringify({ returnTo: safeReturnTo })).toString('base64url');
 
+    const lastLoginHint = cookieStore.get(LAST_LOGIN_HINT_COOKIE_NAME);
+
     const loginUrl = `${process.env.AUTH0_ISSUER_BASE_URL}/authorize?` +
       `response_type=code&` +
       `client_id=${process.env.AUTH0_CLIENT_ID}&` +
       `redirect_uri=${encodeURIComponent(`${origin}/api/auth/callback`)}&` +
       `scope=${encodeURIComponent(AUTH0_SCOPES)}&` +
-      `state=${encodeURIComponent(state)}`;
+      `state=${encodeURIComponent(state)}` +
+      (lastLoginHint?.value ? `&login_hint=${encodeURIComponent(lastLoginHint.value)}` : '');
     return redirect(loginUrl);
   }
 
@@ -134,7 +151,7 @@ export async function GET(
         return redirect('/?error=userinfo_failed');
       }
 
-      const user = await userResponse.json();
+      const user = await userResponse.json() as UserInfo;
       const tokenClaims = decodeJwtPayload(tokens?.id_token);
       const roles = extractRolesFromClaims(tokenClaims);
 
@@ -152,7 +169,7 @@ export async function GET(
         if (typeof sessionUser.sub === 'string' && sessionUser.sub) {
           const db = await connectToDatabase();
           const defaultName = sanitizeDisplayName(
-            (sessionUser as any).name || (sessionUser as any).nickname || '',
+            sessionUser.name || sessionUser.nickname || '',
             sessionUser.sub
           );
           await initUserProfileDisplayName(db, sessionUser.sub, defaultName);
@@ -188,6 +205,20 @@ export async function GET(
         path: '/',
         maxAge: SESSION_COOKIE_MAX_AGE,
       });
+
+      // Persist the user's email so it can be passed as login_hint on the next login,
+      // enabling Auth0 to pre-fill the form and show the "last logged in as" prompt.
+      // Only store the email if it is verified and passes a basic format check.
+      const userEmail = user.email ?? '';
+      if (userEmail && user.email_verified && SIMPLE_EMAIL_REGEX.test(userEmail)) {
+        response.cookies.set(LAST_LOGIN_HINT_COOKIE_NAME, userEmail, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: LAST_LOGIN_HINT_COOKIE_MAX_AGE,
+        });
+      }
 
       return response;
     } catch (error) {
