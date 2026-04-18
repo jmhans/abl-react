@@ -118,7 +118,8 @@ export async function POST(request: NextRequest) {
       { $set: { status: 'abandoned', completedAt: new Date() } }
     );
 
-    await db.collection('lineups').deleteMany({});
+    // NOTE: Do NOT delete lineups here. Lineup history must never be destroyed
+    // by draft creation. Lineups are managed independently.
 
     const insert = await db.collection('drafts').insertOne({
       status: 'active',
@@ -161,7 +162,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     await db.collection('drafts').deleteOne({ _id: draft._id });
-    await db.collection('lineups').deleteMany({});
+
+    // Scope lineup deletion strictly to the teams in this season — never wipe all lineups.
+    const seasonDoc = await db.collection('seasons').findOne({ _id: new ObjectId(season._id.toString()) });
+    const seasonTeamObjectIds = (seasonDoc?.teamIds || []).map((id: any) =>
+      typeof id === 'string' ? new ObjectId(id) : id
+    );
+    if (seasonTeamObjectIds.length > 0) {
+      await db.collection('lineups').deleteMany({ ablTeam: { $in: seasonTeamObjectIds } });
+    }
 
     return NextResponse.json({ deleted: true, draftId: draft._id.toString() });
   } catch (error) {

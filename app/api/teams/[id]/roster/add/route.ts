@@ -14,7 +14,7 @@ export async function POST(
     const { id: teamId } = await params;
     const body = await request.json();
 
-    const { playerId, position, acqType, adminOverride } = body;
+    const { playerId, position, acqType, adminOverride, effectiveDate: requestedEffectiveDate } = body;
 
     if (!playerId) {
       return NextResponse.json(
@@ -36,16 +36,27 @@ export async function POST(
       isAdminRequest = true;
     }
 
-    // Check if roster is locked
-    const locked = await isRosterLocked(db);
-    if (locked) {
-      return NextResponse.json(
-        { error: 'Roster is locked for next game' },
-        { status: 403 }
-      );
+    // Admins can supply a back-dated effectiveDate; validate format YYYY-MM-DD
+    let effectiveDate: string;
+    if (isAdminRequest && requestedEffectiveDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedEffectiveDate)) {
+        return NextResponse.json(
+          { error: 'effectiveDate must be YYYY-MM-DD' },
+          { status: 400 }
+        );
+      }
+      effectiveDate = requestedEffectiveDate;
+    } else {
+      // Check if roster is locked (only for non-backdated adds)
+      const locked = await isRosterLocked(db);
+      if (locked) {
+        return NextResponse.json(
+          { error: 'Roster is locked for next game' },
+          { status: 403 }
+        );
+      }
+      effectiveDate = await getNextRosterGameDate(db);
     }
-
-    const effectiveDate = await getNextRosterGameDate(db);
 
     // Get player to verify exists and get eligible positions
     const player = await db.collection('players').findOne({ _id: new ObjectId(playerId) });
@@ -56,9 +67,20 @@ export async function POST(
       );
     }
 
-    // Check if player is already on any lineup (league-scoped source of truth for roster state)
+    // Check if player is already on a roster in the same league.
+    // Scope to this team's league by finding the season that contains teamId.
+    const teamObjectId = new ObjectId(teamId);
+    const thisSeason = await db.collection('seasons').findOne(
+      { teamIds: teamObjectId },
+      { projection: { teamIds: 1 } }
+    );
+    const leagueTeamIds: ObjectId[] = thisSeason?.teamIds ?? [teamObjectId];
+
     const existingLineup = await db.collection('lineups').findOne(
-      { roster: { $elemMatch: { player: new ObjectId(playerId) } } },
+      {
+        ablTeam: { $in: leagueTeamIds },
+        roster: { $elemMatch: { player: new ObjectId(playerId) } },
+      },
       { projection: { ablTeam: 1 } }
     );
     if (existingLineup) {
@@ -204,17 +226,63 @@ export async function POST(
       { upsert: true }
     );
 
+    // When back-dating, also carry the player forward onto all future lineup docs
+    // that don't already include them.
+    const addedEntry = lineup.roster[lineup.roster.length - 1];
+    if (isAdminRequest && requestedEffectiveDate) {
+      const futureLineups = await db.collection('lineups')
+        .find({
+          ablTeam: new ObjectId(teamId),
+          effectiveDate: { $gt: effectiveDate },
+          'roster.player': { $ne: new ObjectId(playerId) },
+        })
+        .toArray();
+
+      if (futureLineups.length > 0) {
+        const bulkOps = futureLineups.map((fl: any) => {
+          const nextOrder = fl.roster.length + 1;
+          return {
+            updateOne: {
+              filter: { _id: fl._id },
+              update: {
+                $push: {
+                  roster: {
+                    player: new ObjectId(playerId),
+                    lineupPosition: addedEntry.lineupPosition,
+                    rosterOrder: nextOrder,
+                    acqType: addedEntry.acqType,
+                  },
+                },
+                $set: { updatedAt: new Date() },
+              },
+            },
+          };
+        });
+        await db.collection('lineups').bulkWrite(bulkOps as any);
+      }
+    }
+
     // Populate player data for response
     const updatedPlayer = await db.collection('players').findOne({ _id: new ObjectId(playerId) });
-    const addedEntry = lineup.roster[lineup.roster.length - 1];
+    const forwardCount = isAdminRequest && requestedEffectiveDate
+      ? (await db.collection('lineups').countDocuments({
+          ablTeam: new ObjectId(teamId),
+          effectiveDate: { $gt: effectiveDate },
+          'roster.player': new ObjectId(playerId),
+        }))
+      : 0;
 
-    return NextResponse.json({
+    const response: Record<string, unknown> = {
       success: true,
       player: updatedPlayer,
       rosterOrder: addedEntry.rosterOrder,
       lineupPosition: addedEntry.lineupPosition,
       effectiveDate: effectiveDate
-    });
+    };
+    if (isAdminRequest && requestedEffectiveDate) {
+      response.forwardPropagated = forwardCount;
+    }
+    return NextResponse.json(response);
 
   } catch (error) {
     console.error('Error adding player to roster:', error);

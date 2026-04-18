@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { calculateAndStoreLiveGameResult } from '@/app/lib/game-calculation-service';
+import { ensureRostersLockedForGames } from '@/app/lib/stat-refresh-service';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 
 type LineupPlayer = {
@@ -403,6 +404,8 @@ export async function POST(request: NextRequest) {
     const compareLineups = body.compareLineups === true;
     const compareScores = body.compareScores === true;
     const save = compareLineups || compareScores ? body.save === true : body.save !== false;
+    // Allow explicit override; omit to auto-detect per game date
+    const isFinalOverride: boolean | undefined = typeof body.isFinal === 'boolean' ? body.isFinal : undefined;
     const limit = Number(body.limit || 1000);
 
     const query: any = {};
@@ -429,6 +432,20 @@ export async function POST(request: NextRequest) {
       .allowDiskUse(true)
       .toArray();
 
+    // Refresh rosters from the lineups collection before recalculating,
+    // so back-dated adds (or any lineup change) are reflected in the game doc.
+    const gamesByDate = new Map<string, any[]>();
+    for (const game of games) {
+      const dateStr = game.gameDate instanceof Date
+        ? game.gameDate.toISOString().slice(0, 10)
+        : String(game.gameDate).slice(0, 10);
+      if (!gamesByDate.has(dateStr)) gamesByDate.set(dateStr, []);
+      gamesByDate.get(dateStr)!.push(game);
+    }
+    for (const [dateStr, dateGames] of gamesByDate) {
+      await ensureRostersLockedForGames(db, dateGames, dateStr);
+    }
+
     const summary: any[] = [];
     let processed = 0;
     let skipped = 0;
@@ -444,9 +461,17 @@ export async function POST(request: NextRequest) {
     let finalDiffTeams = 0;
     let winnerDiffGames = 0;
 
+    // UTC date string for today (YYYY-MM-DD) — used to determine isFinal per game
+    const todayUtc = new Date().toISOString().slice(0, 10);
+
     for (const game of games) {
       try {
-        const outcome = await calculateAndStoreLiveGameResult(db, game, { save });
+        // Games before today are always final; use override if explicitly provided
+        const gameDateStr = game.gameDate instanceof Date
+          ? game.gameDate.toISOString().slice(0, 10)
+          : String(game.gameDate).slice(0, 10);
+        const isFinal = isFinalOverride !== undefined ? isFinalOverride : gameDateStr < todayUtc;
+        const outcome = await calculateAndStoreLiveGameResult(db, game, { save, isFinal });
 
         if (outcome.status === 'skipped') {
           skipped++;
