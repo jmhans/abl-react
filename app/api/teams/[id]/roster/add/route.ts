@@ -258,7 +258,7 @@ export async function POST(
             },
           };
         });
-        await db.collection('lineups').bulkWrite(bulkOps);
+        await db.collection('lineups').bulkWrite(bulkOps as any);
       }
     }
 
