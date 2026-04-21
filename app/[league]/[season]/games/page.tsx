@@ -69,6 +69,8 @@ export default function GamesPage() {
   const [refreshMsg, setRefreshMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showAllPast, setShowAllPast] = useState(false);
+  const [showAllFuture, setShowAllFuture] = useState(false);
 
   const fetchGames = useCallback(async () => {
     try {
@@ -196,6 +198,32 @@ export default function GamesPage() {
     new Date(a).getTime() - new Date(b).getTime()
   );
 
+  // Split dates into past (≤ today) and future (> today)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const pastDates = dates.filter(d => new Date(d).getTime() <= todayStart.getTime());
+  const futureDates = dates.filter(d => new Date(d).getTime() > todayStart.getTime());
+
+  // Most recent game date = latest past date with at least one game result
+  let mostRecentGameDate: string | null = null;
+  for (let i = pastDates.length - 1; i >= 0; i--) {
+    if (gamesByDate[pastDates[i]].some(g => g.result?.winner != null)) {
+      mostRecentGameDate = pastDates[i];
+      break;
+    }
+  }
+  if (mostRecentGameDate == null) mostRecentGameDate = pastDates[pastDates.length - 1] ?? null;
+
+  // Default: show last 3 past dates and first 3 future dates
+  const visiblePastDates = showAllPast ? pastDates : pastDates.slice(-3);
+  const visibleFutureDates = showAllFuture ? futureDates : futureDates.slice(0, 3);
+  const hiddenPastCount = pastDates.length - visiblePastDates.length;
+  const hiddenFutureCount = futureDates.length - visibleFutureDates.length;
+  const visibleDates = [...visiblePastDates, ...visibleFutureDates];
+
+  const expandBtnClass =
+    'text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2';
+
   return (
     <div className="max-w-full mx-auto px-3 md:px-4 py-6 md:py-8">
       <div className="mb-4 md:mb-6">
@@ -237,7 +265,17 @@ export default function GamesPage() {
       </div>
 
       <div className="space-y-4">
-        {dates.map(date => {
+        {hiddenPastCount > 0 && (
+          <div className="text-center">
+            <button
+              onClick={() => setShowAllPast(true)}
+              className={expandBtnClass}
+            >
+              ↑ Show {hiddenPastCount} earlier date{hiddenPastCount !== 1 ? 's' : ''}
+            </button>
+          </div>
+        )}
+        {visibleDates.map(date => {
           // Sort: user's games first, then others
           const sorted = [...gamesByDate[date]].sort((a, b) => {
             const aIsMyGame = userTeamId && (a.awayTeam?._id === userTeamId || a.homeTeam?._id === userTeamId) ? -1 : 0;
@@ -245,9 +283,25 @@ export default function GamesPage() {
             return aIsMyGame - bIsMyGame;
           });
 
+          const isMostRecent = date === mostRecentGameDate;
+
           return (
-            <div key={date}>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 px-1">{date}</h2>
+            <div
+              key={date}
+              className={
+                isMostRecent
+                  ? 'rounded-xl border-2 border-blue-500 dark:border-blue-400 px-3 pt-2 pb-3 bg-blue-50/40 dark:bg-blue-900/20'
+                  : ''
+              }
+            >
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 px-1">
+                {date}
+                {isMostRecent && (
+                  <span className="ml-2 text-blue-600 dark:text-blue-400 normal-case tracking-normal font-medium">
+                    Most Recent
+                  </span>
+                )}
+              </h2>
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {sorted.map(game => {
                   const isMyGame = !!userTeamId && (game.awayTeam?._id === userTeamId || game.homeTeam?._id === userTeamId);
@@ -298,6 +352,16 @@ export default function GamesPage() {
             </div>
           );
         })}
+        {hiddenFutureCount > 0 && (
+          <div className="text-center">
+            <button
+              onClick={() => setShowAllFuture(true)}
+              className={expandBtnClass}
+            >
+              ↓ Show {hiddenFutureCount} more upcoming date{hiddenFutureCount !== 1 ? 's' : ''}
+            </button>
+          </div>
+        )}
       </div>
 
       {games.length === 0 && (
