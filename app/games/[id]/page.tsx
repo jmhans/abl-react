@@ -383,6 +383,9 @@ function RosterCard({ title, players, teamStatusMap }: { title: string; players:
                 </div>
                 <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>
                   {player.playedPosition || 'Inactive'}
+                  {player.eligible && player.eligible.length > 0 && (
+                    <span className="ml-1 text-[10px] text-gray-400">({player.eligible.join(', ')})</span>
+                  )}
                   {player.ablPlayedType && (
                     <span className={`ml-1 px-1 rounded text-[10px] font-semibold uppercase tracking-wide ${
                       player.ablPlayedType === 'STARTER' ? 'bg-green-100 text-green-700' :
