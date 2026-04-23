@@ -207,7 +207,7 @@ function slimSeasonStats(seasonStats: any): { batting: Record<string, number>; f
     const v = toNumber(seasonStats.batting[field]);
     if (v !== 0) batting[field] = v;
   }
-  const errors = toNumber(seasonStats?.fielding?.errors);
+  const errors = seasonStats.fielding ? toNumber(seasonStats.fielding.errors) : 0;
   return { batting, fielding: { errors } };
 }
 
