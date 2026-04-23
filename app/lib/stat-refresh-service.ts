@@ -193,21 +193,22 @@ function shortenBoxscoreStats(stats: any) {
 }
 
 // Only keep the batting fields needed by calculateAblScore / calculateDraftAblScore.
-// Drops pitching, fielding, and unused batting fields from the full MLB seasonStats blob.
+// Drops pitching and unused batting fields from the full MLB seasonStats blob.
 const SEASON_STAT_BATTING_FIELDS = [
   'gamesPlayed', 'atBats', 'hits', 'doubles', 'triples', 'homeRuns',
   'baseOnBalls', 'hitByPitch', 'stolenBases', 'caughtStealing',
   'pickoffs', 'sacBunts', 'sacFlies',
 ] as const;
 
-function slimSeasonStats(seasonStats: any): { batting: Record<string, number> } {
-  if (!seasonStats?.batting) return { batting: {} };
+function slimSeasonStats(seasonStats: any): { batting: Record<string, number>; fielding: { errors: number } } {
+  if (!seasonStats?.batting) return { batting: {}, fielding: { errors: 0 } };
   const batting: Record<string, number> = {};
   for (const field of SEASON_STAT_BATTING_FIELDS) {
     const v = toNumber(seasonStats.batting[field]);
     if (v !== 0) batting[field] = v;
   }
-  return { batting };
+  const errors = toNumber(seasonStats?.fielding?.errors);
+  return { batting, fielding: { errors } };
 }
 
 // Maps long MLB batting field names → short field names used in compact statline storage

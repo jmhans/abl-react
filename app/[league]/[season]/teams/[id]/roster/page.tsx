@@ -814,6 +814,7 @@ export default function TeamRosterPage() {
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">BB</th>
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">SB(net)</th>
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HBP</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">E</th>
                 </>
               ) : (
                 STANDARD_POSITIONS.map(pos => (
@@ -926,6 +927,11 @@ export default function TeamRosterPage() {
                       <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
                       <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
                       <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">
+                        {(item.player.stats?.fielding?.errors ?? 0) > 0 ? (
+                          <span className="text-red-600 font-medium">{item.player.stats.fielding.errors}</span>
+                        ) : '—'}
+                      </td>
                     </>
                   ) : (
                     <>
