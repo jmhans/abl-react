@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 type PosEntry = { pos: string; ct: number };
-type PosLogData = { positionsLog: PosEntry[]; eligiblePositions: string[] };
+type PosLogData = { positionsLog: PosEntry[]; eligiblePositions: string[]; abl: number | null };
 
 const THRESHOLD = 10;
 // Module-level cache — persists for the lifetime of the page, cleared on full navigation
@@ -73,7 +73,7 @@ export function PosLogPopover({ mlbId }: { mlbId?: string | number }) {
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-5 z-50 w-44 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+        <div className="absolute left-0 top-5 z-50 w-48 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
           <div className="text-xs font-semibold text-gray-700 mb-2">2026 Position Log</div>
           {loading ? (
             <div className="text-xs text-gray-400">Loading…</div>
@@ -108,6 +108,12 @@ export function PosLogPopover({ mlbId }: { mlbId?: string | number }) {
             </table>
           )}
           <div className="mt-2 border-t border-gray-100 pt-1 text-xs text-gray-400">≥{THRESHOLD}g = eligible</div>
+          {data && data.abl !== null && (
+            <div className="mt-1 text-xs">
+              <span className="text-gray-400">ABL Score: </span>
+              <span className="font-semibold text-blue-600 tabular-nums">{data.abl.toFixed(2)}</span>
+            </div>
+          )}
         </div>
       )}
     </span>
