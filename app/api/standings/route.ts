@@ -20,7 +20,7 @@ interface GameForEra {
   result?: GameResult;
 }
 
-interface HittingStats {
+interface TeamGameStats {
   h: number;
   '2b': number;
   '3b': number;
@@ -35,7 +35,7 @@ interface HittingStats {
   pb: number;
 }
 
-function emptyHittingStats(): HittingStats {
+function emptyTeamGameStats(): TeamGameStats {
   return { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0, e: 0, pb: 0 };
 }
 
@@ -135,8 +135,8 @@ function buildRunsAgainstMap(games: GameForEra[]): Map<string, number> {
   return runsAgainstByTeam;
 }
 
-function buildHittingStatsMap(games: any[]): Map<string, HittingStats> {
-  const statsByTeam = new Map<string, HittingStats>();
+function buildTeamGameStatsMap(games: any[]): Map<string, TeamGameStats> {
+  const statsByTeam = new Map<string, TeamGameStats>();
 
   for (const game of games) {
     const scores = game.result?.scores;
@@ -146,7 +146,7 @@ function buildHittingStatsMap(games: any[]): Map<string, HittingStats> {
       const teamId = String(score.team);
       const players: any[] = score.players || [];
 
-      const current = statsByTeam.get(teamId) ?? emptyHittingStats();
+      const current = statsByTeam.get(teamId) ?? emptyTeamGameStats();
 
       for (const player of players) {
         // Only count activated players (same logic as game calculation)
@@ -267,7 +267,7 @@ export async function GET(request: NextRequest) {
         }
       )
       .toArray();
-    const hittingStatsByTeam = buildHittingStatsMap(gamesForHitting);
+    const hittingStatsByTeam = buildTeamGameStatsMap(gamesForHitting);
 
     // Calculate games behind (GB)
     // Find the best record
@@ -338,8 +338,10 @@ export async function GET(request: NextRequest) {
       const dougluckl = team.AdvancedStandings?.avgL || 0;
       const dougluckExcessW = (team.w || 0) - dougluckw;
       const teamId = String(team.tm?._id ?? team._id ?? '');
-      const hitting = hittingStatsByTeam.get(teamId) ?? emptyHittingStats();
-      // Use player-aggregated e and pb (more reliable than standings_view aggregation)
+      const hitting = hittingStatsByTeam.get(teamId) ?? emptyTeamGameStats();
+      // Use player-aggregated e and pb: standings_view does not correctly sum
+      // passed balls from individual player records, so we aggregate directly
+      // from game player dailyStats (same approach used for hitting stats).
       const era = calculateEra({ ...team, e: hitting.e, pb: hitting.pb }, runsAgainstByTeam.get(teamId));
 
       // Use player-aggregated hitting stats (computed directly from game player data
