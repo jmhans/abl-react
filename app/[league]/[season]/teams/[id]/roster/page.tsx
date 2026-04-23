@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
 
 type PosEntry = { pos: string; ct: number };
-type PosLogData = { positionsLog: PosEntry[]; eligiblePositions: string[] };
+type PosLogData = { positionsLog: PosEntry[]; eligiblePositions: string[]; abl: number | null };
 
 const ELIGIBILITY_THRESHOLD = 10;
 const STANDARD_POSITIONS = ['C', '1B', '2B', 'SS', '3B', 'OF', 'DH'] as const;
@@ -169,7 +169,7 @@ export default function TeamRosterPage() {
       const results = await Promise.all(
         needed.map(async item => {
           const res = await fetch(`/api/players/${item.player.mlbID}/position-log`);
-          const data: PosLogData = res.ok ? await res.json() : { positionsLog: [], eligiblePositions: [] };
+          const data: PosLogData = res.ok ? await res.json() : { positionsLog: [], eligiblePositions: [], abl: null };
           return { mlbID: item.player.mlbID, data };
         })
       );
@@ -816,9 +816,12 @@ export default function TeamRosterPage() {
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HBP</th>
                 </>
               ) : (
-                STANDARD_POSITIONS.map(pos => (
-                  <th key={pos} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">{pos}</th>
-                ))
+                <>
+                  {STANDARD_POSITIONS.map(pos => (
+                    <th key={pos} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">{pos}</th>
+                  ))}
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
+                </>
               )}
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
@@ -949,6 +952,15 @@ export default function TeamRosterPage() {
                           </td>
                         );
                       })}
+                      <td className="px-3 py-4 text-center text-sm tabular-nums">
+                        {(() => {
+                          const log = posLogs.get(item.player.mlbID);
+                          if (!log) return <span className="text-gray-300">…</span>;
+                          return log.abl != null
+                            ? <span className="font-semibold text-blue-600">{log.abl.toFixed(2)}</span>
+                            : <span className="text-gray-300">—</span>;
+                        })()}
+                      </td>
                     </>
                   )}
                   <td className="px-3 py-4 text-center">
