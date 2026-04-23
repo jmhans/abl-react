@@ -110,6 +110,11 @@ function extractRuns(scoreLine: GameScoreLine | undefined): number {
   return scoreLine.final?.abl_runs ?? scoreLine.regulation?.abl_runs ?? 0;
 }
 
+function extractRegulationRuns(scoreLine: GameScoreLine | undefined): number {
+  if (!scoreLine) return 0;
+  return scoreLine.regulation?.abl_runs ?? 0;
+}
+
 function buildRunsAgainstMap(games: GameForEra[]): Map<string, number> {
   const runsAgainstByTeam = new Map<string, number>();
 
@@ -169,6 +174,54 @@ function buildHittingStatsMap(games: any[]): Map<string, HittingStats> {
   }
 
   return statsByTeam;
+}
+
+interface DougLuckMaps {
+  scoredByTeam: Map<string, number>;
+  allowedByTeam: Map<string, number>;
+}
+
+function buildDougLuckMaps(games: GameForEra[]): DougLuckMaps {
+  const scoredByTeam = new Map<string, number>();
+  const allowedByTeam = new Map<string, number>();
+
+  for (const game of games) {
+    const scores = game.result?.scores;
+    if (!scores || scores.length < 2) continue;
+
+    const first = scores[0];
+    const second = scores[1];
+    if (!first?.team || !second?.team) continue;
+
+    const firstTeamId = String(first.team);
+    const secondTeamId = String(second.team);
+    // Use regulation-only runs to exclude XTRA players
+    const firstScored = extractRegulationRuns(first);
+    const secondScored = extractRegulationRuns(second);
+
+    scoredByTeam.set(firstTeamId, (scoredByTeam.get(firstTeamId) || 0) + firstScored);
+    scoredByTeam.set(secondTeamId, (scoredByTeam.get(secondTeamId) || 0) + secondScored);
+    allowedByTeam.set(firstTeamId, (allowedByTeam.get(firstTeamId) || 0) + secondScored);
+    allowedByTeam.set(secondTeamId, (allowedByTeam.get(secondTeamId) || 0) + firstScored);
+  }
+
+  return { scoredByTeam, allowedByTeam };
+}
+
+function calculateDougLuck(
+  gamesPlayed: number,
+  runsScored: number,
+  runsAllowed: number,
+): { expectedW: number; expectedL: number } {
+  if (gamesPlayed <= 0) return { expectedW: 0, expectedL: 0 };
+  const rsSq = runsScored * runsScored;
+  const raSq = runsAllowed * runsAllowed;
+  const denom = rsSq + raSq;
+  if (denom === 0) {
+    return { expectedW: gamesPlayed / 2, expectedL: gamesPlayed / 2 };
+  }
+  const expectedW = gamesPlayed * (rsSq / denom);
+  return { expectedW, expectedL: gamesPlayed - expectedW };
 }
 
 // GET /api/standings?league=abl&season=2025 - Get season-scoped standings
@@ -248,6 +301,9 @@ export async function GET(request: NextRequest) {
       )
       .toArray() as GameForEra[];
     const runsAgainstByTeam = buildRunsAgainstMap(gamesForEra);
+    // Reuse the same game fetch to build regulation-only runs for DougLuck
+    const { scoredByTeam: dougluckRunsScoredByTeam, allowedByTeam: dougluckRunsAllowedByTeam } =
+      buildDougLuckMaps(gamesForEra);
 
     // Aggregate hitting stats from game player data (covers existing games that may not
     // have these fields stored in regulation, as well as all newly calculated games).
@@ -329,11 +385,13 @@ export async function GET(request: NextRequest) {
         xtrasRecord = `${xtrasW}-${xtrasL}`;
       }
 
-      // Get DougLuck stats from AdvancedStandings
-      const dougluckw = team.AdvancedStandings?.avgW || 0;
-      const dougluckl = team.AdvancedStandings?.avgL || 0;
-      const dougluckExcessW = (team.w || 0) - dougluckw;
+      // Compute DougLuck using Pythagorean expectation based on regulation scores only
+      // (regulation scores exclude XTRA players, per the task requirement)
       const teamId = String(team.tm?._id ?? team._id ?? '');
+      const rsForDL = dougluckRunsScoredByTeam.get(teamId) ?? 0;
+      const raForDL = dougluckRunsAllowedByTeam.get(teamId) ?? 0;
+      const { expectedW: dougluckw, expectedL: dougluckl } = calculateDougLuck(team.g || 0, rsForDL, raForDL);
+      const dougluckExcessW = (team.w || 0) - dougluckw;
       const era = calculateEra(team, runsAgainstByTeam.get(teamId));
       const hitting = hittingStatsByTeam.get(teamId) ?? emptyHittingStats();
 
