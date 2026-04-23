@@ -669,6 +669,47 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
     console.warn('[refreshMlbStatsForDate] Supplemental season-stats fetch failed:', err);
   }
 
+  // ── Supplemental season fielding stats refresh ──────────────────────────────
+  // Fetch season fielding totals so errors are populated for all position players.
+  // A player can appear multiple times (once per team if traded), so we accumulate
+  // errors per mlbId before writing.
+  const fieldingStatsUrl = `${MLB_API_BASE}/stats?stats=season&group=fielding&gameType=R&season=${season}&sportId=1&limit=5000`;
+  try {
+    const fieldingStatsData = await fetchJson(fieldingStatsUrl);
+    const fieldingSplits: any[] = fieldingStatsData?.stats?.[0]?.splits ?? [];
+
+    const errorsByPlayer = new Map<string, number>();
+    for (const split of fieldingSplits) {
+      const mlbId = String(split.player?.id ?? '');
+      const posAbbr: string = split.position?.abbreviation ?? '';
+      if (!mlbId || posAbbr === 'P') continue;
+      const e = toNumber(split.stat?.errors);
+      if (e > 0) {
+        errorsByPlayer.set(mlbId, (errorsByPlayer.get(mlbId) ?? 0) + e);
+      }
+    }
+
+    const fieldingStatOps: any[] = [];
+    for (const [mlbId, errors] of errorsByPlayer) {
+      fieldingStatOps.push({
+        updateOne: {
+          filter: { mlbID: mlbId },
+          update: { $set: { 'stats.fielding.errors': errors } },
+        },
+      });
+    }
+
+    if (fieldingStatOps.length > 0) {
+      const BATCH = 500;
+      for (let i = 0; i < fieldingStatOps.length; i += BATCH) {
+        await db.collection('players').bulkWrite(fieldingStatOps.slice(i, i + BATCH), { ordered: false });
+      }
+      playersUpdated += fieldingStatOps.length;
+    }
+  } catch (err) {
+    console.warn('[refreshMlbStatsForDate] Supplemental fielding-stats fetch failed:', err);
+  }
+
   return {
     date: dateYmd,
     scheduledGames: games.length,
