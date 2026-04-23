@@ -792,7 +792,7 @@ export default function TeamRosterPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+      <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
         {rosterView === 'eligibility' && posLogsLoading && (
           <div className="text-center py-4 text-sm text-gray-500">Loading position data…</div>
         )}
