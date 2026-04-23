@@ -817,10 +817,10 @@ export default function TeamRosterPage() {
                 </>
               ) : (
                 <>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
                   {STANDARD_POSITIONS.map(pos => (
                     <th key={pos} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">{pos}</th>
                   ))}
-                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">ABL</th>
                 </>
               )}
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -932,6 +932,9 @@ export default function TeamRosterPage() {
                     </>
                   ) : (
                     <>
+                      <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                        {item.player.abl?.toFixed(2) ?? '—'}
+                      </td>
                       {STANDARD_POSITIONS.map(pos => {
                         const log = posLogs.get(item.player.mlbID);
                         const entry = log?.positionsLog.find(e => e.pos === pos);
@@ -952,15 +955,6 @@ export default function TeamRosterPage() {
                           </td>
                         );
                       })}
-                      <td className="px-3 py-4 text-center text-sm tabular-nums">
-                        {(() => {
-                          const log = posLogs.get(item.player.mlbID);
-                          if (!log) return <span className="text-gray-300">…</span>;
-                          return log.abl != null
-                            ? <span className="font-semibold text-blue-600">{log.abl.toFixed(2)}</span>
-                            : <span className="text-gray-300">—</span>;
-                        })()}
-                      </td>
                     </>
                   )}
                   <td className="px-3 py-4 text-center">
