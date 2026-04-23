@@ -31,10 +31,12 @@ interface HittingStats {
   sf: number;
   sb: number;
   cs: number;
+  e: number;
+  pb: number;
 }
 
 function emptyHittingStats(): HittingStats {
-  return { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0 };
+  return { h: 0, '2b': 0, '3b': 0, hr: 0, bb: 0, hbp: 0, sac: 0, sf: 0, sb: 0, cs: 0, e: 0, pb: 0 };
 }
 
 function toFiniteNumber(value: unknown): number | null {
@@ -162,6 +164,8 @@ function buildHittingStatsMap(games: any[]): Map<string, HittingStats> {
         current.sf   += ds.sf   || 0;
         current.sb   += ds.sb   || 0;
         current.cs   += ds.cs   || 0;
+        current.e    += ds.e    || 0;
+        current.pb   += ds.pb   || 0;
       }
 
       statsByTeam.set(teamId, current);
@@ -334,8 +338,9 @@ export async function GET(request: NextRequest) {
       const dougluckl = team.AdvancedStandings?.avgL || 0;
       const dougluckExcessW = (team.w || 0) - dougluckw;
       const teamId = String(team.tm?._id ?? team._id ?? '');
-      const era = calculateEra(team, runsAgainstByTeam.get(teamId));
       const hitting = hittingStatsByTeam.get(teamId) ?? emptyHittingStats();
+      // Use player-aggregated e and pb (more reliable than standings_view aggregation)
+      const era = calculateEra({ ...team, e: hitting.e, pb: hitting.pb }, runsAgainstByTeam.get(teamId));
 
       // Use player-aggregated hitting stats (computed directly from game player data
       // so they are correct for both existing and newly calculated games).
@@ -359,8 +364,8 @@ export async function GET(request: NextRequest) {
         sf: hitting.sf,
         sb: hitting.sb,
         cs: hitting.cs,
-        e: team.e,
-        pb: team.pb,
+        e: hitting.e,
+        pb: hitting.pb,
         abl_runs: team.abl_runs,
         era,
         gb: gb.toFixed(1),
