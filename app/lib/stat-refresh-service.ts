@@ -673,6 +673,8 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   // Fetch season fielding totals so errors are populated for all position players.
   // A player can appear multiple times (once per team if traded), so we accumulate
   // errors per mlbId before writing.
+  // limit=5000 matches the batting supplemental above; the MLB position-player
+  // pool (including multi-team splits) is well under 3000 entries per season.
   const fieldingStatsUrl = `${MLB_API_BASE}/stats?stats=season&group=fielding&gameType=R&season=${season}&sportId=1&limit=5000`;
   try {
     const fieldingStatsData = await fetchJson(fieldingStatsUrl);
@@ -682,6 +684,7 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
     for (const split of fieldingSplits) {
       const mlbId = String(split.player?.id ?? '');
       const posAbbr: string = split.position?.abbreviation ?? '';
+      // ABL only scores position players; pitchers are excluded throughout the system.
       if (!mlbId || posAbbr === 'P') continue;
       const e = toNumber(split.stat?.errors);
       if (e > 0) {
