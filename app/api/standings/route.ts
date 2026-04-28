@@ -164,8 +164,12 @@ function buildTeamGameStatsMap(games: any[]): Map<string, TeamGameStats> {
         current.sf   += ds.sf   || 0;
         current.sb   += ds.sb   || 0;
         current.cs   += ds.cs   || 0;
-        current.e    += ds.e    || 0;
-        current.pb   += ds.pb   || 0;
+        // DH and XTRA player errors/PBs do NOT count toward team totals
+        // (mirrors the same exclusion in calculateTeamScore in game-utils.ts)
+        if (pos !== 'DH' && pos !== 'XTRA') {
+          current.e    += ds.e    || 0;
+          current.pb   += ds.pb   || 0;
+        }
       }
 
       statsByTeam.set(teamId, current);
