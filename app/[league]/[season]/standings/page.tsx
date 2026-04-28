@@ -151,7 +151,7 @@ export default function StandingsPage() {
                   <span>{team.wpct}</span>
                   <span>GB: {index === 0 ? '–' : team.gb}</span>
                   {team.l10 && <span>L10: {team.l10}</span>}
-                  {team.abl_runs != null && <span>{team.abl_runs.toFixed(1)} R/G</span>}
+                  {team.abl_runs != null && <span>{team.abl_runs.toFixed(2)} R/G</span>}
                   {team.era != null && <span>ERA: {team.era.toFixed(2)}</span>}
                 </div>
               </div>
@@ -288,7 +288,7 @@ function StandardStandingsTable({
               </span>
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-              {team.abl_runs?.toFixed(1) || '0.0'}
+              {team.abl_runs?.toFixed(2) || '0.00'}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.era != null ? team.era.toFixed(2) : '-'}
