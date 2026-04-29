@@ -272,7 +272,7 @@ function StandardStandingsTable({ standings }: { standings: Standing[] }) {
               </span>
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-              {team.abl_runs?.toFixed(1) || '0.0'}
+              {team.abl_runs?.toFixed(2) || '0.00'}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.era != null ? team.era.toFixed(2) : '-'}
