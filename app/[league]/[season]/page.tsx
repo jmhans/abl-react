@@ -103,6 +103,12 @@ export default function LeagueSeasonHome() {
           <p className="text-xs text-gray-500 mt-1">Game schedule and results</p>
         </Link>
 
+        <Link href={`${base}/leaders`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-yellow-400 hover:shadow transition group">
+          <div className="text-2xl mb-2">🏆</div>
+          <h2 className="text-sm font-semibold text-gray-900 group-hover:text-yellow-700">Leaders</h2>
+          <p className="text-xs text-gray-500 mt-1">Top ABL performers by position</p>
+        </Link>
+
         <Link href={`${base}/teams`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
           <div className="text-2xl mb-2">👥</div>
           <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Teams</h2>
