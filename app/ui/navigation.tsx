@@ -260,6 +260,7 @@ export default function Navigation() {
           <Link href={base} className={navLinkClass(base, true)}>Dashboard</Link>
           <Link href={`${base}/standings`} className={navLinkClass(`${base}/standings`)}>Standings</Link>
           <Link href={`${base}/games`} className={navLinkClass(`${base}/games`)}>Scores</Link>
+          <Link href={`${base}/leaders`} className={navLinkClass(`${base}/leaders`)}>Leaders</Link>
           {hasDraft && (
             <Link href={`${base}/draft`} className={navLinkClass(`${base}/draft`)}>Draft</Link>
           )}
