@@ -96,7 +96,6 @@ export async function POST(
       { $group: { _id: '$ablTeam', roster: { $first: '$roster' } } },
       { $match: { roster: { $elemMatch: { player: new ObjectId(playerId) } } } },
       { $project: { _id: 0, ablTeam: '$_id' } },
-      { $limit: 1 },
     ]).toArray();
     const existingLineup = existingLineups[0] || null;
     if (existingLineup) {
