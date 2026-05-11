@@ -74,15 +74,25 @@ export async function POST(
       { teamIds: teamObjectId },
       { projection: { teamIds: 1 } }
     );
-    const leagueTeamIds: ObjectId[] = thisSeason?.teamIds ?? [teamObjectId];
-
-    const existingLineup = await db.collection('lineups').findOne(
-      {
-        ablTeam: { $in: leagueTeamIds },
-        roster: { $elemMatch: { player: new ObjectId(playerId) } },
-      },
-      { projection: { ablTeam: 1 } }
+    const leagueTeamIds: ObjectId[] = (thisSeason?.teamIds ?? [teamObjectId]).map((id: ObjectId | string) =>
+      id instanceof ObjectId ? id : new ObjectId(id)
     );
+
+    // Only check each team's most recent roster snapshot at or before this effective date.
+    // This avoids false "already on roster" matches from historical lineup documents.
+    const existingLineup = await db.collection('lineups').aggregate([
+      {
+        $match: {
+          ablTeam: { $in: leagueTeamIds },
+          effectiveDate: { $lte: effectiveDate },
+        },
+      },
+      { $sort: { effectiveDate: -1 } },
+      { $group: { _id: '$ablTeam', roster: { $first: '$roster' } } },
+      { $match: { roster: { $elemMatch: { player: new ObjectId(playerId) } } } },
+      { $project: { _id: 0, ablTeam: '$_id' } },
+      { $limit: 1 },
+    ]).toArray().then((docs) => docs[0] || null);
     if (existingLineup) {
       return NextResponse.json(
         { error: 'Player is already on a roster', team: existingLineup.ablTeam },
