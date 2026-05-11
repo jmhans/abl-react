@@ -98,7 +98,7 @@ export async function POST(
       { $match: { roster: { $elemMatch: { player: new ObjectId(playerId) } } } },
       { $project: { _id: 0, ablTeam: '$_id' } },
     ]).toArray();
-    const existingRosterMatch = existingLineups[0] || null;
+    const existingRosterMatch = existingLineups[0];
     if (existingRosterMatch) {
       return NextResponse.json(
         { error: 'Player is already on a roster', team: existingRosterMatch.ablTeam },
