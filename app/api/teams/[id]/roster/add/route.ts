@@ -78,8 +78,9 @@ export async function POST(
       if (id instanceof ObjectId) return id;
       try {
         return new ObjectId(id);
-      } catch {
-        throw new Error(`Invalid season teamId for roster lookup: ${id}`);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown reason';
+        throw new Error(`Invalid season teamId for roster lookup: ${id} (${reason})`);
       }
     });
 
@@ -97,10 +98,10 @@ export async function POST(
       { $match: { roster: { $elemMatch: { player: new ObjectId(playerId) } } } },
       { $project: { _id: 0, ablTeam: '$_id' } },
     ]).toArray();
-    const existingLineup = existingLineups[0] || null;
-    if (existingLineup) {
+    const existingRosterMatch = existingLineups[0] || null;
+    if (existingRosterMatch) {
       return NextResponse.json(
-        { error: 'Player is already on a roster', team: existingLineup.ablTeam },
+        { error: 'Player is already on a roster', team: existingRosterMatch.ablTeam },
         { status: 409 }
       );
     }
