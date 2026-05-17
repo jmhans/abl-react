@@ -332,16 +332,16 @@ function AdvancedStandingsTable({ standings }: { standings: Standing[] }) {
             Team
           </th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-            W
-          </th>
-          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-            L
-          </th>
-          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
             DougLuck W
           </th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
             DougLuck L
+          </th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+            W
+          </th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+            L
           </th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
             Lucky Wins
@@ -369,16 +369,16 @@ function AdvancedStandingsTable({ standings }: { standings: Standing[] }) {
               </Link>
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-              {team.w}
-            </td>
-            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
-              {team.l}
-            </td>
-            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.dougluckw?.toFixed(1) || '-'}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.dougluckl?.toFixed(1) || '-'}
+            </td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+              {team.w}
+            </td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
+              {team.l}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-semibold">
               <span className={
