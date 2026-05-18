@@ -329,10 +329,10 @@ function AdvancedStandingsTable({
           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50">
             Team
           </th>
-          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">W</th>
-          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">L</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">DougLuck W</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">DougLuck L</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">W</th>
+          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">L</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Lucky Wins</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Home Record</th>
           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Away Record</th>
@@ -350,14 +350,14 @@ function AdvancedStandingsTable({
                 {team.tm.location} {team.tm.nickname}
               </Link>
             </td>
-            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.w}</td>
-            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.l}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.dougluckw?.toFixed(1) || '-'}
             </td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.dougluckl?.toFixed(1) || '-'}
             </td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.w}</td>
+            <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">{team.l}</td>
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm font-semibold">
               <span
                 className={
