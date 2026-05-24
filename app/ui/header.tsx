@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { toggleNav } from '@/app/ui/navigation';
@@ -64,14 +63,16 @@ export default function Header() {
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-blue-50 hidden sm:inline">{user.name}</span>
-              <Link href="/api/auth/logout" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+              <a href="/api/auth/logout" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
                 Sign out
-              </Link>
+              </a>
             </div>
           ) : (
-            <Link href="/api/auth/login" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
+            // eslint-disable-next-line @next/next/no-html-link-for-pages
+            <a href="/api/auth/login" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
               Sign in
-            </Link>
+            </a>
           )}
         </div>
       </div>
