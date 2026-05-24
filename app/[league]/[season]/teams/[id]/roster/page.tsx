@@ -83,9 +83,17 @@ export default function TeamRosterPage() {
   const [coOwnerError, setCoOwnerError] = useState('');
   const [showRulesPopover, setShowRulesPopover] = useState(false);
   const [asOfDate, setAsOfDate] = useState('');
-  const [rosterView, setRosterView] = useState<'stats' | 'eligibility'>('stats');
+  const [rosterView, setRosterView] = useState<'stats' | 'eligibility' | 'splits'>('stats');
   const [posLogs, setPosLogs] = useState<Map<string, PosLogData>>(new Map());
   const [posLogsLoading, setPosLogsLoading] = useState(false);
+
+  // Splits state
+  const SPLIT_PERIODS_ROSTER = [7, 10, 14, 20, 30] as const;
+  interface SplitBucketR { g: number; ab: number; abl: number | null; }
+  type SplitsDataR = Record<string, { lastN: Record<number, SplitBucketR>; ablOn: SplitBucketR; ablOff: SplitBucketR }>;
+  const [splitPeriod, setSplitPeriod] = useState<number>(10);
+  const [splitsData, setSplitsData] = useState<SplitsDataR | null>(null);
+  const [splitsLoading, setSplitsLoading] = useState(false);
 
   useEffect(() => {
     fetchUserAndRoster();
@@ -186,10 +194,27 @@ export default function TeamRosterPage() {
     }
   }, []);
 
-  const handleViewChange = (view: 'stats' | 'eligibility') => {
+  const handleViewChange = (view: 'stats' | 'eligibility' | 'splits') => {
     setRosterView(view);
     if (view === 'eligibility' && roster) {
       fetchPosLogs(roster.roster);
+    }
+    if (view === 'splits' && roster) {
+      const mlbIds = roster.roster
+        .map(item => String(item.player.mlbID ?? ''))
+        .filter(Boolean);
+      if (mlbIds.length === 0) return;
+      setSplitsLoading(true);
+      setSplitsData(null);
+      fetch('/api/players/splits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mlbIds, days: [...SPLIT_PERIODS_ROSTER], league, season }),
+      })
+        .then(r => r.json())
+        .then(data => setSplitsData(data.splits ?? null))
+        .catch(err => console.error('Splits fetch:', err))
+        .finally(() => setSplitsLoading(false));
     }
   };
 
@@ -769,7 +794,7 @@ export default function TeamRosterPage() {
       </div>
 
       {/* View toggle */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <button
           onClick={() => handleViewChange('stats')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -790,6 +815,30 @@ export default function TeamRosterPage() {
         >
           Position Eligibility
         </button>
+        <button
+          onClick={() => handleViewChange('splits')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            rosterView === 'splits'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Splits
+        </button>
+        {rosterView === 'splits' && (
+          <select
+            value={splitPeriod}
+            onChange={e => setSplitPeriod(Number(e.target.value))}
+            className="rounded border px-3 py-2 text-sm"
+          >
+            {SPLIT_PERIODS_ROSTER.map(n => (
+              <option key={n} value={n}>Last {n} days</option>
+            ))}
+          </select>
+        )}
+        {rosterView === 'splits' && splitsLoading && (
+          <span className="text-xs text-blue-500 animate-pulse">Loading splits…</span>
+        )}
       </div>
 
       <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
@@ -815,6 +864,22 @@ export default function TeamRosterPage() {
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">SB(net)</th>
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">HBP</th>
                   <th className="hidden md:table-cell px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">E</th>
+                </>
+              ) : rosterView === 'splits' ? (
+                <>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-green-700 uppercase">ABL</th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">
+                    L{splitPeriod}
+                    <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">G/AB</div>
+                  </th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-blue-600 uppercase hidden md:table-cell">
+                    ABL On
+                    <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">G/AB</div>
+                  </th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-orange-600 uppercase hidden md:table-cell">
+                    ABL Off
+                    <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">G/AB</div>
+                  </th>
                 </>
               ) : (
                 <>
@@ -936,7 +1001,38 @@ export default function TeamRosterPage() {
                         ) : '—'}
                       </td>
                     </>
-                  ) : (
+                  ) : rosterView === 'splits' ? (() => {
+                      const mlbId = String(item.player.mlbID ?? '');
+                      const ps = splitsData?.[mlbId];
+                      const renderBucketContent = (bucket: { g: number; ab: number; abl: number | null } | undefined) => {
+                        if (splitsLoading) return <span className="text-xs text-gray-300">…</span>;
+                        if (!bucket) return <span className="text-xs text-gray-300">—</span>;
+                        const ablColor = bucket.abl === null ? 'text-gray-400' : bucket.abl >= 0 ? 'text-green-700' : 'text-red-500';
+                        return (
+                          <>
+                            <div className={`text-sm font-medium ${ablColor}`}>{bucket.abl !== null ? bucket.abl.toFixed(2) : '—'}</div>
+                            <div className="text-[10px] text-gray-400 leading-tight">{bucket.g}/{bucket.ab}</div>
+                          </>
+                        );
+                      };
+                      return (
+                        <>
+                          <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                            {item.player.abl?.toFixed(2) ?? '—'}
+                          </td>
+                          <td className="hidden sm:table-cell px-3 py-4 text-center">
+                            {renderBucketContent(ps?.lastN?.[splitPeriod])}
+                          </td>
+                          <td className="hidden md:table-cell px-3 py-4 text-center">
+                            {renderBucketContent(ps?.ablOn)}
+                          </td>
+                          <td className="hidden md:table-cell px-3 py-4 text-center">
+                            {renderBucketContent(ps?.ablOff)}
+                          </td>
+                        </>
+                      );
+                    })()
+                  : (
                     <>
                       <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
                         {item.player.abl?.toFixed(2) ?? '—'}
