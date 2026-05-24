@@ -122,11 +122,12 @@ export default function GamesPage() {
     };
   }, [league, season]);
 
-  // Keep the "X min ago" display current
+  // Keep the "X min ago" display current (only when there's a timestamp to show)
   useEffect(() => {
+    if (!lastRefreshedAt || refreshMsg) return;
     const ticker = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(ticker);
-  }, []);
+  }, [lastRefreshedAt, refreshMsg]);
 
   function startCooldownTimer(seconds: number) {
     setCooldownSeconds(seconds);
