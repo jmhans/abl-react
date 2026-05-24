@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { toggleNav } from '@/app/ui/navigation';
 
 interface User {
@@ -14,12 +14,12 @@ interface User {
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
 
   const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/.*)?$/);
-  const currentLeague = (match?.[1] || searchParams.get('league') || 'abl').toLowerCase();
-  const currentSeason = match?.[2] || searchParams.get('season') || '2026';
+  const pathLeague = pathname?.match(/^\/([^/]+)/)?.[1]?.toLowerCase();
+  const currentLeague = pathLeague === 'abml' ? 'abml' : 'abl';
+  const currentSeason = match?.[2] || '2026';
   const currentSuffix = match?.[3] || '';
 
   const onLeagueChange = (league: 'abl' | 'abml') => {
@@ -47,17 +47,18 @@ export default function Header() {
           >
             ☰
           </button>
-          <label className="sr-only" htmlFor="league-context-select">League context</label>
-          <select
-            id="league-context-select"
-            value={currentLeague === 'abml' ? 'abml' : 'abl'}
-            onChange={(e) => onLeagueChange(e.target.value as 'abl' | 'abml')}
-            className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/40 px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-white/70"
-            aria-label="League context"
-          >
-            <option value="abl" className="text-gray-900">ABL</option>
-            <option value="abml" className="text-gray-900">ABML</option>
-          </select>
+          <div>
+            <label className="sr-only" htmlFor="league-context-select">Select league: ABL or ABML</label>
+            <select
+              id="league-context-select"
+              value={currentLeague === 'abml' ? 'abml' : 'abl'}
+              onChange={(e) => onLeagueChange(e.target.value as 'abl' | 'abml')}
+              className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/40 px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-white/70"
+            >
+              <option value="abl" className="text-gray-900">ABL</option>
+              <option value="abml" className="text-gray-900">ABML</option>
+            </select>
+          </div>
         </div>
         <div>
           {user ? (
