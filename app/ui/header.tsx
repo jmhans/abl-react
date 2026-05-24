@@ -60,10 +60,16 @@ export default function Header() {
     Promise.all([
       fetch('/api/auth/me')
         .then(res => res.ok ? res.json() : null)
-        .catch(() => null),
+        .catch((error) => {
+          console.error('Failed to load session user in header:', error);
+          return null;
+        }),
       fetch('/api/auth/my-leagues')
         .then(res => res.ok ? res.json() : [])
-        .catch(() => []),
+        .catch((error) => {
+          console.error('Failed to load league memberships in header:', error);
+          return [];
+        }),
     ])
       .then(([meData, leaguesData]) => {
         setUser(meData?.user || null);
