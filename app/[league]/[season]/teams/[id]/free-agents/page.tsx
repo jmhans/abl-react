@@ -86,7 +86,7 @@ function getDisplayStats(player: Player, view: string): DisplayStats {
   };
 }
 
-type SortColKey = 'g' | 'ab' | 'h' | 'doubles' | 'triples' | 'hr' | 'bb' | 'hbp' | 'netSb' | 'sh' | 'sf' | 'abl';
+type SortColKey = 'g' | 'ab' | 'h' | 'doubles' | 'triples' | 'hr' | 'bb' | 'hbp' | 'netSb' | 'sh' | 'sf' | 'abl' | 'splitL' | 'splitOn' | 'splitOff';
 const STAT_COL_KEYS: SortColKey[] = ['g', 'ab', 'h', 'doubles', 'triples', 'hr', 'bb', 'hbp', 'netSb', 'sh', 'sf'];
 
 const STAT_COLS = ['G', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'HBP', 'SB(net)', 'SH', 'SF'] as const;
@@ -95,6 +95,16 @@ const STAT_COLS = ['G', 'AB', 'H', '2B', '3B', 'HR', 'BB', 'HBP', 'SB(net)', 'SH
 // md+: Player | G AB H 2B 3B HR BB HBP SB NB SH SF | ABL | Action (14 cols)
 const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_4rem]';
 const STAT_VIS = ['hidden md:block', 'hidden sm:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden lg:block', 'hidden lg:block'] as const;
+
+// Splits view
+// xs: Player | ABL | Action
+// sm: Player | ABL | L{N} | Action
+// md+: Player | ABL | L{N} | ABL On | ABL Off | Action
+const SPLITS_GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_4.5rem_6rem_4rem] md:grid-cols-[minmax(0,2fr)_5rem_6rem_6rem_6rem_4rem]';
+const SPLIT_PERIODS = [7, 10, 14, 20, 30] as const;
+
+interface SplitBucket { g: number; ab: number; abl: number | null; }
+type SplitsData = Record<string, { lastN: Record<number, SplitBucket>; ablOn: SplitBucket; ablOff: SplitBucket }>;
 
 export default function FreeAgentsPage() {
   const params = useParams();
@@ -127,6 +137,11 @@ export default function FreeAgentsPage() {
   const [adminTargetTeamId, setAdminTargetTeamId] = useState<string>('');
   const [adminBackDate, setAdminBackDate] = useState<string>('');
   const fetchIdRef = useRef(0);
+
+  // Splits state
+  const [splitPeriod, setSplitPeriod] = useState<number>(10);
+  const [splitsData, setSplitsData] = useState<SplitsData | null>(null);
+  const [splitsLoading, setSplitsLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/me')
@@ -198,7 +213,7 @@ export default function FreeAgentsPage() {
       query.append('limit', pageSize.toString());
       if (search) query.append('search', search);
       if (showAll) query.append('showAll', 'true');
-      if (currentView !== 'actual') query.append('projSystem', currentView);
+      if (currentView !== 'actual' && currentView !== 'splits') query.append('projSystem', currentView);
       if (league) query.append('league', league);
       if (season) query.append('season', season);
       if (selectedPositions.length > 0) query.append('positions', selectedPositions.join(','));
@@ -224,6 +239,30 @@ export default function FreeAgentsPage() {
   useEffect(() => {
     fetchPlayers();
   }, [page, search, showAll, statView, selectedPositions]);
+
+  // Fetch splits data whenever we're in splits mode and the player list changes
+  useEffect(() => {
+    if (statView !== 'splits' || players.length === 0) {
+      if (statView !== 'splits') setSplitsData(null);
+      return;
+    }
+    const mlbIds = players.map(p => String(p.mlbID ?? '')).filter(Boolean);
+    if (mlbIds.length === 0) return;
+    const ctrl = new AbortController();
+    setSplitsLoading(true);
+    fetch('/api/players/splits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Fetch all preset periods at once so period-switching is instant
+      body: JSON.stringify({ mlbIds, days: [...SPLIT_PERIODS], league, season }),
+      signal: ctrl.signal,
+    })
+      .then(r => r.json())
+      .then(data => setSplitsData(data.splits ?? null))
+      .catch(err => { if (err.name !== 'AbortError') console.error('Splits fetch:', err); })
+      .finally(() => setSplitsLoading(false));
+    return () => ctrl.abort();
+  }, [players, statView, league, season]);
 
   const handleStatViewChange = (newView: string) => {
     setStatView(newView);
@@ -261,14 +300,30 @@ export default function FreeAgentsPage() {
 
   const sortedPlayers = useMemo(() => {
     const getVal = (player: Player, col: SortColKey): number | null => {
-      const ds = getDisplayStats(player, statView);
+      if (col === 'splitL' || col === 'splitOn' || col === 'splitOff') {
+        const mlbId = String(player.mlbID ?? '');
+        const s = splitsData?.[mlbId];
+        if (!s) return null;
+        if (col === 'splitL')   return s.lastN?.[splitPeriod]?.abl ?? null;
+        if (col === 'splitOn')  return s.ablOn?.abl ?? null;
+        return s.ablOff?.abl ?? null;
+      }
+      const ds = getDisplayStats(player, statView === 'splits' ? 'actual' : statView);
       return col === 'abl' ? ds.ablScore : ds[col];
     };
     return [...players].sort((a, b) => {
       if (!sortCol) {
-        // Default: ABL descending
-        const av = (statView === 'actual' ? a.abl : a.ablProjected) ?? -Infinity;
-        const bv = (statView === 'actual' ? b.abl : b.ablProjected) ?? -Infinity;
+        if (statView === 'splits' && splitsData) {
+          // Default splits sort: L{splitPeriod} ABL descending
+          const aId = String(a.mlbID ?? '');
+          const bId = String(b.mlbID ?? '');
+          const av = splitsData[aId]?.lastN?.[splitPeriod]?.abl ?? -Infinity;
+          const bv = splitsData[bId]?.lastN?.[splitPeriod]?.abl ?? -Infinity;
+          return bv - av;
+        }
+        // Default: season ABL descending
+        const av = (statView === 'actual' || statView === 'splits' ? a.abl : a.ablProjected) ?? -Infinity;
+        const bv = (statView === 'actual' || statView === 'splits' ? b.abl : b.ablProjected) ?? -Infinity;
         return bv - av;
       }
       const nullVal = sortDir === 'desc' ? -Infinity : Infinity;
@@ -276,7 +331,7 @@ export default function FreeAgentsPage() {
       const bv = getVal(b, sortCol) ?? nullVal;
       return sortDir === 'desc' ? bv - av : av - bv;
     });
-  }, [players, sortCol, sortDir, statView]);
+  }, [players, sortCol, sortDir, statView, splitsData, splitPeriod]);
 
   const downloadCsv = () => {
     const fmt = (v: number | null) => v === null ? '' : String(Math.round(v));
@@ -526,10 +581,23 @@ export default function FreeAgentsPage() {
             className="rounded border px-3 py-2 text-sm disabled:opacity-50"
           >
             <option value="actual">Actual (YTD)</option>
+            <option value="splits">Splits</option>
             {projSystems.map(sys => (
               <option key={sys} value={sys}>Proj: {sys}</option>
             ))}
           </select>
+
+          {statView === 'splits' && (
+            <select
+              value={splitPeriod}
+              onChange={e => setSplitPeriod(Number(e.target.value))}
+              className="rounded border px-3 py-2 text-sm"
+            >
+              {SPLIT_PERIODS.map(n => (
+                <option key={n} value={n}>Last {n} days</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Position Filter */}
@@ -574,90 +642,181 @@ export default function FreeAgentsPage() {
             <p className="text-red-800">{error}</p>
           </div>
         )}
+
+        {statView === 'splits' && (
+          <p className="text-xs text-gray-500 mb-3">
+            <strong>ABL On days</strong> = non-Mon/Thu after first ABL game ·{' '}
+            <strong>ABL Off days</strong> = Mon &amp; Thu during ABL season + pre-season ·{' '}
+            {splitsLoading && <span className="text-blue-500 animate-pulse">Loading splits…</span>}
+          </p>
+        )}
       </div>
 
       {/* Player grid */}
-      <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow">
-        {/* Header */}
-        <div className={`${GRID} gap-x-2 sticky top-0 z-10 border-b bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500`}>
-          <div>Player</div>
-          {STAT_COLS.map((col, i) => (
-            <button
-              key={col}
-              onClick={() => handleColSort(STAT_COL_KEYS[i])}
-              className={`text-center cursor-pointer hover:text-gray-800 select-none ${STAT_VIS[i]}`}
-            >
-              {col}{sortIcon(STAT_COL_KEYS[i])}
-            </button>
-          ))}
-          <button
-            onClick={() => handleColSort('abl')}
-            className={`text-center cursor-pointer hover:opacity-80 select-none ${statView !== 'actual' ? 'text-blue-600' : 'text-green-700'}`}
-          >
-            {statView !== 'actual' ? 'ABL★' : 'ABL'}{sortIcon('abl')}
-          </button>
-          <div />
-        </div>
-
-        {/* Rows */}
-        {loading ? (
-          <div className="px-4 py-10 text-center text-gray-500">Loading...</div>
-        ) : sortedPlayers.length === 0 ? (
-          <div className="px-4 py-10 text-center text-gray-500">No free agents found</div>
-        ) : (
-          sortedPlayers.map(player => {
-            const ds = getDisplayStats(player, statView);
-            const fmt = (v: number | null) => v === null ? '—' : String(Math.round(v));
-            const ablColor = ds.ablScore === null ? 'text-gray-300'
-              : ds.ablScore >= 0
-                ? (statView !== 'actual' ? 'text-blue-700' : 'text-green-700')
-                : 'text-red-500';
-            const statC = (v: number | null) => v === null ? 'text-gray-300' : 'text-gray-700';
-            return (
-              <div
-                key={player._id}
-                className={`${GRID} gap-x-2 items-center border-b px-4 py-2 text-sm last:border-b-0 hover:bg-gray-50`}
-              >
-                <div>
-                  <div className="font-medium text-gray-900 leading-tight">{player.name}</div>
-                  <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-0.5">
-                    <span>{player.team || 'FA'} – {player.eligible?.join(', ') || '—'}</span>
-                    <PosLogPopover mlbId={player.mlbID} />
-                  </div>
-                  {player.status && <div className="text-xs text-gray-400">{player.status}</div>}
-                </div>
-                <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.doubles)}`}>{fmt(ds.doubles)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.triples)}`}>{fmt(ds.triples)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[7]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[8]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[9]} ${statC(ds.sh)}`}>{fmt(ds.sh)}</div>
-                <div className={`text-center text-xs ${STAT_VIS[10]} ${statC(ds.sf)}`}>{fmt(ds.sf)}</div>
-                <div className={`text-center text-xs font-medium ${ablColor}`}>
-                  {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
-                </div>
-                <div className="flex justify-end">
-                  {seasonStatus === 'pre-draft' ? (
-                    <span className="text-xs text-yellow-700 font-medium">Pre-Draft</span>
-                  ) : (
+      {(() => {
+        const currentGrid = statView === 'splits' ? SPLITS_GRID : GRID;
+        const bucketCell = (bucket: SplitBucket | undefined) => {
+          if (!bucket) return <div className="text-center text-gray-300 text-xs">—</div>;
+          const ablColor = bucket.abl === null ? 'text-gray-400' : bucket.abl >= 0 ? 'text-green-700' : 'text-red-500';
+          return (
+            <div className="text-center">
+              <div className={`text-xs font-medium ${ablColor}`}>{bucket.abl !== null ? bucket.abl.toFixed(2) : '—'}</div>
+              <div className="text-[10px] text-gray-400 leading-tight">{bucket.g}/{bucket.ab}</div>
+            </div>
+          );
+        };
+        return (
+          <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow">
+            {/* Header */}
+            <div className={`${currentGrid} gap-x-2 sticky top-0 z-10 border-b bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500`}>
+              <div>Player</div>
+              {statView === 'splits' ? (
+                <>
+                  <button
+                    onClick={() => handleColSort('abl')}
+                    className="text-center cursor-pointer hover:opacity-80 select-none text-green-700"
+                  >
+                    ABL{sortIcon('abl')}
+                    <div className="text-[10px] font-normal normal-case tracking-normal text-gray-400 leading-tight">season</div>
+                  </button>
+                  <button
+                    onClick={() => handleColSort('splitL')}
+                    className="text-center cursor-pointer hover:opacity-80 select-none hidden sm:block"
+                  >
+                    L{splitPeriod}{sortIcon('splitL')}
+                    <div className="text-[10px] font-normal normal-case tracking-normal text-gray-400 leading-tight">G/AB</div>
+                  </button>
+                  <button
+                    onClick={() => handleColSort('splitOn')}
+                    className="text-center cursor-pointer hover:opacity-80 select-none text-blue-600 hidden md:block"
+                  >
+                    ABL On{sortIcon('splitOn')}
+                    <div className="text-[10px] font-normal normal-case tracking-normal text-gray-400 leading-tight">G/AB</div>
+                  </button>
+                  <button
+                    onClick={() => handleColSort('splitOff')}
+                    className="text-center cursor-pointer hover:opacity-80 select-none text-orange-600 hidden md:block"
+                  >
+                    ABL Off{sortIcon('splitOff')}
+                    <div className="text-[10px] font-normal normal-case tracking-normal text-gray-400 leading-tight">G/AB</div>
+                  </button>
+                </>
+              ) : (
+                <>
+                  {STAT_COLS.map((col, i) => (
                     <button
-                      onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
-                      disabled={adding === player._id || (!isAdmin && ilPositions.length === 0) || (isAdmin && !adminTargetTeamId)}
-                      className={`rounded px-2 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isAdmin ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                      key={col}
+                      onClick={() => handleColSort(STAT_COL_KEYS[i])}
+                      className={`text-center cursor-pointer hover:text-gray-800 select-none ${STAT_VIS[i]}`}
                     >
-                      {adding === player._id ? '…' : isAdmin ? 'Add★' : 'Add'}
+                      {col}{sortIcon(STAT_COL_KEYS[i])}
                     </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+                  ))}
+                  <button
+                    onClick={() => handleColSort('abl')}
+                    className={`text-center cursor-pointer hover:opacity-80 select-none ${statView !== 'actual' ? 'text-blue-600' : 'text-green-700'}`}
+                  >
+                    {statView !== 'actual' ? 'ABL★' : 'ABL'}{sortIcon('abl')}
+                  </button>
+                </>
+              )}
+              <div />
+            </div>
+
+            {/* Rows */}
+            {loading ? (
+              <div className="px-4 py-10 text-center text-gray-500">Loading...</div>
+            ) : sortedPlayers.length === 0 ? (
+              <div className="px-4 py-10 text-center text-gray-500">No free agents found</div>
+            ) : (
+              sortedPlayers.map(player => {
+                const mlbId = String(player.mlbID ?? '');
+                const playerSplits = splitsData?.[mlbId];
+                const ds = getDisplayStats(player, statView === 'splits' ? 'actual' : statView);
+                const fmt = (v: number | null) => v === null ? '—' : String(Math.round(v));
+                const ablColor = ds.ablScore === null ? 'text-gray-300'
+                  : ds.ablScore >= 0
+                    ? (statView !== 'actual' && statView !== 'splits' ? 'text-blue-700' : 'text-green-700')
+                    : 'text-red-500';
+                const statC = (v: number | null) => v === null ? 'text-gray-300' : 'text-gray-700';
+                return (
+                  <div
+                    key={player._id}
+                    className={`${currentGrid} gap-x-2 items-center border-b px-4 py-2 text-sm last:border-b-0 hover:bg-gray-50`}
+                  >
+                    <div>
+                      <div className="font-medium text-gray-900 leading-tight">{player.name}</div>
+                      <div className="text-xs text-gray-500 flex items-center flex-wrap gap-x-0.5">
+                        <span>{player.team || 'FA'} – {player.eligible?.join(', ') || '—'}</span>
+                        <PosLogPopover mlbId={player.mlbID} />
+                      </div>
+                      {player.status && <div className="text-xs text-gray-400">{player.status}</div>}
+                    </div>
+
+                    {statView === 'splits' ? (
+                      <>
+                        {/* Season ABL */}
+                        <div className={`text-center text-xs font-medium ${ablColor}`}>
+                          {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
+                        </div>
+                        {/* L{N} */}
+                        <div className="hidden sm:block">
+                          {splitsLoading
+                            ? <div className="text-center text-gray-300 text-xs">…</div>
+                            : bucketCell(playerSplits?.lastN?.[splitPeriod])}
+                        </div>
+                        {/* ABL On */}
+                        <div className="hidden md:block">
+                          {splitsLoading
+                            ? <div className="text-center text-gray-300 text-xs">…</div>
+                            : bucketCell(playerSplits?.ablOn)}
+                        </div>
+                        {/* ABL Off */}
+                        <div className="hidden md:block">
+                          {splitsLoading
+                            ? <div className="text-center text-gray-300 text-xs">…</div>
+                            : bucketCell(playerSplits?.ablOff)}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={`text-center text-xs ${STAT_VIS[0]} ${statC(ds.g)}`}>{fmt(ds.g)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[1]} ${statC(ds.ab)}`}>{fmt(ds.ab)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[2]} ${statC(ds.h)}`}>{fmt(ds.h)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[3]} ${statC(ds.doubles)}`}>{fmt(ds.doubles)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[4]} ${statC(ds.triples)}`}>{fmt(ds.triples)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[5]} ${statC(ds.hr)}`}>{fmt(ds.hr)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[6]} ${statC(ds.bb)}`}>{fmt(ds.bb)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[7]} ${statC(ds.hbp)}`}>{fmt(ds.hbp)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[8]} ${statC(ds.netSb)}`}>{fmt(ds.netSb)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[9]} ${statC(ds.sh)}`}>{fmt(ds.sh)}</div>
+                        <div className={`text-center text-xs ${STAT_VIS[10]} ${statC(ds.sf)}`}>{fmt(ds.sf)}</div>
+                        <div className={`text-center text-xs font-medium ${ablColor}`}>
+                          {ds.ablScore !== null ? ds.ablScore.toFixed(2) : '—'}
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex justify-end">
+                      {seasonStatus === 'pre-draft' ? (
+                        <span className="text-xs text-yellow-700 font-medium">Pre-Draft</span>
+                      ) : (
+                        <button
+                          onClick={() => handleAddPlayer(player._id, player.name, player.eligible || [])}
+                          disabled={adding === player._id || (!isAdmin && ilPositions.length === 0) || (isAdmin && !adminTargetTeamId)}
+                          className={`rounded px-2 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isAdmin ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        >
+                          {adding === player._id ? '…' : isAdmin ? 'Add★' : 'Add'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        );
+      })()}
 
 
     </div>
