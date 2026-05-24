@@ -26,10 +26,10 @@ export default function Header() {
   const [user, setUser] = useState<User | null>(null);
   const [myLeagues, setMyLeagues] = useState<MyLeagueEntry[]>([]);
 
-  const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/.*)?$/);
-  const pathLeague = pathname?.match(/^\/([^/]+)/)?.[1]?.toLowerCase();
+  const pathMatch = pathname?.match(/^\/([^/]+)(?:\/(\d{4})(\/.*)?)?$/);
+  const pathLeague = pathMatch?.[1]?.toLowerCase();
   const currentLeague = pathLeague === 'abml' ? 'abml' : 'abl';
-  const currentSeason = match?.[2] || '2026';
+  const currentSeason = pathMatch?.[2] || '2026';
   const activeLeagueMap = myLeagues.reduce((map, entry) => {
     const slug = entry.league?.slug?.toLowerCase();
     if (!slug || entry.season?.status === 'completed') return map;
@@ -37,14 +37,15 @@ export default function Header() {
     if (!map.has(slug)) {
       map.set(slug, {
         slug,
-        season: String(entry.season?.year || currentSeason),
+        season: entry.season?.year ? String(entry.season.year) : currentSeason,
       });
     }
     return map;
   }, new Map<'abl' | 'abml', { slug: 'abl' | 'abml'; season: string }>());
+  const activeLeagueOptions = Array.from(activeLeagueMap.values()).sort((a, b) => a.slug.localeCompare(b.slug));
   const canSwitchLeagues = activeLeagueMap.size > 1;
   const lockedLeague = activeLeagueMap.size === 1
-    ? Array.from(activeLeagueMap.values())[0]
+    ? activeLeagueOptions[0]
     : null;
   const displayLeague = activeLeagueMap.get(currentLeague) || lockedLeague || {
     slug: currentLeague,
@@ -52,8 +53,9 @@ export default function Header() {
   };
 
   const onLeagueChange = (league: 'abl' | 'abml') => {
-    const targetSeason = activeLeagueMap.get(league)?.season || currentSeason;
-    router.push(`/${league}/${targetSeason}`);
+    const targetLeague = activeLeagueMap.get(league);
+    if (!targetLeague) return;
+    router.push(`/${targetLeague.slug}/${targetLeague.season}`);
   };
 
   useEffect(() => {
@@ -102,8 +104,11 @@ export default function Header() {
                   onChange={(e) => onLeagueChange(e.target.value as 'abl' | 'abml')}
                   className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/40 px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-white/70"
                 >
-                  <option value="abl" className="text-gray-900">ABL</option>
-                  <option value="abml" className="text-gray-900">ABML</option>
+                  {activeLeagueOptions.map((option) => (
+                    <option key={option.slug} value={option.slug} className="text-gray-900">
+                      {option.slug.toUpperCase()}
+                    </option>
+                  ))}
                 </select>
               </>
             ) : (
