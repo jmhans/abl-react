@@ -69,6 +69,8 @@ export default function GamesPage() {
   const [refreshMsg, setRefreshMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [now, setNow] = useState(() => new Date());
   const [showAllPast, setShowAllPast] = useState(false);
   const [showAllFuture, setShowAllFuture] = useState(false);
 
@@ -105,6 +107,9 @@ export default function GamesPage() {
           if (cooldownData.onCooldown && cooldownData.secondsRemaining > 0) {
             startCooldownTimer(cooldownData.secondsRemaining);
           }
+          if (cooldownData.lastRefreshedAt) {
+            setLastRefreshedAt(new Date(cooldownData.lastRefreshedAt));
+          }
         }
       } finally {
         setLoading(false);
@@ -116,6 +121,13 @@ export default function GamesPage() {
       if (cooldownTimer.current) clearInterval(cooldownTimer.current);
     };
   }, [league, season]);
+
+  // Keep the "X min ago" display current (only when there's a timestamp to show)
+  useEffect(() => {
+    if (!lastRefreshedAt || refreshMsg) return;
+    const ticker = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(ticker);
+  }, [lastRefreshedAt, refreshMsg]);
 
   function startCooldownTimer(seconds: number) {
     setCooldownSeconds(seconds);
@@ -161,6 +173,7 @@ export default function GamesPage() {
         }
         setRefreshMsg({ text: msg, ok: true });
         startCooldownTimer(300);
+        if (data.refreshedAt) setLastRefreshedAt(new Date(data.refreshedAt));
         await fetchGames();
       }
     } catch {
@@ -169,6 +182,17 @@ export default function GamesPage() {
       setRefreshing(false);
     }
   };
+
+  function formatLastRefreshed(ts: Date, reference: Date): string {
+    const diffMs = reference.getTime() - ts.getTime();
+    if (diffMs < 0) return 'just now';
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours} hr${diffHours !== 1 ? 's' : ''} ago`;
+    return ts.toLocaleDateString();
+  }
 
   if (loading) {
     return (
@@ -258,6 +282,9 @@ export default function GamesPage() {
               </button>
               {refreshMsg && (
                 <p className={`text-xs ${refreshMsg.ok ? 'text-green-600' : 'text-red-500'}`}>{refreshMsg.text}</p>
+              )}
+              {lastRefreshedAt && !refreshMsg && (
+                <p className="text-xs text-gray-400">Last updated {formatLastRefreshed(lastRefreshedAt, now)}</p>
               )}
             </div>
           )}
