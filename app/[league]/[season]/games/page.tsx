@@ -338,38 +338,45 @@ export default function GamesPage() {
                   const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
                   const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
 
+                  const isMyGameWon = isMyGame && hasResult && isFinal && result?.winner?._id === userTeamId;
+                  const isMyGameLost = isMyGame && hasResult && isFinal && !!result?.winner?._id && result.winner._id !== userTeamId;
+
                   return (
                     <Link
                       key={game._id}
                       href={`/${league}/${season}/games/${game._id}`}
                       className={`flex-shrink-0 w-44 rounded-lg border p-2.5 hover:shadow-md transition-all text-xs ${
-                        isMyGame
-                          ? 'border-blue-400 bg-blue-50 hover:border-blue-500'
-                          : 'border-gray-200 bg-white hover:border-blue-400'
+                        isMyGameWon
+                          ? 'border-green-400 bg-green-50 hover:border-green-500 dark:bg-green-900/40 dark:border-green-600 dark:hover:border-green-500'
+                          : isMyGameLost
+                          ? 'border-red-400 bg-red-50 hover:border-red-500 dark:bg-red-900/40 dark:border-red-600 dark:hover:border-red-500'
+                          : isMyGame
+                          ? 'border-blue-400 bg-blue-50 hover:border-blue-500 dark:bg-blue-900/30 dark:border-blue-600 dark:hover:border-blue-500'
+                          : 'border-gray-200 bg-white hover:border-blue-400 dark:bg-gray-800 dark:border-gray-700 dark:hover:border-blue-500'
                       }`}
                     >
                       {/* Away team */}
                       <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className={`font-medium truncate ${hasResult && isFinal && result?.winner?._id === game.awayTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.awayTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
+                        <span className={`font-medium truncate ${hasResult && isFinal && result?.winner?._id === game.awayTeam?._id ? 'text-green-700 dark:text-green-400' : 'text-gray-800 dark:text-gray-100'} ${isMyGame && game.awayTeam?._id === userTeamId ? 'text-blue-700 dark:text-blue-300' : ''}`}>
                           {game.awayTeam?.nickname}
                         </span>
-                        <span className="font-mono text-gray-700 shrink-0">{awayScore ?? '—'}</span>
+                        <span className="font-mono text-gray-700 dark:text-gray-300 shrink-0">{awayScore ?? '—'}</span>
                       </div>
                       {/* Home team */}
                       <div className="flex items-center justify-between gap-1">
-                        <span className={`font-medium truncate ${hasResult && isFinal && result?.winner?._id === game.homeTeam?._id ? 'text-green-700' : 'text-gray-800'} ${isMyGame && game.homeTeam?._id === userTeamId ? 'text-blue-700' : ''}`}>
+                        <span className={`font-medium truncate ${hasResult && isFinal && result?.winner?._id === game.homeTeam?._id ? 'text-green-700 dark:text-green-400' : 'text-gray-800 dark:text-gray-100'} ${isMyGame && game.homeTeam?._id === userTeamId ? 'text-blue-700 dark:text-blue-300' : ''}`}>
                           {game.homeTeam?.nickname}
                         </span>
-                        <span className="font-mono text-gray-700 shrink-0">{homeScore ?? '—'}</span>
+                        <span className="font-mono text-gray-700 dark:text-gray-300 shrink-0">{homeScore ?? '—'}</span>
                       </div>
                       {/* Status */}
                       <div className="mt-1.5">
                         {hasResult && isFinal ? (
-                          <span className="text-green-700 font-medium">Final</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-medium">Final</span>
                         ) : hasResult ? (
-                          <span className="text-yellow-600 font-medium">In Progress</span>
+                          <span className="text-yellow-600 dark:text-yellow-400 font-medium">In Progress</span>
                         ) : (
-                          <span className="text-gray-400">Scheduled</span>
+                          <span className="text-gray-400 dark:text-gray-500">Scheduled</span>
                         )}
                       </div>
                     </Link>
