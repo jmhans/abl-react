@@ -311,12 +311,19 @@ export default function GamesPage() {
                   const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
                   const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
 
+                  const isMyGameWon = isMyGame && hasResult && isFinal && result?.winner?._id === userTeamId;
+                  const isMyGameLost = isMyGame && hasResult && isFinal && !!result?.winner?._id && result.winner._id !== userTeamId;
+
                   return (
                     <Link
                       key={game._id}
                       href={`/${league}/${season}/games/${game._id}`}
                       className={`flex-shrink-0 w-44 rounded-lg border p-2.5 hover:shadow-md transition-all text-xs ${
-                        isMyGame
+                        isMyGameWon
+                          ? 'border-green-400 bg-green-50 hover:border-green-500'
+                          : isMyGameLost
+                          ? 'border-red-400 bg-red-50 hover:border-red-500'
+                          : isMyGame
                           ? 'border-blue-400 bg-blue-50 hover:border-blue-500'
                           : 'border-gray-200 bg-white hover:border-blue-400'
                       }`}
@@ -338,7 +345,7 @@ export default function GamesPage() {
                       {/* Status */}
                       <div className="mt-1.5">
                         {hasResult && isFinal ? (
-                          <span className="text-green-700 font-medium">Final</span>
+                          <span className="text-blue-600 font-medium">Final</span>
                         ) : hasResult ? (
                           <span className="text-yellow-600 font-medium">In Progress</span>
                         ) : (
