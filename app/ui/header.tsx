@@ -10,29 +10,69 @@ interface User {
   [key: string]: unknown;
 }
 
+interface MyLeagueEntry {
+  season?: {
+    year?: number;
+    status?: string;
+  };
+  league?: {
+    slug?: string;
+  } | null;
+}
+
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+  const [myLeagues, setMyLeagues] = useState<MyLeagueEntry[]>([]);
 
   const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/.*)?$/);
   const pathLeague = pathname?.match(/^\/([^/]+)/)?.[1]?.toLowerCase();
   const currentLeague = pathLeague === 'abml' ? 'abml' : 'abl';
   const currentSeason = match?.[2] || '2026';
-  const currentSuffix = match?.[3] || '';
+  const activeLeagueMap = myLeagues.reduce((map, entry) => {
+    const slug = entry.league?.slug?.toLowerCase();
+    if (!slug || entry.season?.status === 'completed') return map;
+    if (slug !== 'abl' && slug !== 'abml') return map;
+    if (!map.has(slug)) {
+      map.set(slug, {
+        slug,
+        season: String(entry.season?.year || currentSeason),
+      });
+    }
+    return map;
+  }, new Map<'abl' | 'abml', { slug: 'abl' | 'abml'; season: string }>());
+  const canSwitchLeagues = activeLeagueMap.size > 1;
+  const lockedLeague = activeLeagueMap.size === 1
+    ? Array.from(activeLeagueMap.values())[0]
+    : null;
+  const displayLeague = activeLeagueMap.get(currentLeague) || lockedLeague || {
+    slug: currentLeague,
+    season: currentSeason,
+  };
 
   const onLeagueChange = (league: 'abl' | 'abml') => {
-    const target = match
-      ? `/${league}/${currentSeason}${currentSuffix}`
-      : `/${league}/${currentSeason}`;
-    router.push(target);
+    const targetSeason = activeLeagueMap.get(league)?.season || currentSeason;
+    router.push(`/${league}/${targetSeason}`);
   };
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => setUser(data?.user || null))
-      .catch(() => setUser(null));
+    Promise.all([
+      fetch('/api/auth/me')
+        .then(res => res.ok ? res.json() : null)
+        .catch(() => null),
+      fetch('/api/auth/my-leagues')
+        .then(res => res.ok ? res.json() : [])
+        .catch(() => []),
+    ])
+      .then(([meData, leaguesData]) => {
+        setUser(meData?.user || null);
+        setMyLeagues(Array.isArray(leaguesData) ? leaguesData : []);
+      })
+      .catch(() => {
+        setUser(null);
+        setMyLeagues([]);
+      });
   }, []);
 
   return (
@@ -47,16 +87,24 @@ export default function Header() {
             ☰
           </button>
           <div>
-            <label className="sr-only" htmlFor="league-context-select">Select league: ABL or ABML</label>
-            <select
-              id="league-context-select"
-              value={currentLeague === 'abml' ? 'abml' : 'abl'}
-              onChange={(e) => onLeagueChange(e.target.value as 'abl' | 'abml')}
-              className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/40 px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-white/70"
-            >
-              <option value="abl" className="text-gray-900">ABL</option>
-              <option value="abml" className="text-gray-900">ABML</option>
-            </select>
+            {canSwitchLeagues ? (
+              <>
+                <label className="sr-only" htmlFor="league-context-select">Select league: ABL or ABML</label>
+                <select
+                  id="league-context-select"
+                  value={displayLeague.slug}
+                  onChange={(e) => onLeagueChange(e.target.value as 'abl' | 'abml')}
+                  className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/40 px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-white/70"
+                >
+                  <option value="abl" className="text-gray-900">ABL</option>
+                  <option value="abml" className="text-gray-900">ABML</option>
+                </select>
+              </>
+            ) : (
+              <div className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/20 px-2 py-1 text-white">
+                {displayLeague.slug.toUpperCase()}
+              </div>
+            )}
           </div>
         </div>
         <div>
