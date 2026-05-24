@@ -2,16 +2,32 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toggleNav } from '@/app/ui/navigation';
 
 interface User {
   name?: string;
   email?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export default function Header() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
+
+  const match = pathname?.match(/^\/([^/]+)\/(\d{4})(\/.*)?$/);
+  const currentLeague = (match?.[1] || searchParams.get('league') || 'abl').toLowerCase();
+  const currentSeason = match?.[2] || searchParams.get('season') || '2026';
+  const currentSuffix = match?.[3] || '';
+
+  const onLeagueChange = (league: 'abl' | 'abml') => {
+    const target = match
+      ? `/${league}/${currentSeason}${currentSuffix}`
+      : `/${league}/${currentSeason}`;
+    router.push(target);
+  };
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -31,22 +47,30 @@ export default function Header() {
           >
             ☰
           </button>
-          <Link href="/" className="text-2xl font-bold tracking-tight text-white hover:text-blue-50 transition">
-            ABL
-          </Link>
+          <label className="sr-only" htmlFor="league-context-select">League context</label>
+          <select
+            id="league-context-select"
+            value={currentLeague === 'abml' ? 'abml' : 'abl'}
+            onChange={(e) => onLeagueChange(e.target.value as 'abl' | 'abml')}
+            className="text-sm md:text-base font-semibold tracking-tight rounded bg-white/15 border border-white/40 px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-white/70"
+            aria-label="League context"
+          >
+            <option value="abl" className="text-gray-900">ABL</option>
+            <option value="abml" className="text-gray-900">ABML</option>
+          </select>
         </div>
         <div>
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-blue-50 hidden sm:inline">{user.name}</span>
-              <a href="/api/auth/logout" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
+              <Link href="/api/auth/logout" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
                 Sign out
-              </a>
+              </Link>
             </div>
           ) : (
-            <a href="/api/auth/login" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
+            <Link href="/api/auth/login" className="text-sm bg-white text-blue-600 hover:bg-blue-50 font-bold px-3 py-2 rounded transition">
               Sign in
-            </a>
+            </Link>
           )}
         </div>
       </div>
