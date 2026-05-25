@@ -439,7 +439,7 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
                   {!isSynth && (p.mlbTeam || p.lineupPosition) && (
                     <span className="ml-1 text-[10px] font-bold text-gray-400">
                       {p.mlbTeam}
-                      {p.lineupPosition ? ` (${p.lineupPosition})` : ''}
+                      {p.lineupPosition ? (p.mlbTeam ? ` (${p.lineupPosition})` : p.lineupPosition) : ''}
                     </span>
                   )}
                 </td>
@@ -544,7 +544,7 @@ function RosterCard({ title, players, isProjected, teamStatusMap }: { title: str
                     {(player.mlbTeam || player.lineupPosition) && (
                       <span className="ml-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide">
                         {player.mlbTeam}
-                        {player.lineupPosition ? ` (${player.lineupPosition})` : ''}
+                        {player.lineupPosition ? (player.mlbTeam ? ` (${player.lineupPosition})` : player.lineupPosition) : ''}
                       </span>
                     )}
                   </div>
