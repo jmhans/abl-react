@@ -50,17 +50,23 @@ type TabType = 'standard' | 'advanced' | 'headToHead';
 interface Game {
   result?: {
     isFinal?: boolean;
-    winner?: unknown;
-    loser?: unknown;
+    winner?: TeamReference;
+    loser?: TeamReference;
   };
 }
 
+type TeamReference =
+  | string
+  | {
+      _id?: string | { $oid?: string };
+      $oid?: string;
+    };
+
 type HeadToHeadMatrix = Record<string, Record<string, string>>;
 
-function getTeamId(value: unknown): string | null {
+function getTeamId(value: TeamReference | undefined): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
-  if (typeof value !== 'object') return null;
 
   const maybeTeam = value as { _id?: unknown; $oid?: unknown };
   if (typeof maybeTeam._id === 'string') return maybeTeam._id;
@@ -125,15 +131,18 @@ export default function StandingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('standard');
-  const headToHeadMatrix = useMemo(() => buildHeadToHeadMatrix(standings, games), [standings, games]);
+  const seasonQuery = useMemo(() => leagueSeasonQuery(ctx), [ctx]);
+  const headToHeadMatrix = useMemo(
+    () => (activeTab === 'headToHead' ? buildHeadToHeadMatrix(standings, games) : {}),
+    [activeTab, standings, games]
+  );
 
   useEffect(() => {
     async function fetchStandings() {
       try {
-        const query = leagueSeasonQuery({ league, season });
         const [standingsRes, gamesRes] = await Promise.all([
-          fetch(`/api/standings?${query}`),
-          fetch(`/api/games?${query}&gameType=R`),
+          fetch(`/api/standings?${seasonQuery}`),
+          fetch(`/api/games?${seasonQuery}&gameType=R`),
         ]);
 
         if (!standingsRes.ok || !gamesRes.ok) {
@@ -158,7 +167,7 @@ export default function StandingsPage() {
     }
 
     fetchStandings();
-  }, [league, season]);
+  }, [seasonQuery]);
 
   if (loading) {
     return (
