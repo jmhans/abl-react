@@ -541,8 +541,11 @@ function RosterCard({ title, players, isProjected, teamStatusMap }: { title: str
                 <div>
                   <div className={`font-semibold ${isInactive ? 'text-gray-400' : ''}`}>
                     {player.name}
-                    {player.mlbTeam && (
-                      <span className="ml-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide">{player.mlbTeam}</span>
+                    {(player.mlbTeam || player.lineupPosition) && (
+                      <span className="ml-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wide">
+                        {player.mlbTeam}
+                        {player.lineupPosition ? ` (${player.lineupPosition})` : ''}
+                      </span>
                     )}
                   </div>
                   <div className={`text-xs ${isInactive ? 'text-gray-400' : 'text-gray-500'}`}>
