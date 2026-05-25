@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLeagueSeason, leagueSeasonQuery } from '@/app/lib/league-season-context';
 
@@ -45,26 +45,107 @@ interface Standing {
   xtrasRecord?: string;
 }
 
-type TabType = 'standard' | 'advanced';
+type TabType = 'standard' | 'advanced' | 'headToHead';
+
+interface Game {
+  result?: {
+    isFinal?: boolean;
+    winner?: unknown;
+    loser?: unknown;
+  };
+}
+
+type HeadToHeadMatrix = Record<string, Record<string, string>>;
+
+function getTeamId(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value !== 'object') return null;
+
+  const maybeTeam = value as { _id?: unknown; $oid?: unknown };
+  if (typeof maybeTeam._id === 'string') return maybeTeam._id;
+  if (typeof maybeTeam.$oid === 'string') return maybeTeam.$oid;
+
+  if (maybeTeam._id && typeof maybeTeam._id === 'object') {
+    const nested = maybeTeam._id as { $oid?: unknown };
+    if (typeof nested.$oid === 'string') return nested.$oid;
+  }
+
+  return null;
+}
+
+function buildHeadToHeadMatrix(standings: Standing[], games: Game[]): HeadToHeadMatrix {
+  const teamIds = standings.map(team => team.tm._id);
+  const teamIdSet = new Set(teamIds);
+  const counters: Record<string, Record<string, { w: number; l: number }>> = {};
+
+  for (const teamId of teamIds) {
+    counters[teamId] = {};
+    for (const opponentId of teamIds) {
+      counters[teamId][opponentId] = { w: 0, l: 0 };
+    }
+  }
+
+  for (const game of games) {
+    if (game.result?.isFinal === false) continue;
+
+    const winnerId = getTeamId(game.result?.winner);
+    const loserId = getTeamId(game.result?.loser);
+
+    if (!winnerId || !loserId || winnerId === loserId) continue;
+    if (!teamIdSet.has(winnerId) || !teamIdSet.has(loserId)) continue;
+
+    counters[winnerId][loserId].w += 1;
+    counters[loserId][winnerId].l += 1;
+  }
+
+  const matrix: HeadToHeadMatrix = {};
+  for (const teamId of teamIds) {
+    matrix[teamId] = {};
+    for (const opponentId of teamIds) {
+      if (teamId === opponentId) {
+        matrix[teamId][opponentId] = '—';
+        continue;
+      }
+      const record = counters[teamId][opponentId];
+      const totalGames = record.w + record.l;
+      matrix[teamId][opponentId] = totalGames > 0 ? `${record.w}-${record.l}` : '–';
+    }
+  }
+
+  return matrix;
+}
 
 export default function StandingsPage() {
   const ctx = useLeagueSeason();
   const { league, season } = ctx;
 
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('standard');
+  const headToHeadMatrix = useMemo(() => buildHeadToHeadMatrix(standings, games), [standings, games]);
 
   useEffect(() => {
     async function fetchStandings() {
       try {
-        const res = await fetch(`/api/standings?${leagueSeasonQuery(ctx)}`);
-        if (!res.ok) {
+        const query = leagueSeasonQuery({ league, season });
+        const [standingsRes, gamesRes] = await Promise.all([
+          fetch(`/api/standings?${query}`),
+          fetch(`/api/games?${query}&gameType=R`),
+        ]);
+
+        if (!standingsRes.ok) {
           throw new Error('Failed to fetch standings');
         }
-        const data = await res.json();
-        setStandings(data);
+        if (!gamesRes.ok) {
+          throw new Error('Failed to fetch games');
+        }
+
+        const [standingsData, gamesData] = await Promise.all([standingsRes.json(), gamesRes.json()]);
+        setStandings(standingsData);
+        setGames(gamesData);
       } catch (err) {
         setError('Failed to load standings');
         console.error(err);
@@ -124,12 +205,27 @@ export default function StandingsPage() {
           >
             Advanced
           </button>
+          <button
+            onClick={() => setActiveTab('headToHead')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'headToHead'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Head-to-Head
+          </button>
         </nav>
       </div>
 
       {/* Mobile card list */}
-      <div className="block md:hidden space-y-2 mb-6">
-        {activeTab === 'standard'
+      {activeTab === 'headToHead' ? (
+        <div className="md:hidden bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto mb-6">
+          <HeadToHeadStandingsTable standings={standings} league={league} season={season} matrix={headToHeadMatrix} />
+        </div>
+      ) : (
+        <div className="block md:hidden space-y-2 mb-6">
+          {activeTab === 'standard'
           ? standings.map((team, index) => (
               <div key={team._id} className="bg-white rounded-lg shadow-sm border border-gray-200 px-4 py-3">
                 <div className="flex items-center justify-between">
@@ -178,15 +274,18 @@ export default function StandingsPage() {
                 </div>
               </div>
             ))}
-      </div>
+        </div>
+      )}
 
       {/* Desktop table */}
       <div className="hidden md:block bg-white rounded-lg shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
           {activeTab === 'standard' ? (
             <StandardStandingsTable standings={standings} league={league} season={season} />
-          ) : (
+          ) : activeTab === 'advanced' ? (
             <AdvancedStandingsTable standings={standings} league={league} season={season} />
+          ) : (
+            <HeadToHeadStandingsTable standings={standings} league={league} season={season} matrix={headToHeadMatrix} />
           )}
         </div>
       </div>
@@ -207,7 +306,7 @@ export default function StandingsPage() {
               <strong>ERA:</strong> Average earned runs allowed per game (runs against minus errors and passed balls)
             </p>
           </>
-        ) : (
+        ) : activeTab === 'advanced' ? (
           <>
             <p className="mb-2">
               <strong>DougLuck:</strong> Expected wins/losses based on run differential
@@ -219,6 +318,10 @@ export default function StandingsPage() {
               <strong>Splits:</strong> Performance in different game situations
             </p>
           </>
+        ) : (
+          <p>
+            <strong>Head-to-Head:</strong> Each cell shows a team&apos;s record versus that opponent.
+          </p>
         )}
       </div>
     </div>
@@ -380,6 +483,59 @@ function AdvancedStandingsTable({
             <td className="px-3 py-4 whitespace-nowrap text-center text-sm text-gray-900">
               {team.xtrasRecord || '-'}
             </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function HeadToHeadStandingsTable({
+  standings,
+  league,
+  season,
+  matrix,
+}: {
+  standings: Standing[];
+  league: string;
+  season: string;
+  matrix: HeadToHeadMatrix;
+}) {
+  return (
+    <table className="min-w-full divide-y divide-gray-200">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50">
+            Team
+          </th>
+          {standings.map((opponent) => (
+            <th key={opponent.tm._id} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              {opponent.tm.nickname}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {standings.map((team) => (
+          <tr key={team._id} className="hover:bg-gray-50">
+            <td className="px-6 py-4 whitespace-nowrap sticky left-0 bg-white">
+              <Link
+                href={`/${league}/${season}/teams/${team.tm._id}`}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                {team.tm.location} {team.tm.nickname}
+              </Link>
+            </td>
+            {standings.map((opponent) => (
+              <td
+                key={`${team.tm._id}-${opponent.tm._id}`}
+                className={`px-3 py-4 whitespace-nowrap text-center text-sm ${
+                  team.tm._id === opponent.tm._id ? 'text-gray-400 font-medium' : 'text-gray-900'
+                }`}
+              >
+                {matrix[team.tm._id]?.[opponent.tm._id] ?? '–'}
+              </td>
+            ))}
           </tr>
         ))}
       </tbody>
