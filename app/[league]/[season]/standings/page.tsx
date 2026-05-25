@@ -109,7 +109,7 @@ function buildHeadToHeadMatrix(standings: Standing[], games: Game[]): HeadToHead
       }
       const record = counters[teamId][opponentId];
       const totalGames = record.w + record.l;
-      matrix[teamId][opponentId] = totalGames > 0 ? `${record.w}-${record.l}` : '–';
+      matrix[teamId][opponentId] = totalGames > 0 ? `${record.w}-${record.l}` : '—';
     }
   }
 
@@ -536,7 +536,7 @@ function HeadToHeadStandingsTable({
                   team.tm._id === opponent.tm._id ? 'text-gray-400 font-medium' : 'text-gray-900'
                 }`}
               >
-                {matrix[team.tm._id]?.[opponent.tm._id] ?? '–'}
+                {matrix[team.tm._id]?.[opponent.tm._id] ?? '—'}
               </td>
             ))}
           </tr>
