@@ -136,18 +136,21 @@ export default function StandingsPage() {
           fetch(`/api/games?${query}&gameType=R`),
         ]);
 
-        if (!standingsRes.ok) {
-          throw new Error('Failed to fetch standings');
-        }
-        if (!gamesRes.ok) {
-          throw new Error('Failed to fetch games');
+        if (!standingsRes.ok || !gamesRes.ok) {
+          if (!standingsRes.ok && !gamesRes.ok) {
+            throw new Error('Failed to load standings and head-to-head records');
+          }
+          if (!standingsRes.ok) {
+            throw new Error('Failed to load standings');
+          }
+          throw new Error('Failed to load head-to-head records');
         }
 
         const [standingsData, gamesData] = await Promise.all([standingsRes.json(), gamesRes.json()]);
         setStandings(standingsData);
         setGames(gamesData);
       } catch (err) {
-        setError('Failed to load standings');
+        setError(err instanceof Error ? err.message : 'Failed to load standings');
         console.error(err);
       } finally {
         setLoading(false);
