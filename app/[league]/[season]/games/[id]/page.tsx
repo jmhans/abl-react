@@ -436,8 +436,11 @@ function StatDetailTable({ title, players }: { title: string; players: Player[] 
                 <td className="text-right py-1.5 px-1 text-gray-400">{isSynth ? '' : (p.rosterOrder ?? '')}</td>
                 <td className="py-1.5 px-2 font-medium">
                   {p.name}
-                  {p.mlbTeam && !isSynth && (
-                    <span className="ml-1 text-[10px] font-bold text-gray-400">{p.mlbTeam}</span>
+                  {!isSynth && (p.mlbTeam || p.lineupPosition) && (
+                    <span className="ml-1 text-[10px] font-bold text-gray-400">
+                      {p.mlbTeam}
+                      {p.lineupPosition ? ` (${p.lineupPosition})` : ''}
+                    </span>
                   )}
                 </td>
                 <td className="py-1.5 px-1 text-gray-500">{p.lineupPosition}</td>
