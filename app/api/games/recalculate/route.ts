@@ -5,6 +5,20 @@ import { calculateAndStoreLiveGameResult } from '@/app/lib/game-calculation-serv
 import { ensureRostersLockedForGames } from '@/app/lib/stat-refresh-service';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 
+async function isAuthorized(request: NextRequest): Promise<boolean> {
+  const { isAdmin } = await getAdminAuthState();
+  if (isAdmin) return true;
+
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+
+  const authHeader = request.headers.get('authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : '';
+  const headerSecret = request.headers.get('x-cron-secret') || '';
+
+  return token === secret || headerSecret === secret;
+}
+
 type LineupPlayer = {
   player?: { _id?: any; mlbID?: any; mlbId?: any; name?: string };
   _id?: any;
@@ -384,8 +398,7 @@ function compareGameScores(game: any, calculatedResult: any) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { isAdmin } = await getAdminAuthState();
-    if (!isAdmin) {
+    if (!(await isAuthorized(request))) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
