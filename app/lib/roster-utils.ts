@@ -1,4 +1,5 @@
 import { Db } from 'mongodb';
+import { deriveAblDate } from '@/app/lib/abl-date';
 
 /**
  * Calculate ABL (ABL Fantasy) score from batting stats
@@ -198,10 +199,36 @@ export async function getFirstMlbGameTimeForDate(db: Db, officialDate: string): 
 /**
  * Returns the YYYY-MM-DD date string for the next upcoming ABL game day.
  * This is the value stored in lineups.effectiveDate.
+ *
+ * Logic:
+ *   - If today's roster is NOT yet locked (first MLB game hasn't started), return
+ *     today's ABL date. The effectiveDate should be TODAY so that any roster
+ *     changes made before lock are applied to today's games.
+ *   - If today's roster IS locked, find the next ABL game date after today and
+ *     return that. Edits made after lock apply to the next game day.
+ *
+ * This replaces the previous approach of querying ABL games with
+ * `gameDate >= now`, which broke because ABL game records store gameDate as
+ * midnight UTC — by evening that timestamp has already passed and the query
+ * incorrectly jumped to the next day, causing the lineup to be saved with the
+ * wrong effectiveDate and skipped during scoring.
  */
 export async function getNextRosterGameDate(db: Db): Promise<string> {
+  const todayAblDate = deriveAblDate(new Date());
+
+  // Check whether today's roster window has closed (first MLB game started)
+  const lockTime = await getFirstMlbGameTimeForDate(db, todayAblDate);
+  if (Date.now() < lockTime.getTime()) {
+    // Pre-lock: changes are for today's games
+    return todayAblDate;
+  }
+
+  // Post-lock: find the next ABL game date strictly after today
+  const [y, m, d] = todayAblDate.split('-').map(Number);
+  const tomorrowStart = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
+
   const nextGames = await db.collection('games')
-    .find({ gameDate: { $gte: new Date() }, gameType: 'R' })
+    .find({ gameDate: { $gte: tomorrowStart }, gameType: 'R' })
     .sort({ gameDate: 1 })
     .limit(1)
     .toArray();
