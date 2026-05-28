@@ -45,6 +45,7 @@ interface RosterData {
   updatedAt: string;
   locked: boolean;
   timeUntilLock: number | null;
+  nextGameDate?: string;
   nextGame?: {
     _id: string;
     gameDate: string;
@@ -54,7 +55,7 @@ interface RosterData {
   asOf?: string | null;
 }
 
-export default function TeamRosterPage() {
+export default function TeamRosterPage({ embedded = false }: { embedded?: boolean }) {
   const params = useParams();
   const teamId = params.id as string;
   const { league, season } = useLeagueSeason();
@@ -414,7 +415,7 @@ export default function TeamRosterPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-16">
         <div className="text-xl">Loading roster...</div>
       </div>
     );
@@ -422,7 +423,7 @@ export default function TeamRosterPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="py-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-800">{error}</p>
         </div>
@@ -446,13 +447,15 @@ export default function TeamRosterPage() {
   const rosterAtCapacity = activePlayers.length >= ROSTER_LIMIT;
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className={embedded ? 'w-full' : 'container mx-auto px-4 py-8'}>
       <div className="mb-8">
-        <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-4 inline-block">
-          ← Back to Home
-        </Link>
+        {!embedded && (
+          <Link href={`/${league}/${season}`} className="text-blue-600 hover:text-blue-800 mb-4 inline-block">
+            ← Back to Home
+          </Link>
+        )}
 
-        {/* Team info header */}
+        {!embedded && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
           {editingTeamInfo ? (
             <div className="space-y-3">
@@ -564,6 +567,7 @@ export default function TeamRosterPage() {
             </div>
           )}
         </div>
+        )}
 
         {!isOwner && !isAdmin && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -581,8 +585,8 @@ export default function TeamRosterPage() {
           </div>
         )}
 
-        {/* As-of date picker for historical roster viewing */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
+        {/* Date picker + lock status on same row */}
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
           <label htmlFor="asOfDate" className="text-sm font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
             View roster as of:
           </label>
@@ -602,7 +606,24 @@ export default function TeamRosterPage() {
               Reset to current
             </button>
           )}
+          {!asOfDate && roster.locked && (
+            <span className="ml-auto text-xs font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">🔒 Locked</span>
+          )}
+          {!asOfDate && !roster.locked && roster.timeUntilLock && (
+            <span className="ml-auto text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              Locks in <strong className="text-gray-700 dark:text-gray-200">{formatTimeRemaining(roster.timeUntilLock)}</strong>
+            </span>
+          )}
         </div>
+
+        {!asOfDate && !roster.locked && roster.nextGameDate && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Changes apply to: <strong className="text-gray-700 dark:text-gray-200">{new Date(roster.nextGameDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong>
+          </p>
+        )}
+        {!asOfDate && roster.locked && (
+          <p className="text-xs text-red-700 dark:text-red-400 mb-4">Roster locked — changes will apply to the next game day.</p>
+        )}
 
         {asOfDate && roster && (
           <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-2 mb-4 text-sm text-blue-900 dark:text-blue-100">
@@ -614,16 +635,7 @@ export default function TeamRosterPage() {
           </div>
         )}
 
-        <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg mb-4 text-sm ${roster.locked ? 'bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700' : 'bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700'}`}>
-          <span className={`font-semibold ${roster.locked ? 'text-red-900 dark:text-red-100' : 'text-green-900 dark:text-green-100'}`}>{roster.locked ? '🔒 Roster Locked' : '🟢 Roster Open'}</span>
-          {!roster.locked && roster.timeUntilLock && (
-            <span className="text-green-900 dark:text-green-100">
-              Time remaining to next lock: <strong className="text-green-900 dark:text-green-100">{formatTimeRemaining(roster.timeUntilLock)}</strong>
-            </span>
-          )}
-        </div>
-
-        {(isOwner || isAdmin) && !roster.locked && seasonStatus !== 'pre-draft' && (
+        {(isOwner || isAdmin) && !roster.locked && seasonStatus !== 'pre-draft' && !embedded && (
           <div className="mb-4">
             {!rosterAtCapacity ? (
               <Link
@@ -665,7 +677,7 @@ export default function TeamRosterPage() {
         )}
 
         {/* Co-owner modal */}
-        {showCoOwnerModal && (
+        {!embedded && showCoOwnerModal && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
               <div className="flex justify-between items-center mb-4">
@@ -767,30 +779,6 @@ export default function TeamRosterPage() {
           </div>
         )}
 
-        <div className="relative inline-block mb-6">
-          <button
-            onClick={() => setShowRulesPopover(v => !v)}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
-            aria-label="Roster rules"
-          >
-            <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center font-bold text-[10px] leading-none">i</span>
-            Roster Rules
-          </button>
-          {showRulesPopover && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowRulesPopover(false)} aria-hidden />
-              <div className="absolute left-0 top-6 z-20 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-4">
-                <h4 className="font-semibold text-sm text-gray-800 mb-2">Roster Rules</h4>
-                <ul className="text-sm text-gray-600 space-y-1.5">
-                  <li>• Drafted players cannot be dropped</li>
-                  <li>• Drafted players must appear first in roster order</li>
-                  <li>• Pickups can only be placed after all drafted players</li>
-                  <li>• Drag and drop rows to reorder (within rules) — use the grip handle on mobile</li>
-                </ul>
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
       {/* View toggle */}
@@ -841,12 +829,12 @@ export default function TeamRosterPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg overflow-x-auto">
+      <div className="bg-white rounded-lg shadow-lg overflow-x-auto overflow-y-auto max-h-[calc(100dvh-320px)] min-h-60">
         {rosterView === 'eligibility' && posLogsLoading && (
           <div className="text-center py-4 text-sm text-gray-500">Loading position data…</div>
         )}
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
             <tr>
               <th className="px-2 py-3 w-8"></th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
@@ -1085,6 +1073,31 @@ export default function TeamRosterPage() {
               ? 'No players yet — rosters are filled during the draft.'
               : 'No players on roster. Add players from Free Agents.'}
           </div>
+        )}
+      </div>
+
+      <div className="relative inline-block mt-4 mb-2">
+        <button
+          onClick={() => setShowRulesPopover(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+          aria-label="Roster rules"
+        >
+          <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center font-bold text-[10px] leading-none">i</span>
+          Roster Rules
+        </button>
+        {showRulesPopover && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setShowRulesPopover(false)} aria-hidden />
+            <div className="absolute left-0 top-6 z-20 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-4">
+              <h4 className="font-semibold text-sm text-gray-800 mb-2">Roster Rules</h4>
+              <ul className="text-sm text-gray-600 space-y-1.5">
+                <li>• Drafted players cannot be dropped</li>
+                <li>• Drafted players must appear first in roster order</li>
+                <li>• Pickups can only be placed after all drafted players</li>
+                <li>• Drag and drop rows to reorder (within rules) — use the grip handle on mobile</li>
+              </ul>
+            </div>
+          </>
         )}
       </div>
 

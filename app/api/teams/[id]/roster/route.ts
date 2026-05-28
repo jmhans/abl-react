@@ -127,6 +127,7 @@ export async function GET(
       updatedAt: lineup.updatedAt,
       locked: locked,
       timeUntilLock: timeUntilLock,
+      nextGameDate: gameDate,
       nextGame: nextGame,
       asOf: asOf ?? null,
     });

@@ -108,10 +108,27 @@ export default function TeamDetailPage() {
           </div>
         )}
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">
-            🚧 Roster view coming soon. This will show the team's current players and lineup.
-          </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Link
+            href={`/teams/${teamId}/roster`}
+            className="flex items-center gap-3 rounded-lg border border-gray-200 p-5 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            <span className="text-2xl">📋</span>
+            <div>
+              <div className="font-semibold text-gray-900">Roster</div>
+              <div className="text-sm text-gray-500">View &amp; edit lineup</div>
+            </div>
+          </Link>
+          <Link
+            href={`/teams/${teamId}/analytics`}
+            className="flex items-center gap-3 rounded-lg border border-gray-200 p-5 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            <span className="text-2xl">📊</span>
+            <div>
+              <div className="font-semibold text-gray-900">Analytics</div>
+              <div className="text-sm text-gray-500">Player appearances &amp; activity</div>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
