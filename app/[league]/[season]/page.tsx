@@ -128,7 +128,7 @@ export default function LeagueSeasonHome() {
         )}
 
         {userTeamId && (
-          <Link href={`${base}/teams/${userTeamId}/roster`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-purple-400 hover:shadow transition group">
+          <Link href={`${base}/teams/${userTeamId}`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-purple-400 hover:shadow transition group">
             <div className="text-2xl mb-2">🏢</div>
             <h2 className="text-sm font-semibold text-gray-900 group-hover:text-purple-700">My Team</h2>
             <p className="text-xs text-gray-500 mt-1">Your roster, lineups, and settings</p>
