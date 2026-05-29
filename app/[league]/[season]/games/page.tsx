@@ -335,8 +335,17 @@ export default function GamesPage() {
                   const hasResult = !!game.result?.winner;
                   const isFinal = game.result?.isFinal !== false; // treat missing as true for old records
                   const result = hasResult ? game.result! : null;
-                  const awayScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'away')?.final));
-                  const homeScore = formatRuns(extractRuns(findScoreForTeam(result?.scores, game, 'home')?.final));
+                  const awayScoreLine = findScoreForTeam(result?.scores, game, 'away');
+                  const homeScoreLine = findScoreForTeam(result?.scores, game, 'home');
+                  const awayRegulationRuns = extractRuns(awayScoreLine?.regulation);
+                  const homeRegulationRuns = extractRuns(homeScoreLine?.regulation);
+                  const awayFinalRuns = extractRuns(awayScoreLine?.final);
+                  const homeFinalRuns = extractRuns(homeScoreLine?.final);
+                  const awayScore = formatRuns(awayFinalRuns);
+                  const homeScore = formatRuns(homeFinalRuns);
+                  const wentToXtras =
+                    (awayFinalRuns !== null && awayRegulationRuns !== null && awayFinalRuns !== awayRegulationRuns) ||
+                    (homeFinalRuns !== null && homeRegulationRuns !== null && homeFinalRuns !== homeRegulationRuns);
 
                   const isMyGameWon = isMyGame && hasResult && isFinal && result?.winner?._id === userTeamId;
                   const isMyGameLost = isMyGame && hasResult && isFinal && !!result?.winner?._id && result.winner._id !== userTeamId;
@@ -372,7 +381,7 @@ export default function GamesPage() {
                       {/* Status */}
                       <div className="mt-1.5">
                         {hasResult && isFinal ? (
-                          <span className="text-blue-600 dark:text-blue-400 font-medium">Final</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-medium">{wentToXtras ? 'Final - Xtras' : 'Final'}</span>
                         ) : hasResult ? (
                           <span className="text-yellow-600 dark:text-yellow-400 font-medium">In Progress</span>
                         ) : (
