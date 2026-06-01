@@ -266,7 +266,7 @@ export default function Navigation() {
           )}
           {userTeamId ? (
             <>
-              <Link href={`${base}/teams/${userTeamId}/roster`} className={navLinkClass(`${base}/teams/${userTeamId}/roster`)}>My Team</Link>
+              <Link href={`${base}/teams/${userTeamId}?tab=roster`} className={navLinkClass(`${base}/teams/${userTeamId}`)}>My Team</Link>
               <Link href={`${base}/teams/${userTeamId}/free-agents`} className={navLinkClass(`${base}/teams/${userTeamId}/free-agents`)}>Free Agents</Link>
             </>
           ) : (

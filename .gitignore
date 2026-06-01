@@ -45,3 +45,6 @@ next-env.d.ts
 /backup-all-collections/
 /backup-all-collections-fixed/
 *_backup_PROD.json
+
+# local scripts
+/scripts/

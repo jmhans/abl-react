@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useLeagueSeason } from '@/app/lib/league-season-context';
 
 const TeamRosterPage = dynamic(() => import('./roster/page'), { ssr: false });
@@ -29,6 +29,7 @@ interface Team {
 
 export default function TeamDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const teamId = params.id as string;
   const { league, season } = useLeagueSeason();
 
@@ -36,6 +37,13 @@ export default function TeamDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('details');
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'details' || tabParam === 'roster' || tabParam === 'analytics') {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // Auth
   const [isOwner, setIsOwner] = useState(false);

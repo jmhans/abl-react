@@ -13,7 +13,7 @@ interface AdminCard {
 }
 
 // Cards whose hrefs need league/season context forwarded
-const LEAGUE_SCOPED = new Set(['/admin/new-draft', '/admin/recalculate']);
+const LEAGUE_SCOPED = new Set(['/admin/new-draft', '/admin/new-supp-draft', '/admin/recalculate']);
 
 const DEV_CARDS: AdminCard[] = [
   {
@@ -109,6 +109,14 @@ const LEAGUE_CARDS: AdminCard[] = [
     accent: 'border-l-green-500',
     iconBg: 'bg-green-100',
     icon: '🏆',
+  },
+  {
+    href: '/admin/new-supp-draft',
+    title: 'Supp Draft Management',
+    description: 'Set up, schedule, and manage the annual Supplemental Draft. Handles drop indications and finalization.',
+    accent: 'border-l-teal-500',
+    iconBg: 'bg-teal-100',
+    icon: '🔄',
   },
   {
     href: '/admin/recalculate',
