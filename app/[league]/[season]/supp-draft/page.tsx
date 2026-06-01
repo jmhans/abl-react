@@ -49,7 +49,7 @@ function getStatVal(player: PlayerForSuppDraft, col: typeof STAT_COLS[number]): 
 }
 
 function PlayerStatusBadge({ status }: { status?: string }) {
-  if (!status) return <span className="text-xs text-gray-400">—</span>;
+  if (!status) return <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">NR</span>;
   if (status.includes('Injured'))
     return <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">INJ</span>;
   if (status.includes('Minors'))
