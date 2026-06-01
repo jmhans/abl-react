@@ -2,8 +2,8 @@ import { headers } from 'next/headers';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { resolveLeagueContext } from '@/app/lib/league-context';
 
-function inferLeagueFromReferrer(): string | null {
-  const referer = headers().get('referer');
+async function inferLeagueFromReferrer(): Promise<string | null> {
+  const referer = (await headers()).get('referer');
   if (!referer) return null;
   try {
     const pathname = new URL(referer).pathname;
@@ -16,7 +16,7 @@ function inferLeagueFromReferrer(): string | null {
 
 export async function resolveLegacyLeagueSeason(preferredLeague?: string | null) {
   const db = await connectToDatabase();
-  const requestedLeague = (preferredLeague ?? inferLeagueFromReferrer() ?? 'abl').toLowerCase();
+  const requestedLeague = (preferredLeague ?? await inferLeagueFromReferrer() ?? 'abl').toLowerCase();
 
   try {
     const { league, season } = await resolveLeagueContext(db, requestedLeague, 'active');

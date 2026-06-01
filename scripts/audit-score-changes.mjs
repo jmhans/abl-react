@@ -111,8 +111,8 @@ const prodDb  = prodClient.db(PROD_DB_NAME);
 try {
   // --- Load team nicknames from both DBs (prefer local, fall back to prod) ---
   const [localTeams, prodTeams] = await Promise.all([
-    localDb.collection('teams').find({}, { projection: { _id: 1, nickname: 1, name: 1 } }).toArray(),
-    prodDb.collection('teams').find({},  { projection: { _id: 1, nickname: 1, name: 1 } }).toArray(),
+    localDb.collection('ablteams').find({}, { projection: { _id: 1, nickname: 1, name: 1 } }).toArray(),
+    prodDb.collection('ablteams').find({},  { projection: { _id: 1, nickname: 1, name: 1 } }).toArray(),
   ]);
   const teamMap = new Map();
   for (const t of [...prodTeams, ...localTeams]) {

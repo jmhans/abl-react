@@ -82,7 +82,7 @@ export type SuppDraftPickEntry = {
   draftedAt: string;
 };
 
-export type SuppDraftStatus = 'pending' | 'active' | 'completed' | 'abandoned';
+export type SuppDraftStatus = 'pending' | 'active' | 'completed' | 'finalized' | 'abandoned';
 
 // ---------------------------------------------------------------------------
 // Pick timer / quiet-hours utilities
@@ -179,6 +179,7 @@ export type SuppDraftPlayer = {
   projStats?: any;
   // Supp draft specific
   onRosterTeamId?: string | null;  // null = free agent / pickup
+  onRosterAcqType?: 'draft' | 'supp_draft' | 'pickup' | string | null;
   isDropIndicated?: boolean;
 };
 

@@ -1,0 +1,119 @@
+================================================================
+ABL SCORE AUDIT — effectiveDate bug fix
+Generated : 2026-05-28T01:28:37.456Z
+Local DB  : abl_dev
+Prod  DB  : heroku_wm40bx9r
+Date range: 2026-04-16 → 2026-05-26
+================================================================
+
+================================================================
+SUMMARY
+================================================================
+Total games in range   : 580
+Games with score diff  : 18
+Outcome changes        : 1
+No prod result (skip)  : 0
+No local result (skip) : 0
+
+OUTCOME CHANGES (winner flipped):
+  2026-05-26  Handbaskets (H) vs Rats (A)  :  Rats → Handbaskets
+
+=== 2026-04-21 ===
+  GAME: Chuckles (H) vs Hole Surfers (A)
+    PROD  (old):  Chuckles  9.2714  |  Hole Surfers  2.0313  →  winner: Chuckles
+    LOCAL (new):  Chuckles  7.8429  |  Hole Surfers  2.0313  →  winner: Chuckles
+    Chuckles: AB 35→35  pts 447.0→397.0  H 10→8  HR 4→4  BB 7→7
+
+  GAME: Bananas (H) vs Chuckles (A)
+    PROD  (old):  Bananas  4.5429  |  Chuckles  8.2714  →  winner: Chuckles
+    LOCAL (new):  Bananas  4.5429  |  Chuckles  6.8429  →  winner: Chuckles
+    Chuckles: AB 35→35  pts 447.0→397.0  H 10→8  HR 4→4  BB 7→7
+
+  GAME: Handbaskets (H) vs Cracks (A)
+    PROD  (old):  Handbaskets  0.4118  |  Cracks  2.1667  →  winner: Cracks
+    LOCAL (new):  Handbaskets  0.7143  |  Cracks  2.1667  →  winner: Cracks
+    Handbaskets: AB 34→35  pts 150.0→165.0  H 4→5  HR 0→0  BB 3→3
+
+  GAME: Campers (H) vs Handbaskets (A)
+    PROD  (old):  Campers 11.0270  |  Handbaskets  0.4118  →  winner: Campers
+    LOCAL (new):  Campers 11.0270  |  Handbaskets  0.7143  →  winner: Campers
+    Handbaskets: AB 34→35  pts 150.0→165.0  H 4→5  HR 0→0  BB 3→3
+
+=== 2026-04-28 ===
+  GAME: Heifers (H) vs Iguanas (A)
+    PROD  (old):  Heifers  5.2857  |  Iguanas  8.7059  →  winner: Iguanas
+    LOCAL (new):  Heifers  4.5938  |  Iguanas  8.7059  →  winner: Iguanas
+    Heifers: AB 35→32  pts 325.0→275.0  H 8→7  HR 2→1  BB 3→4
+
+  GAME: Heifers (H) vs Winers (A)
+    PROD  (old):  Heifers  4.3333  |  Winers  5.5000  →  winner: Winers
+    LOCAL (new):  Heifers  3.6389  |  Winers  5.5000  →  winner: Winers
+    Heifers: AB 39→36  pts 325.0→275.0  H 8→7  HR 2→1  BB 3→4
+
+  GAME: Winers (H) vs Handbaskets (A)
+    PROD  (old):  Winers  5.4118  |  Handbaskets  8.2097  →  winner: Handbaskets
+    LOCAL (new):  Winers  5.6118  |  Handbaskets  7.0294  →  winner: Handbaskets
+    Winers: AB 34→34  pts 320.0→320.0  H 8→8  HR 2→2  BB 4→4
+    Handbaskets: AB 31→34  pts 394.0→392.0  H 9→10  HR 2→2  BB 6→5
+
+  GAME: Rats (H) vs Vipers (A)
+    PROD  (old):  Rats  7.6875  |  Vipers  6.2714  →  winner: Rats
+    LOCAL (new):  Rats  7.3611  |  Vipers  6.6892  →  winner: Rats
+    Rats: AB 32→36  pts 374.0→409.0  H 10→11  HR 1→1  BB 3→4
+    Vipers: AB 35→37  pts 377.0→414.0  H 13→13  HR 0→0  BB 1→4
+
+  GAME: Vipers (H) vs Cracks (A)
+    PROD  (old):  Vipers  7.2714  |  Cracks  5.6471  →  winner: Vipers
+    LOCAL (new):  Vipers  8.2879  |  Cracks  5.6471  →  winner: Vipers
+    Vipers: AB 35→33  pts 377.0→389.0  H 13→12  HR 0→0  BB 1→4
+
+  GAME: Handbaskets (H) vs Machines (A)
+    PROD  (old):  Handbaskets  8.7097  |  Machines  5.9412  →  winner: Handbaskets
+    LOCAL (new):  Handbaskets  7.5294  |  Machines  6.1412  →  winner: Handbaskets
+    Handbaskets: AB 31→34  pts 394.0→392.0  H 9→10  HR 2→2  BB 6→5
+    Machines: AB 34→34  pts 355.0→355.0  H 9→9  HR 1→1  BB 4→4
+
+=== 2026-05-15 ===
+  GAME: Iguanas (H) vs Heifers (A)
+    PROD  (old):  Iguanas  1.2500  |  Heifers  4.2500  →  winner: Heifers
+    LOCAL (new):  Iguanas  1.2500  |  Heifers  7.3182  →  winner: Heifers
+    Heifers: AB 36→33  pts 315.0→390.0  H 7→8  HR 3→3  BB 4→8
+
+  GAME: Heifers (H) vs Cracks (A)
+    PROD  (old):  Heifers  4.9744  |  Cracks  4.2250  →  winner: Heifers
+    LOCAL (new):  Heifers  7.8182  |  Cracks  5.1389  →  winner: Heifers
+    Heifers: AB 39→33  pts 350.0→390.0  H 8→8  HR 3→3  BB 5→8
+    Cracks: AB 40→36  pts 329.0→329.0  H 9→9  HR 2→2  BB 3→3
+
+=== 2026-05-26 ===
+  GAME: Snails (H) vs Chuckles (A)
+    PROD  (old):  Snails  5.8590  |  Chuckles  5.2879  →  winner: Snails
+    LOCAL (new):  Snails  8.3636  |  Chuckles  6.2778  →  winner: Snails
+    Snails: AB 39→44  pts 365.0→522.0  H 10→14  HR 1→2  BB 3→3
+    Chuckles: AB 33→36  pts 323.0→388.0  H 10→12  HR 1→1  BB 3→4
+
+  GAME: Chuckles (H) vs Bodybuilders (A)
+    PROD  (old):  Chuckles  5.5323  |  Bodybuilders  2.9118  →  winner: Chuckles
+    LOCAL (new):  Chuckles  5.9138  |  Bodybuilders  2.9118  →  winner: Chuckles
+    Chuckles: AB 31→29  pts 280.0→273.0  H 8→8  HR 1→1  BB 3→3
+
+  GAME: Handbaskets (H) vs Rats (A)
+    PROD  (old):  Handbaskets  4.0882  |  Rats  4.9286  →  winner: Rats
+    LOCAL (new):  Handbaskets  4.8571  |  Rats  4.2500  →  winner: Handbaskets  ⚠️  OUTCOME CHANGED (Rats → Handbaskets)
+    Handbaskets: AB 34→42  pts 275.0→372.0  H 8→10  HR 1→2  BB 2→2
+    Rats: AB 35→40  pts 330.0→350.0  H 10→10  HR 1→1  BB 2→4
+
+  GAME: Handbaskets (H) vs Vipers (A)
+    PROD  (old):  Handbaskets  4.5882  |  Vipers  3.1842  →  winner: Handbaskets
+    LOCAL (new):  Handbaskets  5.2500  |  Vipers  3.1842  →  winner: Handbaskets
+    Handbaskets: AB 34→32  pts 275.0→280.0  H 8→7  HR 1→2  BB 2→2
+
+  GAME: Cracks (H) vs Winers (A)
+    PROD  (old):  Cracks 10.6765  |  Winers  3.8824  →  winner: Cracks
+    LOCAL (new):  Cracks 10.6765  |  Winers  6.2353  →  winner: Cracks
+    Winers: AB 34→34  pts 285.0→365.0  H 7→8  HR 1→3  BB 6→7
+
+  GAME: Machines (H) vs Winers (A)
+    PROD  (old):  Machines  7.6667  |  Winers  3.8824  →  winner: Machines
+    LOCAL (new):  Machines  7.6667  |  Winers  6.2353  →  winner: Machines
+    Winers: AB 34→34  pts 285.0→365.0  H 7→8  HR 1→3  BB 6→7
