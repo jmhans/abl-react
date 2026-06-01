@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/jobs/sync-rosters",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/jobs/daily-stat-refresh",
       "schedule": "0 8 * * *"
     },
