@@ -12,6 +12,7 @@ import {
 import {
   buildSuppDraftBoard,
   calculateSuppDraftRounds,
+  isQuietTime,
   SuppDraftApiState,
   SuppDraftPlayer,
   MAX_DROP_INDICATIONS,
@@ -24,7 +25,7 @@ type PlayerForSuppDraft = SuppDraftPlayer & {
 };
 
 const POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH'];
-const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_4rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_4rem] md:grid-cols-[minmax(0,2fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_4rem]';
+const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_6rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_6rem] md:grid-cols-[minmax(0,1.5fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_6rem]';
 const STAT_COLS = ['AB', 'H', '2B', '3B', 'HR', 'BB', 'SB'] as const;
 const STAT_VIS = ['hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block'] as const;
 
@@ -86,9 +87,21 @@ export default function SuppDraftPage() {
   const [loadingAdminRoster, setLoadingAdminRoster] = useState(false);
   // Skip loading indicator
   const [skippingTeamId, setSkippingTeamId] = useState<string | null>(null);
+  const [autoPickFiring, setAutoPickFiring] = useState(false);
+  // Live countdown display: seconds remaining until pickDeadlineAt (null = no deadline)
+  const [pickSecondsLeft, setPickSecondsLeft] = useState<number | null>(null);
+  const [pickTimerQuiet, setPickTimerQuiet] = useState(false);
+  // Preview of who would be auto-picked right now
+  const [autoPickPreview, setAutoPickPreview] = useState<{ playerName: string; positions: string[]; ablScore: number; fromQueue?: boolean } | null>(null);
   // Selected team's existing roster (for the slots widget)
   const [selectedTeamRoster, setSelectedTeamRoster] = useState<any[]>([]);
   const [loadingSelectedRoster, setLoadingSelectedRoster] = useState(false);
+  // Queue management
+  const [myQueue, setMyQueue] = useState<string[]>([]);
+  const [autoDraftEnabled, setAutoDraftEnabled] = useState(false);
+  const [savingQueue, setSavingQueue] = useState(false);
+  const [savingAutoDraft, setSavingAutoDraft] = useState(false);
+  const autoDraftFiringRef = useRef(false);
 
   const refreshDraft = useCallback(async () => {
     const qs = `?league=${league}&season=${season}`;
@@ -215,6 +228,57 @@ export default function SuppDraftPage() {
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [draft?.status, refreshDraft]);
 
+  // Countdown timer + auto-pick trigger
+  const autoPickFiringRef = useRef(false);
+  useEffect(() => {
+    if (draft?.status !== 'active' || !draft.pickDeadlineAt) {
+      setPickSecondsLeft(null);
+      setPickTimerQuiet(false);
+      return;
+    }
+    const deadline = new Date(draft.pickDeadlineAt);
+    const tick = () => {
+      const now = new Date();
+      const quiet = isQuietTime(now);
+      setPickTimerQuiet(quiet);
+      const secsLeft = Math.ceil((deadline.getTime() - now.getTime()) / 1000);
+      setPickSecondsLeft(secsLeft);
+
+      // Trigger auto-pick when expired AND outside quiet hours AND not already firing
+      if (secsLeft <= 0 && !quiet && !autoPickFiringRef.current) {
+        autoPickFiringRef.current = true;
+        setAutoPickFiring(true);
+        fetch('/api/supp-draft/auto-pick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ league, season }),
+        })
+          .then(() => refreshDraft())
+          .catch(() => {})
+          .finally(() => {
+            autoPickFiringRef.current = false;
+            setAutoPickFiring(false);
+          });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.pickDeadlineAt, draft?.status]);
+
+  // Fetch auto-pick preview whenever the on-clock pick changes
+  useEffect(() => {
+    if (draft?.status !== 'active') { setAutoPickPreview(null); return; }
+    let cancelled = false;
+    fetch(`/api/supp-draft/auto-pick?league=${league}&season=${season}`, { cache: 'no-store' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (!cancelled && data?.preview) setAutoPickPreview(data.preview); else if (!cancelled) setAutoPickPreview(null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.picks?.length, draft?.status]);
+
   // Load selected team's existing roster for the slots widget whenever they switch
   useEffect(() => {
     if (selectedTeamId && (draft?.status === 'active' || draft?.status === 'completed')) {
@@ -233,9 +297,18 @@ export default function SuppDraftPage() {
     return draft.rounds;
   }, [draft]);
 
+  // Per-team drop counts — must be before draftBoard so the board respects per-team limits
+  const teamDropCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of draft?.dropIndications ?? []) {
+      counts[d.teamId] = (counts[d.teamId] ?? 0) + 1;
+    }
+    return counts;
+  }, [draft]);
+
   const draftBoard = useMemo(
-    () => buildSuppDraftBoard(orderedTeams.map((t) => t._id), rounds),
-    [orderedTeams, rounds]
+    () => buildSuppDraftBoard(orderedTeams.map((t) => t._id), rounds, teamDropCounts),
+    [orderedTeams, rounds, teamDropCounts]
   );
 
   const picks = draft?.picks ?? [];
@@ -296,6 +369,7 @@ export default function SuppDraftPage() {
 
   const activeDraft = draft?.status === 'active';
   const pendingDraft = draft?.status === 'pending';
+  const finalizedOrCompletedDraft = draft?.status === 'completed' || draft?.status === 'finalized';
   const canPick = activeDraft && !!currentPick && !!draft?.startedAt && (isOnClock || (isAdmin && adminPickMode));
 
   // Player filter/sort
@@ -337,13 +411,22 @@ export default function SuppDraftPage() {
   );
 
   // Combined view: existing roster players + supp draft picks → used for slot widget
+  // Only count 'draft' acqType (not pickups, which will be dropped as part of the draft process).
+  // Also exclude drop-indicated players since they're leaving the roster.
+  const dropIndicatedPlayerIdSet = useMemo(
+    () => new Set((draft?.dropIndications ?? []).map((d: any) => d.playerId)),
+    [draft]
+  );
+
   const selectedTeamCombined = useMemo(() => {
-    const rosterPlayers = selectedTeamRoster.map((r: any) => ({
-      _id: r.player?._id ?? '',
-      name: r.player?.name ?? '?',
-      eligible: (r.player?.eligible ?? getDraftEligiblePositions(r.player)) as string[],
-      isSupp: false,
-    }));
+    const rosterPlayers = selectedTeamRoster
+      .filter((r: any) => r.acqType === 'draft' && !dropIndicatedPlayerIdSet.has(r.player?._id ?? r.player))
+      .map((r: any) => ({
+        _id: r.player?._id ?? '',
+        name: r.player?.name ?? '?',
+        eligible: (r.player?.eligible ?? getDraftEligiblePositions(r.player)) as string[],
+        isSupp: false,
+      }));
     const suppPlayers = selectedTeamPicks.map((p: any) => ({
       _id: p.player?._id ?? '',
       name: p.player?.name ?? '?',
@@ -351,7 +434,7 @@ export default function SuppDraftPage() {
       isSupp: true,
     }));
     return [...rosterPlayers, ...suppPlayers];
-  }, [selectedTeamRoster, selectedTeamPicks]);
+  }, [selectedTeamRoster, selectedTeamPicks, dropIndicatedPlayerIdSet]);
 
   const selectedTeamPosCounts = useMemo(() => {
     const POS_ORDER = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH'];
@@ -371,15 +454,6 @@ export default function SuppDraftPage() {
     for (const p of selectedTeamCombined) if (p._id) m.set(p._id, p.name);
     return m;
   }, [selectedTeamCombined]);
-
-  // Per-team drop counts (used for draft board N/A logic)
-  const teamDropCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const d of draft?.dropIndications ?? []) {
-      counts[d.teamId] = (counts[d.teamId] ?? 0) + 1;
-    }
-    return counts;
-  }, [draft]);
 
   const picksByRound = useMemo(() => {
     const map = new Map<number, Map<string, any>>();
@@ -505,6 +579,70 @@ export default function SuppDraftPage() {
     }
   };
 
+  // Sync queue + auto-draft state from draft whenever draft/team changes
+  useEffect(() => {
+    if (!draft || !userTeamId) return;
+    setMyQueue((draft.draftQueues?.[userTeamId] ?? []) as string[]);
+    setAutoDraftEnabled((draft.autoDraftTeams ?? []).includes(userTeamId));
+  }, [draft, userTeamId]);
+
+  // When it's the user's turn and auto-draft is on, fire queue-pick immediately
+  useEffect(() => {
+    if (!isOnClock || !autoDraftEnabled || !activeDraft) return;
+    if (autoDraftFiringRef.current) return;
+    autoDraftFiringRef.current = true;
+    (async () => {
+      try {
+        await fetch('/api/supp-draft/queue-pick', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ league, season }),
+        });
+        await refreshDraft();
+      } catch { /* silent */ } finally {
+        autoDraftFiringRef.current = false;
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnClock, autoDraftEnabled, activeDraft]);
+
+  const handleSetQueue = async (newQueue: string[]) => {
+    if (!userTeamId) return;
+    setSavingQueue(true);
+    try {
+      const res = await fetch('/api/supp-draft', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league, season, action: 'set-queue', teamId: userTeamId, playerIds: newQueue }),
+      });
+      if (res.ok) {
+        setMyQueue(newQueue);
+        await refreshDraft();
+      }
+    } finally {
+      setSavingQueue(false);
+    }
+  };
+
+  const handleToggleAutoDraft = async () => {
+    if (!userTeamId) return;
+    const newEnabled = !autoDraftEnabled;
+    setSavingAutoDraft(true);
+    try {
+      const res = await fetch('/api/supp-draft', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league, season, action: 'set-auto-draft', teamId: userTeamId, enabled: newEnabled }),
+      });
+      if (res.ok) {
+        setAutoDraftEnabled(newEnabled);
+        await refreshDraft();
+      }
+    } finally {
+      setSavingAutoDraft(false);
+    }
+  };
+
   const sortIcon = (col: string) => {
     if (sortCol !== col) return <span className="ml-0.5 opacity-20">↕</span>;
     return <span className="ml-0.5">{sortDir === 'desc' ? '↓' : '↑'}</span>;
@@ -536,9 +674,10 @@ export default function SuppDraftPage() {
     );
   }
 
-  const totalPicks = rounds * orderedTeams.length;
-  const picksRemaining = totalPicks - picks.length;
-  const isDraftComplete = picks.length >= totalPicks;
+  const totalPicks = draftBoard.length;
+  const filledPickCount = filledSlotKeys.size;
+  const picksRemaining = Math.max(0, totalPicks - filledPickCount);
+  const isDraftComplete = filledPickCount >= totalPicks;
 
   return (
     <div className="space-y-6 overflow-x-hidden">
@@ -550,7 +689,7 @@ export default function SuppDraftPage() {
           </Link>
           <h1 className="text-3xl font-bold text-gray-900">Supplemental Draft</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {league.toUpperCase()} {season} · {rounds} rounds · {picks.length}/{totalPicks} picks
+            {league.toUpperCase()} {season} · {rounds} rounds · {filledPickCount}/{totalPicks} picks
           </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
@@ -558,6 +697,7 @@ export default function SuppDraftPage() {
             <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase ${
               draft.status === 'active' ? 'border-green-300 bg-green-50 text-green-700' :
               draft.status === 'completed' ? 'border-blue-300 bg-blue-50 text-blue-700' :
+              draft.status === 'finalized' ? 'border-purple-300 bg-purple-50 text-purple-700' :
               'border-gray-300 bg-gray-50 text-gray-600'
             }`}>
               {draft.status}
@@ -846,9 +986,47 @@ export default function SuppDraftPage() {
                 <div className="mt-1 text-xs text-gray-500">
                   {picksRemaining} pick{picksRemaining !== 1 ? 's' : ''} remaining
                 </div>
+                {/* Pick timer */}
+                {pickSecondsLeft !== null && (
+                  <div className={`mt-2 rounded px-2 py-1 text-xs font-mono font-semibold ${
+                    pickTimerQuiet
+                      ? 'bg-gray-100 text-gray-500'
+                      : pickSecondsLeft <= 300
+                      ? 'bg-red-100 text-red-700'
+                      : pickSecondsLeft <= 1800
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {pickTimerQuiet ? (
+                      '⏸ Paused (quiet hours 10pm–8am CT)'
+                    ) : pickSecondsLeft <= 0 ? (
+                      autoPickFiring ? '⚡ Auto-picking…' : '⏰ Time expired — picking…'
+                    ) : (
+                      (() => {
+                        const h = Math.floor(pickSecondsLeft / 3600);
+                        const m = Math.floor((pickSecondsLeft % 3600) / 60);
+                        const s = pickSecondsLeft % 60;
+                        return `⏱ ${h > 0 ? `${h}h ` : ''}${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+                      })()
+                    )}
+                  </div>
+                )}
                 {isOnClock && !adminPickMode && (
                   <div className="mt-2 rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800">
                     Your turn to pick!
+                  </div>
+                )}
+                {/* Auto-pick preview */}
+                {autoPickPreview && (
+                  <div className="mt-3 border-t border-blue-200 pt-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-blue-600 mb-1">
+                      Auto-pick would select {autoPickPreview.fromQueue ? '(from queue)' : '(from algorithm)'}
+                    </div>
+                    <div className="text-sm font-semibold text-gray-900">{autoPickPreview.playerName}</div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-500">{autoPickPreview.positions.join(' / ')}</span>
+                      <span className="text-xs font-mono text-gray-600">ABL {autoPickPreview.ablScore}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -894,6 +1072,81 @@ export default function SuppDraftPage() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Queue + Auto-draft panel for the current user */}
+            {activeDraft && userTeamId && (
+              <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">My Queue &amp; Auto-Draft</div>
+                  <button
+                    type="button"
+                    onClick={handleToggleAutoDraft}
+                    disabled={savingAutoDraft}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${autoDraftEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                    title={autoDraftEnabled ? 'Auto-draft ON — click to disable' : 'Auto-draft OFF — click to enable'}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${autoDraftEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-500 -mt-1">
+                  {autoDraftEnabled
+                    ? 'Auto-draft is ON — when it\'s your turn, the top of your queue (or the algorithm) picks automatically.'
+                    : 'Auto-draft is OFF. Toggle to pick automatically when it\'s your turn.'}
+                </p>
+                {/* Queue list */}
+                {myQueue.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No players queued. Add from the player list.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {myQueue.map((pid, idx) => {
+                      const player = players.find((p) => p._id === pid);
+                      const alreadyPicked = pickedPlayerIds.has(pid);
+                      return (
+                        <div key={pid} className={`flex items-center gap-1 rounded border px-2 py-1 text-xs ${alreadyPicked ? 'border-gray-200 bg-gray-50 opacity-50' : 'border-gray-200 bg-white'}`}>
+                          <span className="w-4 text-center font-mono text-gray-400">{idx + 1}</span>
+                          <span className="flex-1 min-w-0 truncate font-medium text-gray-800">
+                            {player?.name ?? pid}
+                            {alreadyPicked && <span className="ml-1 text-gray-400">(picked)</span>}
+                          </span>
+                          <span className="text-gray-400 text-[10px]">{player?.eligible?.join('/') ?? ''}</span>
+                          <div className="flex items-center gap-0.5 ml-1">
+                            <button
+                              type="button"
+                              disabled={savingQueue || idx === 0}
+                              onClick={() => {
+                                const q = [...myQueue];
+                                [q[idx - 1], q[idx]] = [q[idx], q[idx - 1]];
+                                handleSetQueue(q);
+                              }}
+                              className="rounded px-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                              title="Move up"
+                            >↑</button>
+                            <button
+                              type="button"
+                              disabled={savingQueue || idx === myQueue.length - 1}
+                              onClick={() => {
+                                const q = [...myQueue];
+                                [q[idx], q[idx + 1]] = [q[idx + 1], q[idx]];
+                                handleSetQueue(q);
+                              }}
+                              className="rounded px-1 text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                              title="Move down"
+                            >↓</button>
+                            <button
+                              type="button"
+                              disabled={savingQueue}
+                              onClick={() => handleSetQueue(myQueue.filter((_, i) => i !== idx))}
+                              className="rounded px-1 text-red-400 hover:text-red-700 disabled:opacity-30"
+                              title="Remove from queue"
+                            >×</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1073,16 +1326,29 @@ export default function SuppDraftPage() {
                           {getAblStat(player).toFixed(2)}
                         </div>
                         <div className="text-right">
-                          {canPick && (
-                            <button
-                              type="button"
-                              onClick={() => handlePick(player)}
-                              disabled={isWorking}
-                              className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              Pick
-                            </button>
-                          )}
+                          <div className="flex items-center justify-end gap-1">
+                            {canPick && (
+                              <button
+                                type="button"
+                                onClick={() => handlePick(player)}
+                                disabled={isWorking}
+                                className="rounded bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                Pick
+                              </button>
+                            )}
+                            {activeDraft && userTeamId && !myQueue.includes(player._id) && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetQueue([...myQueue, player._id])}
+                                disabled={savingQueue}
+                                className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-30"
+                                title="Add to my queue"
+                              >
+                                +Q
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1095,7 +1361,7 @@ export default function SuppDraftPage() {
       )}
 
       {/* Draft board by round */}
-      {(activeDraft || draft.status === 'completed') && (
+      {(activeDraft || finalizedOrCompletedDraft) && (
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-gray-900">Draft Board</h2>
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">

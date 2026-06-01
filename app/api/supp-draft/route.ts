@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState, getSessionUserFromCookies, isAdminUser } from '@/app/lib/admin-auth';
 import { resolveLeagueContext } from '@/app/lib/league-context';
-import { calculateSuppDraftRounds, buildSuppDraftBoard } from '@/app/lib/supp-draft-utils';
+import { calculateSuppDraftRounds, buildSuppDraftBoard, computePickDeadline, DEFAULT_PICK_TIME_MINUTES } from '@/app/lib/supp-draft-utils';
 import { getDraftEligiblePositions, DraftPlayer } from '@/app/lib/draft-utils';
 
 function toStringId(value: any): string {
@@ -53,6 +53,10 @@ async function hydrateSuppDraft(db: any, draft: any) {
     })),
     skippedTeams: (draft.skippedTeams || []).map(String),
     lockedUntilOverallPick: draft.lockedUntilOverallPick ?? null,
+    pickTimeMinutes: draft.pickTimeMinutes ?? DEFAULT_PICK_TIME_MINUTES,
+    pickDeadlineAt: draft.pickDeadlineAt ? new Date(draft.pickDeadlineAt).toISOString() : null,
+    draftQueues: draft.draftQueues ?? {},
+    autoDraftTeams: (draft.autoDraftTeams || []).map(String),
     createdAt: draft.createdAt,
     startedAt: draft.startedAt || null,
     completedAt: draft.completedAt || null,
@@ -151,8 +155,8 @@ export async function PATCH(request: NextRequest) {
     const leagueSlug = body.league || 'abl';
     const seasonSlug = body.season || 'active';
 
-    // Non-admin: only allowed to unskip their own team
-    if (!admin && body.action !== 'skip') {
+    // Non-admin: only allowed to unskip their own team, or manage their own queue/auto-draft
+    if (!admin && body.action !== 'skip' && body.action !== 'set-queue' && body.action !== 'set-auto-draft') {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     if (!admin && body.action === 'skip' && body.skipped !== false) {
@@ -231,7 +235,7 @@ export async function PATCH(request: NextRequest) {
           dropCountByTeam[d.teamId] = (dropCountByTeam[d.teamId] ?? 0) + 1;
         }
         const rounds = draft.rounds ?? calculateSuppDraftRounds(dropCountByTeam);
-        const draftBoard = buildSuppDraftBoard((draft.orderIds || []).map(String), rounds);
+        const draftBoard = buildSuppDraftBoard((draft.orderIds || []).map(String), rounds, dropCountByTeam);
 
         const filledSlotKeys = new Set(
           (draft.picks || [])
@@ -250,6 +254,47 @@ export async function PATCH(request: NextRequest) {
         updates.skippedTeams = current.filter((id) => id !== String(teamId));
         updates.lockedUntilOverallPick = clockSlot?.overallPick ?? null;
       }
+    }
+
+    if (body.action === 'set-queue') {
+      // Any authenticated owner can update their own team's queue; admin can update any team.
+      const { teamId, playerIds } = body;
+      if (!teamId || !Array.isArray(playerIds)) {
+        return NextResponse.json({ error: 'teamId and playerIds[] are required' }, { status: 400 });
+      }
+      if (!admin) {
+        const team = await db.collection('ablteams').findOne({ _id: new ObjectId(teamId) });
+        const owns = (team?.owners ?? []).some((o: any) =>
+          (o.userId && sessionUser.sub && o.userId === sessionUser.sub) ||
+          (o.email && sessionUser.email && o.email.toLowerCase() === sessionUser.email?.toLowerCase())
+        );
+        if (!owns) {
+          return NextResponse.json({ error: 'You do not own this team' }, { status: 403 });
+        }
+      }
+      const existingQueues = draft.draftQueues ?? {};
+      updates['draftQueues'] = { ...existingQueues, [String(teamId)]: playerIds.map(String) };
+    }
+
+    if (body.action === 'set-auto-draft') {
+      const { teamId, enabled } = body;
+      if (!teamId || typeof enabled !== 'boolean') {
+        return NextResponse.json({ error: 'teamId and enabled (boolean) are required' }, { status: 400 });
+      }
+      if (!admin) {
+        const team = await db.collection('ablteams').findOne({ _id: new ObjectId(teamId) });
+        const owns = (team?.owners ?? []).some((o: any) =>
+          (o.userId && sessionUser.sub && o.userId === sessionUser.sub) ||
+          (o.email && sessionUser.email && o.email.toLowerCase() === sessionUser.email?.toLowerCase())
+        );
+        if (!owns) {
+          return NextResponse.json({ error: 'You do not own this team' }, { status: 403 });
+        }
+      }
+      const current: string[] = (draft.autoDraftTeams || []).map(String);
+      updates['autoDraftTeams'] = enabled
+        ? [...new Set([...current, String(teamId)])]
+        : current.filter((id) => id !== String(teamId));
     }
 
     if (body.scheduledAt !== undefined) {
@@ -287,6 +332,11 @@ export async function PATCH(request: NextRequest) {
       updates.rounds = calculateSuppDraftRounds(dropCountByTeam);
       updates.status = 'active';
       updates.startedAt = new Date();
+      const ptm: number = typeof body.pickTimeMinutes === 'number' && body.pickTimeMinutes >= 1
+        ? body.pickTimeMinutes
+        : DEFAULT_PICK_TIME_MINUTES;
+      updates.pickTimeMinutes = ptm;
+      updates.pickDeadlineAt = computePickDeadline(updates.startedAt, ptm);
     }
 
     if (Object.keys(updates).length === 0) {

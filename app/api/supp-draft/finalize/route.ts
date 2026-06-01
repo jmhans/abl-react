@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     const { league, season } = await resolveLeagueContext(db, leagueSlug, seasonSlug);
 
     const draft = await db.collection('supp_drafts').findOne(
-      { status: 'active', leagueId: league._id.toString(), seasonId: season._id.toString() },
+      { status: { $in: ['active', 'completed'] }, leagueId: league._id.toString(), seasonId: season._id.toString() },
       { sort: { createdAt: -1 } }
     );
 
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       // 2. Remove drop-indicated players
       const dropSet = dropsByTeam.get(teamId) ?? new Set<string>();
       const retainedRoster = existingRoster.filter((r: any) => {
-        if (r.acqType === 'pickup') return false;
+        if (r.acqType === 'fa' || r.acqType === 'trade') return false;
         if (dropSet.has(r.player.toString())) return false;
         return true;
       });
@@ -129,8 +129,15 @@ export async function POST(request: NextRequest) {
         };
       });
 
-      // Combine retained + supp picks, re-index rosterOrder
-      const newRoster = [...retainedRoster, ...suppRosterEntries].map((r, idx) => ({
+      // Combine retained + supp picks, deduplicate by player ID, re-index rosterOrder
+      const seenPlayerIds = new Set(retainedRoster.map((r: any) => r.player.toString()));
+      const dedupedSuppEntries = suppRosterEntries.filter((r: any) => {
+        const pid = r.player.toString();
+        if (seenPlayerIds.has(pid)) return false;
+        seenPlayerIds.add(pid);
+        return true;
+      });
+      const newRoster = [...retainedRoster, ...dedupedSuppEntries].map((r, idx) => ({
         ...r,
         rosterOrder: idx + 1,
       }));
@@ -153,7 +160,7 @@ export async function POST(request: NextRequest) {
 
     await db.collection('supp_drafts').updateOne(
       { _id: draft._id },
-      { $set: { status: 'completed', completedAt: new Date(), effectiveDate } }
+      { $set: { status: 'finalized', completedAt: new Date(), effectiveDate } }
     );
 
     return NextResponse.json({

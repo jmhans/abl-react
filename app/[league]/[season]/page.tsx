@@ -21,6 +21,7 @@ export default function LeagueSeasonHome() {
   const [user, setUser] = useState<User | null>(null);
   const [draftActive, setDraftActive] = useState(false);
   const [draftCompleted, setDraftCompleted] = useState(false);
+  const [suppDraftStatus, setSuppDraftStatus] = useState<string | null>(null);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -29,10 +30,12 @@ export default function LeagueSeasonHome() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [userRes, adminRes, draftCheck, seasonRes, myLeaguesRes] = await Promise.all([
+        const [userRes, adminRes, draftCheck, suppDraftCheck, seasonRes, myLeaguesRes] = await Promise.all([
           fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch('/api/admin/me').then(r => r.ok ? r.json() : {} as AdminResponse).catch(() => ({} as AdminResponse)),
           fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : { draft: null }).catch(() => ({ draft: null })),
+          fetch(`/api/supp-draft?league=${league}&season=${season}`, { cache: 'no-store' })
             .then(r => r.ok ? r.json() : { draft: null }).catch(() => ({ draft: null })),
           fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []),
           fetch('/api/auth/my-leagues').then(r => r.json()).catch(() => []),
@@ -43,6 +46,7 @@ export default function LeagueSeasonHome() {
         setIsAdmin(adminRes?.isAdmin ?? false);
         setDraftActive(draftCheck?.draft?.status === 'active');
         setDraftCompleted(draftCheck?.draft?.status === 'completed');
+        setSuppDraftStatus(suppDraftCheck?.draft?.status ?? null);
         const s = Array.isArray(seasonRes) ? seasonRes[0] : null;
         setSeasonStatus(s?.status ?? null);
 
@@ -73,6 +77,8 @@ export default function LeagueSeasonHome() {
   }
 
   const leagueName = league.toUpperCase();
+  const suppDraftVisible = !!suppDraftStatus && suppDraftStatus !== 'abandoned';
+  const suppDraftActive = suppDraftStatus === 'active';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -123,6 +129,24 @@ export default function LeagueSeasonHome() {
             <h2 className="text-sm font-semibold text-gray-900 group-hover:text-teal-700">Draft Room</h2>
             <p className={`text-xs mt-1 ${draftActive ? 'text-teal-600' : 'text-gray-500'}`}>
               {draftActive ? 'Draft is live — make your picks!' : 'View draft summary'}
+            </p>
+          </Link>
+        )}
+
+        {suppDraftVisible && (
+          <Link href={`${base}/supp-draft`} className={`bg-white p-5 rounded-lg border hover:shadow transition group ${
+            suppDraftActive ? 'border-indigo-300 hover:border-indigo-500' : 'border-gray-200 hover:border-gray-400'
+          }`}>
+            <div className="text-2xl mb-2">🧩</div>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-indigo-700">Supplemental Draft</h2>
+            <p className={`text-xs mt-1 ${suppDraftActive ? 'text-indigo-600' : 'text-gray-500'}`}>
+              {suppDraftActive
+                ? 'Supplemental draft is live — make your picks!'
+                : suppDraftStatus === 'pending'
+                ? 'Pre-draft drop window is open'
+                : suppDraftStatus === 'finalized'
+                ? 'Supplemental draft finalized'
+                : 'View supplemental draft'}
             </p>
           </Link>
         )}

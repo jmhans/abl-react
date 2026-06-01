@@ -6,6 +6,8 @@ import { resolveLeagueContext } from '@/app/lib/league-context';
 import {
   buildSuppDraftBoard,
   calculateSuppDraftRounds,
+  computePickDeadline,
+  DEFAULT_PICK_TIME_MINUTES,
 } from '@/app/lib/supp-draft-utils';
 
 function toStringId(value: any): string {
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest) {
       dropCountByTeam[d.teamId] = (dropCountByTeam[d.teamId] ?? 0) + 1;
     }
     const rounds = draft.rounds ?? calculateSuppDraftRounds(dropCountByTeam);
-    const draftBoard = buildSuppDraftBoard((draft.orderIds || []).map(String), rounds);
+    const draftBoard = buildSuppDraftBoard((draft.orderIds || []).map(String), rounds, dropCountByTeam);
 
     // Skip-aware: find the current pick, honoring any lock set when a team resumed.
     // lockedUntilOverallPick holds the overallPick number of the slot that was on the
@@ -153,6 +155,20 @@ export async function POST(request: NextRequest) {
             draftedAt: new Date().toISOString(),
           },
         },
+      } as any
+    );
+
+    const isCompletingDraft = filledSlotKeys.size + 1 >= draftBoard.length;
+
+    // Refresh the pick deadline for the next pick
+    const pickDraftedAt = new Date();
+    const ptm: number = draft.pickTimeMinutes ?? DEFAULT_PICK_TIME_MINUTES;
+    await db.collection('supp_drafts').updateOne(
+      { _id: draft._id },
+      {
+        $set: isCompletingDraft
+          ? { status: 'completed', completedAt: pickDraftedAt, pickDeadlineAt: null }
+          : { pickDeadlineAt: computePickDeadline(pickDraftedAt, ptm) },
       } as any
     );
 

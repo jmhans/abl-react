@@ -56,6 +56,8 @@ export default function NewSuppDraftPage() {
   const [reorderMode, setReorderMode] = useState(false);
   const [reorderList, setReorderList] = useState<DraftTeam[]>([]);
   const [loadingReorderList, setLoadingReorderList] = useState(false);
+  // Pick timer
+  const [pickTimeMinutes, setPickTimeMinutes] = useState(120);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -290,6 +292,7 @@ export default function NewSuppDraftPage() {
           season: season || 'active',
           action: 'start',
           orderIds: startOrder.map((t) => t._id),
+          pickTimeMinutes,
         }),
       });
       if (!res.ok) {
@@ -362,6 +365,7 @@ export default function NewSuppDraftPage() {
     pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     active: 'bg-green-100 text-green-800 border-green-200',
     completed: 'bg-blue-100 text-blue-800 border-blue-200',
+    finalized: 'bg-purple-100 text-purple-800 border-purple-200',
     abandoned: 'bg-gray-100 text-gray-600 border-gray-200',
   };
 
@@ -413,7 +417,7 @@ export default function NewSuppDraftPage() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-              {(existingDraft.status === 'active' || existingDraft.status === 'pending') && suppDraftHref && (
+              {(existingDraft.status === 'active' || existingDraft.status === 'completed' || existingDraft.status === 'finalized') && suppDraftHref && (
                 <Link
                   href={suppDraftHref}
                   className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
@@ -443,6 +447,9 @@ export default function NewSuppDraftPage() {
                       Reorder Draft
                     </button>
                   )}
+                </>
+              )}
+              {(existingDraft.status === 'active' || existingDraft.status === 'completed') && (
                   <button
                     type="button"
                     onClick={handleFinalize}
@@ -451,7 +458,11 @@ export default function NewSuppDraftPage() {
                   >
                     {working ? 'Finalizing...' : 'Finalize Draft'}
                   </button>
-                </>
+              )}
+              {existingDraft.status === 'finalized' && (
+                <span className="rounded border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">
+                  ✓ Finalized
+                </span>
               )}
               <button
                 type="button"
@@ -609,6 +620,19 @@ export default function NewSuppDraftPage() {
                   ))}
                 </div>
               )}
+              {/* Pick timer setting */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Pick time limit</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={pickTimeMinutes}
+                  onChange={(e) => setPickTimeMinutes(Math.max(1, parseInt(e.target.value) || 120))}
+                  className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+                />
+                <span className="text-sm text-gray-500">minutes (default 120 = 2 hrs; quiet hours 10pm–8am CT don&apos;t count)</span>
+              </div>
               <button
                 type="button"
                 onClick={handleStartDraft}

@@ -40,19 +40,32 @@ export type SuppDraftBoardPick = {
 /**
  * Build the supp draft board.
  * No snake — each round uses the same team order.
+ * Teams only get slots up to their individual pick limit:
+ *   limit = SUPP_DRAFT_MIN_ROUNDS + dropCount for that team.
+ * Pass dropCountByTeamId to apply per-team limits; omit to give all teams
+ * the full `rounds` worth of slots (used for board display only).
  */
-export function buildSuppDraftBoard(teamIds: string[], rounds: number): SuppDraftBoardPick[] {
+export function buildSuppDraftBoard(
+  teamIds: string[],
+  rounds: number,
+  dropCountByTeamId?: Record<string, number>,
+): SuppDraftBoardPick[] {
   const picks: SuppDraftBoardPick[] = [];
   let overallPick = 1;
   for (let round = 1; round <= rounds; round++) {
-    teamIds.forEach((teamId, index) => {
+    for (let i = 0; i < teamIds.length; i++) {
+      const teamId = teamIds[i];
+      const limit = dropCountByTeamId !== undefined
+        ? SUPP_DRAFT_MIN_ROUNDS + (dropCountByTeamId[teamId] ?? 0)
+        : rounds;
+      if (round > limit) continue; // this team doesn't pick in this round
       picks.push({
         overallPick: overallPick++,
         round,
-        roundPick: index + 1,
+        roundPick: i + 1,
         teamId,
       });
-    });
+    }
   }
   return picks;
 }
@@ -70,6 +83,54 @@ export type SuppDraftPickEntry = {
 };
 
 export type SuppDraftStatus = 'pending' | 'active' | 'completed' | 'abandoned';
+
+// ---------------------------------------------------------------------------
+// Pick timer / quiet-hours utilities
+// ---------------------------------------------------------------------------
+
+/** Quiet hours: timer won't expire between 10pm and 8am US Central Time. */
+export const PICK_TIMER_TZ = 'America/Chicago';
+export const QUIET_START_HOUR = 22; // 10 pm
+export const QUIET_END_HOUR = 8;   // 8 am
+export const DEFAULT_PICK_TIME_MINUTES = 120;
+
+/** Returns true if `date` falls within the quiet-hours window (10pm–8am CT). */
+export function isQuietTime(date: Date): boolean {
+  const hour = parseInt(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: PICK_TIMER_TZ,
+      hour: 'numeric',
+      hour12: false,
+    }).format(date),
+    10
+  );
+  return hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR;
+}
+
+/**
+ * Compute the wall-clock deadline for a pick given its start time and the
+ * allowed number of minutes.  Quiet-hours windows (10pm–8am CT) are skipped:
+ * only minutes where `isQuietTime` is false count toward the limit.
+ *
+ * Works by advancing 1-minute steps and only counting non-quiet minutes.
+ * Worst case iterations ≈ pickTimeMinutes + (quiet hours in window) which
+ * is well under 1 000 for any reasonable timer setting.
+ */
+export function computePickDeadline(startedAt: Date, pickTimeMinutes: number): Date {
+  let current = new Date(startedAt.getTime());
+  let activeAccumulated = 0;
+  // Cap iterations to prevent infinite loops on absurd inputs
+  const MAX_ITER = pickTimeMinutes + 60 * 24 * 2; // 2 days max
+  let iter = 0;
+  while (activeAccumulated < pickTimeMinutes && iter < MAX_ITER) {
+    if (!isQuietTime(current)) {
+      activeAccumulated++;
+    }
+    current = new Date(current.getTime() + 60_000);
+    iter++;
+  }
+  return current;
+}
 
 /** Shape of the supp_drafts document as returned from the API. */
 export type SuppDraftApiState = {
@@ -89,6 +150,14 @@ export type SuppDraftApiState = {
    *  team's earliest missed slot).  Self-healing: once the slot is filled the condition
    *  `!filledSlotKeys.has(...)` is false, so the lock is automatically ignored. */
   lockedUntilOverallPick?: number | null;
+  /** Minutes allowed per pick (default 120). */
+  pickTimeMinutes: number;
+  /** Wall-clock deadline for the current pick, accounting for quiet-hours pauses. */
+  pickDeadlineAt: string | null;
+  /** Map of teamId → ordered list of player IDs the owner wants to draft. */
+  draftQueues: Record<string, string[]>;
+  /** Team IDs that have opted into auto-draft (pick from queue/algo immediately on their turn). */
+  autoDraftTeams: string[];
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
