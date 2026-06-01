@@ -23,9 +23,9 @@ export async function GET(
       return NextResponse.json({ ilPositions: [] });
     }
 
-    // Filter for players on IL (lineupPosition is 'INJ' or 'NA')
+    // Filter for players on IL (lineupPosition is 'INJ', 'NA', or 'NR')
     const ilPlayerIds = lineup.roster
-      .filter((r: any) => r.lineupPosition === 'INJ' || r.lineupPosition === 'NA')
+      .filter((r: any) => r.lineupPosition === 'INJ' || r.lineupPosition === 'NA' || r.lineupPosition === 'NR')
       .map((r: any) => r.player);
 
     if (ilPlayerIds.length === 0) {

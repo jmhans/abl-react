@@ -140,7 +140,7 @@ export async function POST(
     // Admins can bypass this requirement
     if (!isAdminRequest) {
       const ilPlayerIds = lineup.roster
-        .filter((r: any) => r.lineupPosition === 'INJ' || r.lineupPosition === 'NA')
+        .filter((r: any) => r.lineupPosition === 'INJ' || r.lineupPosition === 'NA' || r.lineupPosition === 'NR')
         .map((r: any) => r.player);
 
       if (ilPlayerIds.length === 0) {

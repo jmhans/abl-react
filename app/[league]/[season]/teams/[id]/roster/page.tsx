@@ -442,7 +442,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
     r => r.acqType === 'fa' || r.acqType === 'trade'
   );
   const activePlayers = roster.roster.filter(
-    r => r.lineupPosition !== 'INJ' && r.lineupPosition !== 'NA'
+    r => r.lineupPosition !== 'INJ' && r.lineupPosition !== 'NA' && r.lineupPosition !== 'NR'
   );
   const rosterAtCapacity = activePlayers.length >= ROSTER_LIMIT;
 
@@ -945,7 +945,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                           )}
                         </>
                       ) : (
-                        <span className="text-xs text-gray-400">—</span>
+                        <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600 font-medium">NR</span>
                       )}
                     </div>
                   </td>
@@ -962,6 +962,9 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                         )}
                         {item.player.status?.includes('Minors') && (
                           <option value="NA">NA (Minors)</option>
+                        )}
+                        {!item.player.status && (
+                          <option value="NR">NR (Non-Roster)</option>
                         )}
                         {item.player.eligible?.map(pos => (
                           <option key={pos} value={pos}>{pos}</option>
