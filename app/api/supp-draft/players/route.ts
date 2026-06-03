@@ -112,6 +112,12 @@ export async function GET(request: NextRequest) {
     // Fetch player source (cache preferred)
     const sourceCollection = await getPlayerSourceCollection(db);
 
+    const excludedPlayerObjectIds = Array.from(
+      new Set<string>([...alreadySuppPicked, ...lockedPlayerIds])
+    )
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+
     const query: Record<string, any> = {
       $and: [
         {
@@ -143,9 +149,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch projections if requested
-    const projFilter: Record<string, any> = { season: 2026 };
-    if (projSystem) projFilter.projSystem = projSystem;
+    if (excludedPlayerObjectIds.length > 0) {
+      query.$and.push({ _id: { $nin: excludedPlayerObjectIds } });
+    }
+
+    // Fetch projections only when explicitly requested by projection system.
+    const projectionPromise = projSystem
+      ? db.collection('projections')
+          .find(
+            { season: 2026, projSystem },
+            {
+              projection: { mlbId: 1, ablProjected: 1, projSystem: 1, stats: 1 },
+              sort: { importedAt: -1 },
+            }
+          )
+          .toArray()
+      : Promise.resolve([]);
 
     const [players, projRows] = await Promise.all([
       db.collection(sourceCollection).find(query, {
@@ -162,12 +181,7 @@ export async function GET(request: NextRequest) {
           lastStatUpdate: 1,
         },
       }).toArray(),
-      db.collection('projections')
-        .find(projFilter, {
-          projection: { mlbId: 1, ablProjected: 1, projSystem: 1, stats: 1 },
-          sort: { importedAt: -1 },
-        })
-        .toArray(),
+      projectionPromise,
     ]);
 
     const projMap = new Map<string, any>();

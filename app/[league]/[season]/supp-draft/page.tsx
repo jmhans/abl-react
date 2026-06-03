@@ -113,7 +113,8 @@ export default function SuppDraftPage() {
     const [draftRes, playersRes] = await Promise.all([draftPromise, playersPromise]);
     if (!draftRes.ok) throw new Error('Failed to load supp draft');
     const draftData = await draftRes.json();
-    setDraft(draftData.draft ?? null);
+    const nextDraft = draftData.draft ?? null;
+    setDraft(nextDraft);
     if (includePlayers && playersRes?.ok) {
       const playersData = await playersRes.json();
       setPlayers(
@@ -123,6 +124,7 @@ export default function SuppDraftPage() {
         }))
       );
     }
+    return nextDraft;
   }, [league, season]);
 
   // Load user's roster for drop indication (only when pending)
@@ -178,11 +180,13 @@ export default function SuppDraftPage() {
       setError(null);
       try {
         const qs = `?league=${league}&season=${season}`;
-        const [teamsRes, adminRes, meRes, myLeaguesRes] = await Promise.all([
+        const draftPromise = refreshDraft({ includePlayers: false });
+        const [teamsRes, adminRes, meRes, myLeaguesRes, draftState] = await Promise.all([
           fetch(`/api/teams${qs}`),
           fetch('/api/admin/me', { cache: 'no-store' }),
           fetch('/api/auth/me').catch(() => null),
           fetch('/api/auth/my-leagues').catch(() => null),
+          draftPromise,
         ]);
         const teamsData: DraftTeam[] = teamsRes.ok ? await teamsRes.json() : [];
         const adminData = adminRes.ok ? await adminRes.json() : {};
@@ -205,13 +209,14 @@ export default function SuppDraftPage() {
         );
         setTeams(sortedTeams);
 
-        await refreshDraft({ includePlayers: true });
+        if (sortedTeams.length > 0) setSelectedTeamId(sortedTeams[0]._id);
 
-        if (myTeamId) {
-          await loadMyRoster(myTeamId);
+        if (myTeamId && draftState?.status === 'pending') {
+          void loadMyRoster(myTeamId).catch(() => {});
         }
 
-        if (sortedTeams.length > 0) setSelectedTeamId(sortedTeams[0]._id);
+        // Load full player pool after first paint so initial page load is faster.
+        void refreshDraft({ includePlayers: true }).catch(() => {});
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load supp draft');
       } finally {
