@@ -249,7 +249,7 @@ export default function SuppDraftPage() {
       setPickSecondsLeft(secsLeft);
 
       // Trigger auto-pick when expired AND outside quiet hours AND not already firing
-      if (secsLeft <= 0 && !quiet && !autoPickFiringRef.current && (isAdmin || isOnClock)) {
+      if (secsLeft <= 0 && !quiet && !autoPickFiringRef.current && isAdmin) {
         autoPickFiringRef.current = true;
         setAutoPickFiring(true);
         fetch('/api/supp-draft/auto-pick', {
@@ -269,11 +269,11 @@ export default function SuppDraftPage() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.pickDeadlineAt, draft?.status, isAdmin, isOnClock, league, season, refreshDraft]);
+  }, [draft?.pickDeadlineAt, draft?.status, isAdmin, league, season, refreshDraft]);
 
   // Fetch auto-pick preview whenever the on-clock pick changes
   useEffect(() => {
-    if (draft?.status !== 'active' || (!isOnClock && !isAdmin)) { setAutoPickPreview(null); return; }
+    if (draft?.status !== 'active' || !isAdmin) { setAutoPickPreview(null); return; }
     let cancelled = false;
     fetch(`/api/supp-draft/auto-pick?league=${league}&season=${season}`, { cache: 'no-store' })
       .then((r) => r.ok ? r.json() : null)
@@ -281,7 +281,7 @@ export default function SuppDraftPage() {
       .catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.picks?.length, draft?.status, isOnClock, isAdmin]);
+  }, [draft?.picks?.length, draft?.status, isAdmin]);
 
   // Load selected team's existing roster for the slots widget whenever they switch
   useEffect(() => {
