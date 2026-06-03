@@ -1502,8 +1502,8 @@ export default function SuppDraftPage() {
                           </>
                         ) : (
                           <>
-                            <div className={`text-center text-xs font-medium ${player.abl !== undefined ? (player.abl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
-                              {player.abl !== undefined ? player.abl.toFixed(2) : '—'}
+                            <div className={`text-center text-xs font-medium ${player.abl != null ? (player.abl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
+                              {player.abl != null ? player.abl.toFixed(2) : '—'}
                             </div>
                             <div className="hidden sm:block">
                               {renderBucket(ps?.lastN?.[splitPeriod])}
