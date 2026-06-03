@@ -113,22 +113,28 @@ export default function SuppDraftPage() {
   const [savingAutoDraft, setSavingAutoDraft] = useState(false);
   const autoDraftFiringRef = useRef(false);
 
-  const refreshDraft = useCallback(async () => {
+  const refreshDraft = useCallback(async (opts?: { includePlayers?: boolean }) => {
+    const includePlayers = opts?.includePlayers ?? true;
     const qs = `?league=${league}&season=${season}`;
-    const [draftRes, playersRes] = await Promise.all([
-      fetch(`/api/supp-draft${qs}`, { cache: 'no-store' }),
-      fetch(`/api/supp-draft/players${qs}`, { cache: 'no-store' }),
-    ]);
+    const draftPromise = fetch(`/api/supp-draft${qs}`, { cache: 'no-store' });
+    const playersPromise = includePlayers
+      ? fetch(`/api/supp-draft/players${qs}`, { cache: 'no-store' })
+      : Promise.resolve(null);
+    const [draftRes, playersRes] = await Promise.all([draftPromise, playersPromise]);
     if (!draftRes.ok) throw new Error('Failed to load supp draft');
     const draftData = await draftRes.json();
-    const playersData = playersRes.ok ? await playersRes.json() : [];
-    setDraft(draftData.draft ?? null);
-    setPlayers(
-      (playersData as any[]).map((p: any) => ({
-        ...p,
-        eligible: getDraftEligiblePositions(p),
-      }))
-    );
+    const nextDraft = draftData.draft ?? null;
+    setDraft(nextDraft);
+    if (includePlayers && playersRes?.ok) {
+      const playersData = await playersRes.json();
+      setPlayers(
+        (playersData as any[]).map((p: any) => ({
+          ...p,
+          eligible: getDraftEligiblePositions(p),
+        }))
+      );
+    }
+    return nextDraft;
   }, [league, season]);
 
   // Load user's roster for drop indication (only when pending)
@@ -184,11 +190,13 @@ export default function SuppDraftPage() {
       setError(null);
       try {
         const qs = `?league=${league}&season=${season}`;
-        const [teamsRes, adminRes, meRes, myLeaguesRes] = await Promise.all([
+        const draftPromise = refreshDraft({ includePlayers: false });
+        const [teamsRes, adminRes, meRes, myLeaguesRes, draftState] = await Promise.all([
           fetch(`/api/teams${qs}`),
           fetch('/api/admin/me', { cache: 'no-store' }),
           fetch('/api/auth/me').catch(() => null),
           fetch('/api/auth/my-leagues').catch(() => null),
+          draftPromise,
         ]);
         const teamsData: DraftTeam[] = teamsRes.ok ? await teamsRes.json() : [];
         const adminData = adminRes.ok ? await adminRes.json() : {};
@@ -211,13 +219,14 @@ export default function SuppDraftPage() {
         );
         setTeams(sortedTeams);
 
-        await refreshDraft();
+        if (sortedTeams.length > 0) setSelectedTeamId(sortedTeams[0]._id);
 
-        if (myTeamId) {
-          await loadMyRoster(myTeamId);
+        if (myTeamId && draftState?.status === 'pending') {
+          void loadMyRoster(myTeamId).catch(() => {});
         }
 
-        if (sortedTeams.length > 0) setSelectedTeamId(sortedTeams[0]._id);
+        // Load full player pool after first paint so initial page load is faster.
+        void refreshDraft({ includePlayers: true }).catch(() => {});
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load supp draft');
       } finally {
@@ -234,7 +243,7 @@ export default function SuppDraftPage() {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       return;
     }
-    pollRef.current = setInterval(() => refreshDraft().catch(() => {}), 5000);
+    pollRef.current = setInterval(() => refreshDraft({ includePlayers: false }).catch(() => {}), 15000);
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [draft?.status, refreshDraft]);
 
@@ -255,7 +264,7 @@ export default function SuppDraftPage() {
       setPickSecondsLeft(secsLeft);
 
       // Trigger auto-pick when expired AND outside quiet hours AND not already firing
-      if (secsLeft <= 0 && !quiet && !autoPickFiringRef.current) {
+      if (secsLeft <= 0 && !quiet && !autoPickFiringRef.current && isAdmin) {
         autoPickFiringRef.current = true;
         setAutoPickFiring(true);
         fetch('/api/supp-draft/auto-pick', {
@@ -263,7 +272,7 @@ export default function SuppDraftPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ league, season }),
         })
-          .then(() => refreshDraft())
+          .then(() => refreshDraft({ includePlayers: false }))
           .catch(() => {})
           .finally(() => {
             autoPickFiringRef.current = false;
@@ -275,11 +284,11 @@ export default function SuppDraftPage() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.pickDeadlineAt, draft?.status]);
+  }, [draft?.pickDeadlineAt, draft?.status, isAdmin, league, season, refreshDraft]);
 
   // Fetch auto-pick preview whenever the on-clock pick changes
   useEffect(() => {
-    if (draft?.status !== 'active') { setAutoPickPreview(null); return; }
+    if (draft?.status !== 'active' || !isAdmin) { setAutoPickPreview(null); return; }
     let cancelled = false;
     fetch(`/api/supp-draft/auto-pick?league=${league}&season=${season}`, { cache: 'no-store' })
       .then((r) => r.ok ? r.json() : null)
@@ -287,7 +296,7 @@ export default function SuppDraftPage() {
       .catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.picks?.length, draft?.status]);
+  }, [draft?.picks?.length, draft?.status, isAdmin]);
 
   // Load selected team's existing roster for the slots widget whenever they switch
   useEffect(() => {
@@ -517,7 +526,7 @@ export default function SuppDraftPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to make pick');
       }
-      await refreshDraft();
+      await refreshDraft({ includePlayers: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to make pick');
     } finally {
@@ -539,7 +548,7 @@ export default function SuppDraftPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to undo pick');
       }
-      await refreshDraft();
+      await refreshDraft({ includePlayers: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to undo pick');
     } finally {
@@ -579,7 +588,7 @@ export default function SuppDraftPage() {
           throw new Error(body.error || 'Failed to indicate drop');
         }
       }
-      await refreshDraft();
+      await refreshDraft({ includePlayers: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update drop indication');
     } finally {
@@ -605,7 +614,7 @@ export default function SuppDraftPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to update skip status');
       }
-      await refreshDraft();
+      await refreshDraft({ includePlayers: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update skip status');
     } finally {
@@ -632,7 +641,7 @@ export default function SuppDraftPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ league, season }),
         });
-        await refreshDraft();
+        await refreshDraft({ includePlayers: false });
       } catch { /* silent */ } finally {
         autoDraftFiringRef.current = false;
       }
@@ -651,7 +660,7 @@ export default function SuppDraftPage() {
       });
       if (res.ok) {
         setMyQueue(newQueue);
-        await refreshDraft();
+        await refreshDraft({ includePlayers: false });
       }
     } finally {
       setSavingQueue(false);
@@ -670,7 +679,7 @@ export default function SuppDraftPage() {
       });
       if (res.ok) {
         setAutoDraftEnabled(newEnabled);
-        await refreshDraft();
+        await refreshDraft({ includePlayers: false });
       }
     } finally {
       setSavingAutoDraft(false);
