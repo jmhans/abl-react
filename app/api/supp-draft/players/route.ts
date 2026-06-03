@@ -6,8 +6,11 @@ import { calculateAblScore } from '@/app/lib/roster-utils';
 
 const SEASON_START = new Date('2026-03-26T00:00:00Z');
 const PLAYER_SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
+const PLAYER_POOL_CACHE_TTL_MS = 10 * 1000;
 
 let cachedPlayerSource: { checkedAt: number; source: 'players_cache' | 'players_view' } | null = null;
+const playerPoolCache = new Map<string, { expiresAt: number; payload: any[] }>();
+const playerPoolInFlight = new Map<string, Promise<any[]>>();
 
 function currentSeasonStats(p: any): any {
   const lastUpdate = p.lastStatUpdate ? new Date(p.lastStatUpdate) : null;
@@ -24,6 +27,44 @@ async function getPlayerSourceCollection(db: any): Promise<'players_cache' | 'pl
   const source: 'players_cache' | 'players_view' = cacheCount > 0 ? 'players_cache' : 'players_view';
   cachedPlayerSource = { checkedAt: now, source };
   return source;
+}
+
+function buildPlayerPoolCacheKey(params: {
+  leagueSlug: string;
+  seasonSlug: string;
+  projSystem: string;
+  search: string;
+  positionsParam: string;
+  showAll: boolean;
+}): string {
+  return [
+    params.leagueSlug,
+    params.seasonSlug,
+    params.projSystem,
+    params.search.trim().toLowerCase(),
+    params.positionsParam,
+    params.showAll ? '1' : '0',
+  ].join('|');
+}
+
+function getCachedPlayerPool(cacheKey: string): any[] | null {
+  const hit = playerPoolCache.get(cacheKey);
+  if (!hit) return null;
+  if (Date.now() >= hit.expiresAt) {
+    playerPoolCache.delete(cacheKey);
+    return null;
+  }
+  return hit.payload;
+}
+
+function cachePlayerPool(cacheKey: string, payload: any[]) {
+  const now = Date.now();
+  playerPoolCache.set(cacheKey, { expiresAt: now + PLAYER_POOL_CACHE_TTL_MS, payload });
+  if (playerPoolCache.size > 64) {
+    for (const [key, value] of playerPoolCache) {
+      if (value.expiresAt <= now) playerPoolCache.delete(key);
+    }
+  }
 }
 
 /**
@@ -44,7 +85,6 @@ async function getPlayerSourceCollection(db: any): Promise<'players_cache' | 'pl
  */
 export async function GET(request: NextRequest) {
   try {
-    const db = await connectToDatabase();
     const { searchParams } = request.nextUrl;
     const leagueSlug = searchParams.get('league') || 'abl';
     const seasonSlug = searchParams.get('season') || 'active';
@@ -53,181 +93,214 @@ export async function GET(request: NextRequest) {
     const positionsParam = searchParams.get('positions') || '';
     const showAll = searchParams.get('showAll') === 'true';
 
-    const { league, season } = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+    const cacheKey = buildPlayerPoolCacheKey({
+      leagueSlug,
+      seasonSlug,
+      projSystem,
+      search,
+      positionsParam,
+      showAll,
+    });
+
+    const cached = getCachedPlayerPool(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: { 'x-supp-player-cache': 'HIT' } });
+    }
+
+    const inFlight = playerPoolInFlight.get(cacheKey);
+    if (inFlight) {
+      const payload = await inFlight;
+      return NextResponse.json(payload, { headers: { 'x-supp-player-cache': 'WAIT' } });
+    }
+
+    const computePromise = (async () => {
+      const db = await connectToDatabase();
+
+      const { league, season } = await resolveLeagueContext(db, leagueSlug, seasonSlug);
 
     // Get the active (or most recent) supp draft to know drop indications + already-picked players
-    const suppDraft = await db.collection('supp_drafts').findOne(
-      {
-        status: { $in: ['pending', 'active'] },
-        leagueId: league._id.toString(),
-        seasonId: season._id.toString(),
-      },
-      { sort: { createdAt: -1 } }
-    );
+      const suppDraft = await db.collection('supp_drafts').findOne(
+        {
+          status: { $in: ['pending', 'active'] },
+          leagueId: league._id.toString(),
+          seasonId: season._id.toString(),
+        },
+        { sort: { createdAt: -1 } }
+      );
 
     // Build set of already-picked player IDs in supp draft
-    const alreadySuppPicked = new Set<string>(
-      (suppDraft?.picks || []).map((p: any) => String(p.playerId))
-    );
+      const alreadySuppPicked = new Set<string>(
+        (suppDraft?.picks || []).map((p: any) => String(p.playerId))
+      );
 
     // Build set of drop-indicated player IDs (with their team)
-    type DropIndicationInfo = { teamId: string };
-    const dropIndicatedPlayers = new Map<string, DropIndicationInfo>();
-    for (const d of suppDraft?.dropIndications || []) {
-      dropIndicatedPlayers.set(d.playerId, { teamId: d.teamId });
-    }
+      type DropIndicationInfo = { teamId: string };
+      const dropIndicatedPlayers = new Map<string, DropIndicationInfo>();
+      for (const d of suppDraft?.dropIndications || []) {
+        dropIndicatedPlayers.set(d.playerId, { teamId: d.teamId });
+      }
 
     // Collect all players currently on rosters as 'draft' or 'supp_draft' (exclude from pool)
     // ...unless they are drop-indicated
-    const seasonTeamObjectIds = (season.teamIds || []).map((id: any) =>
-      typeof id === 'string' ? new ObjectId(id) : id
-    );
+      const seasonTeamObjectIds = (season.teamIds || []).map((id: any) =>
+        typeof id === 'string' ? new ObjectId(id) : id
+      );
 
-    const latestLineups = await db.collection('lineups').aggregate([
-      { $match: { ablTeam: { $in: seasonTeamObjectIds } } },
-      { $sort: { effectiveDate: -1 } },
-      { $group: { _id: '$ablTeam', roster: { $first: '$roster' } } },
-    ]).toArray();
+      const latestLineups = await db.collection('lineups').aggregate([
+        { $match: { ablTeam: { $in: seasonTeamObjectIds } } },
+        { $sort: { effectiveDate: -1 } },
+        { $group: { _id: '$ablTeam', roster: { $first: '$roster' } } },
+      ]).toArray();
 
     // Players locked to rosters (draft/supp_draft, not drop-indicated)
-    const lockedPlayerIds = new Set<string>();
-    // Players on a roster (any acqType) — we track this for onRosterTeamId
-    type RosterMembership = { teamId: string; acqType: string };
-    const playerRosterMap = new Map<string, RosterMembership>();
+      const lockedPlayerIds = new Set<string>();
+      // Players on a roster (any acqType) — we track this for onRosterTeamId
+      type RosterMembership = { teamId: string; acqType: string };
+      const playerRosterMap = new Map<string, RosterMembership>();
 
-    for (const lu of latestLineups) {
-      const teamId = lu._id.toString();
-      for (const r of lu.roster ?? []) {
-        const playerId = r.player.toString();
-        playerRosterMap.set(playerId, { teamId, acqType: r.acqType ?? 'pickup' });
-        if (
-          (r.acqType === 'draft' || r.acqType === 'supp_draft') &&
-          !dropIndicatedPlayers.has(playerId)
-        ) {
-          lockedPlayerIds.add(playerId);
+      for (const lu of latestLineups) {
+        const teamId = lu._id.toString();
+        for (const r of lu.roster ?? []) {
+          const playerId = r.player.toString();
+          playerRosterMap.set(playerId, { teamId, acqType: r.acqType ?? 'pickup' });
+          if (
+            (r.acqType === 'draft' || r.acqType === 'supp_draft') &&
+            !dropIndicatedPlayers.has(playerId)
+          ) {
+            lockedPlayerIds.add(playerId);
+          }
         }
       }
-    }
 
     // Fetch player source (cache preferred)
-    const sourceCollection = await getPlayerSourceCollection(db);
+      const sourceCollection = await getPlayerSourceCollection(db);
 
-    const excludedPlayerObjectIds = Array.from(
-      new Set<string>([...alreadySuppPicked, ...lockedPlayerIds])
-    )
-      .filter((id) => ObjectId.isValid(id))
-      .map((id) => new ObjectId(id));
+      const excludedPlayerObjectIds = Array.from(
+        new Set<string>([...alreadySuppPicked, ...lockedPlayerIds])
+      )
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
 
-    const query: Record<string, any> = {
-      $and: [
-        {
-          $or: [
-            { 'eligible.0': { $exists: true } },
-            { 'stats.batting.atBats': { $gt: 0 } },
-          ],
-        },
-      ],
-    };
-
-    if (!showAll) {
-      query.$and.push({ status: 'Active' });
-    }
-
-    if (search) {
-      query.$and.push({
-        $or: [
-          { name: { $regex: search, $options: 'i' } },
-          { mlbID: { $regex: search, $options: 'i' } },
+      const query: Record<string, any> = {
+        $and: [
+          {
+            $or: [
+              { 'eligible.0': { $exists: true } },
+              { 'stats.batting.atBats': { $gt: 0 } },
+            ],
+          },
         ],
-      });
-    }
+      };
 
-    if (positionsParam) {
-      const selectedPositions = positionsParam.split(',').filter((p) => p.trim());
-      if (selectedPositions.length > 0) {
-        query.$and.push({ eligible: { $in: selectedPositions } });
+      if (!showAll) {
+        query.$and.push({ status: 'Active' });
       }
-    }
 
-    if (excludedPlayerObjectIds.length > 0) {
-      query.$and.push({ _id: { $nin: excludedPlayerObjectIds } });
-    }
+      if (search) {
+        query.$and.push({
+          $or: [
+            { name: { $regex: search, $options: 'i' } },
+            { mlbID: { $regex: search, $options: 'i' } },
+          ],
+        });
+      }
+
+      if (positionsParam) {
+        const selectedPositions = positionsParam.split(',').filter((p) => p.trim());
+        if (selectedPositions.length > 0) {
+          query.$and.push({ eligible: { $in: selectedPositions } });
+        }
+      }
+
+      if (excludedPlayerObjectIds.length > 0) {
+        query.$and.push({ _id: { $nin: excludedPlayerObjectIds } });
+      }
 
     // Fetch projections only when explicitly requested by projection system.
-    const projectionPromise = projSystem
-      ? db.collection('projections')
-          .find(
-            { season: 2026, projSystem },
-            {
-              projection: { mlbId: 1, ablProjected: 1, projSystem: 1, stats: 1 },
-              sort: { importedAt: -1 },
-            }
-          )
-          .toArray()
-      : Promise.resolve([]);
+      const projectionPromise = projSystem
+        ? db.collection('projections')
+            .find(
+              { season: 2026, projSystem },
+              {
+                projection: { mlbId: 1, ablProjected: 1, projSystem: 1, stats: 1 },
+                sort: { importedAt: -1 },
+              }
+            )
+            .toArray()
+        : Promise.resolve([]);
 
-    const [players, projRows] = await Promise.all([
-      db.collection(sourceCollection).find(query, {
-        projection: {
-          _id: 1,
-          name: 1,
-          team: 1,
-          position: 1,
-          eligible: 1,
-          mlbPosition: 1,
-          mlbID: 1,
-          status: 1,
-          stats: 1,
-          lastStatUpdate: 1,
-        },
-      }).toArray(),
-      projectionPromise,
-    ]);
+      const [players, projRows] = await Promise.all([
+        db.collection(sourceCollection).find(query, {
+          projection: {
+            _id: 1,
+            name: 1,
+            team: 1,
+            position: 1,
+            eligible: 1,
+            mlbPosition: 1,
+            mlbID: 1,
+            status: 1,
+            stats: 1,
+            lastStatUpdate: 1,
+          },
+        }).toArray(),
+        projectionPromise,
+      ]);
 
-    const projMap = new Map<string, any>();
-    for (const p of projRows) {
-      if (p.mlbId && !projMap.has(p.mlbId)) projMap.set(p.mlbId, p);
+      const projMap = new Map<string, any>();
+      for (const p of projRows) {
+        if (p.mlbId && !projMap.has(p.mlbId)) projMap.set(p.mlbId, p);
+      }
+
+      const result = players
+        .map((player: any) => {
+          const playerId = player._id.toString();
+
+          // Exclude already supp-drafted
+          if (alreadySuppPicked.has(playerId)) return null;
+
+          // Exclude locked (draft/supp_draft not drop-indicated)
+          if (lockedPlayerIds.has(playerId)) return null;
+
+          const rosterInfo = playerRosterMap.get(playerId) ?? null;
+          const isDropIndicated = dropIndicatedPlayers.has(playerId);
+
+          const proj = player.mlbID ? projMap.get(String(player.mlbID)) ?? null : null;
+          const stats = currentSeasonStats(player);
+          const abl = calculateAblScore(stats);
+
+          return {
+            _id: player._id,
+            name: player.name,
+            team: player.team,
+            position: player.position,
+            eligible: player.eligible,
+            mlbPosition: player.mlbPosition,
+            mlbID: player.mlbID,
+            status: player.status,
+            stats,
+            abl,
+            ablProjected: proj?.ablProjected ?? null,
+            projSystem: proj?.projSystem ?? null,
+            projStats: proj?.stats ?? null,
+            onRosterTeamId: rosterInfo?.teamId ?? null,
+            onRosterAcqType: rosterInfo?.acqType ?? null,
+            isDropIndicated,
+          };
+        })
+        .filter(Boolean);
+
+      cachePlayerPool(cacheKey, result as any[]);
+      return result as any[];
+    })();
+
+    playerPoolInFlight.set(cacheKey, computePromise);
+    try {
+      const payload = await computePromise;
+      return NextResponse.json(payload, { headers: { 'x-supp-player-cache': 'MISS' } });
+    } finally {
+      playerPoolInFlight.delete(cacheKey);
     }
-
-    const result = players
-      .map((player: any) => {
-        const playerId = player._id.toString();
-
-        // Exclude already supp-drafted
-        if (alreadySuppPicked.has(playerId)) return null;
-
-        // Exclude locked (draft/supp_draft not drop-indicated)
-        if (lockedPlayerIds.has(playerId)) return null;
-
-        const rosterInfo = playerRosterMap.get(playerId) ?? null;
-        const isDropIndicated = dropIndicatedPlayers.has(playerId);
-
-        const proj = player.mlbID ? projMap.get(String(player.mlbID)) ?? null : null;
-        const stats = currentSeasonStats(player);
-        const abl = calculateAblScore(stats);
-
-        return {
-          _id: player._id,
-          name: player.name,
-          team: player.team,
-          position: player.position,
-          eligible: player.eligible,
-          mlbPosition: player.mlbPosition,
-          mlbID: player.mlbID,
-          status: player.status,
-          stats,
-          abl,
-          ablProjected: proj?.ablProjected ?? null,
-          projSystem: proj?.projSystem ?? null,
-          projStats: proj?.stats ?? null,
-          onRosterTeamId: rosterInfo?.teamId ?? null,
-          onRosterAcqType: rosterInfo?.acqType ?? null,
-          isDropIndicated,
-        };
-      })
-      .filter(Boolean);
-
-    return NextResponse.json(result);
   } catch (error) {
     console.error('Error fetching supp draft players:', error);
     return NextResponse.json({ error: 'Failed to fetch players' }, { status: 500 });
