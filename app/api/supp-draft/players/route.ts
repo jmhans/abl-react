@@ -5,11 +5,25 @@ import { resolveLeagueContext } from '@/app/lib/league-context';
 import { calculateAblScore } from '@/app/lib/roster-utils';
 
 const SEASON_START = new Date('2026-03-26T00:00:00Z');
+const PLAYER_SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let cachedPlayerSource: { checkedAt: number; source: 'players_cache' | 'players_view' } | null = null;
 
 function currentSeasonStats(p: any): any {
   const lastUpdate = p.lastStatUpdate ? new Date(p.lastStatUpdate) : null;
   if (!lastUpdate || lastUpdate < SEASON_START) return undefined;
   return p.stats;
+}
+
+async function getPlayerSourceCollection(db: any): Promise<'players_cache' | 'players_view'> {
+  const now = Date.now();
+  if (cachedPlayerSource && now - cachedPlayerSource.checkedAt < PLAYER_SOURCE_CACHE_TTL_MS) {
+    return cachedPlayerSource.source;
+  }
+  const cacheCount = await db.collection('players_cache').estimatedDocumentCount();
+  const source: 'players_cache' | 'players_view' = cacheCount > 0 ? 'players_cache' : 'players_view';
+  cachedPlayerSource = { checkedAt: now, source };
+  return source;
 }
 
 /**
@@ -96,8 +110,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch player source (cache preferred)
-    const cacheCount = await db.collection('players_cache').estimatedDocumentCount();
-    const sourceCollection = cacheCount > 0 ? 'players_cache' : 'players_view';
+    const sourceCollection = await getPlayerSourceCollection(db);
 
     const query: Record<string, any> = {
       $and: [
@@ -135,7 +148,20 @@ export async function GET(request: NextRequest) {
     if (projSystem) projFilter.projSystem = projSystem;
 
     const [players, projRows] = await Promise.all([
-      db.collection(sourceCollection).find(query).toArray(),
+      db.collection(sourceCollection).find(query, {
+        projection: {
+          _id: 1,
+          name: 1,
+          team: 1,
+          position: 1,
+          eligible: 1,
+          mlbPosition: 1,
+          mlbID: 1,
+          status: 1,
+          stats: 1,
+          lastStatUpdate: 1,
+        },
+      }).toArray(),
       db.collection('projections')
         .find(projFilter, {
           projection: { mlbId: 1, ablProjected: 1, projSystem: 1, stats: 1 },
@@ -167,7 +193,14 @@ export async function GET(request: NextRequest) {
         const abl = calculateAblScore(stats);
 
         return {
-          ...player,
+          _id: player._id,
+          name: player.name,
+          team: player.team,
+          position: player.position,
+          eligible: player.eligible,
+          mlbPosition: player.mlbPosition,
+          mlbID: player.mlbID,
+          status: player.status,
           stats,
           abl,
           ablProjected: proj?.ablProjected ?? null,
