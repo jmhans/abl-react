@@ -1432,11 +1432,12 @@ export default function SuppDraftPage() {
                     const renderBucket = (bucket: SplitBucket | undefined) => {
                       if (splitsLoading) return <div className="text-center text-xs text-gray-300">…</div>;
                       if (!bucket) return <div className="text-center text-xs text-gray-300">—</div>;
-                      const hasBucketAbl = bucket.abl !== null;
-                      const ablColor = !hasBucketAbl ? 'text-gray-400' : bucket.abl >= 0 ? 'text-green-700' : 'text-red-500';
+                      const bucketAbl = bucket.abl;
+                      const hasBucketAbl = bucketAbl !== null;
+                      const ablColor = !hasBucketAbl ? 'text-gray-400' : bucketAbl >= 0 ? 'text-green-700' : 'text-red-500';
                       return (
                         <div className="text-center">
-                          <div className={`text-xs font-medium ${ablColor}`}>{hasBucketAbl ? bucket.abl.toFixed(2) : '—'}</div>
+                          <div className={`text-xs font-medium ${ablColor}`}>{hasBucketAbl ? bucketAbl.toFixed(2) : '—'}</div>
                           <div className="text-[10px] text-gray-400 leading-tight">{bucket.g}/{bucket.ab}</div>
                         </div>
                       );
