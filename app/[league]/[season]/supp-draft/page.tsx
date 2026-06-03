@@ -1431,10 +1431,11 @@ export default function SuppDraftPage() {
                     const renderBucket = (bucket: SplitBucket | undefined) => {
                       if (splitsLoading) return <div className="text-center text-xs text-gray-300">…</div>;
                       if (!bucket) return <div className="text-center text-xs text-gray-300">—</div>;
-                      const ablColor = bucket.abl == null ? 'text-gray-400' : bucket.abl >= 0 ? 'text-green-700' : 'text-red-500';
+                      const hasBucketAbl = bucket.abl !== null && bucket.abl !== undefined;
+                      const ablColor = !hasBucketAbl ? 'text-gray-400' : bucket.abl >= 0 ? 'text-green-700' : 'text-red-500';
                       return (
                         <div className="text-center">
-                          <div className={`text-xs font-medium ${ablColor}`}>{bucket.abl != null ? bucket.abl.toFixed(2) : '—'}</div>
+                          <div className={`text-xs font-medium ${ablColor}`}>{hasBucketAbl ? bucket.abl.toFixed(2) : '—'}</div>
                           <div className="text-[10px] text-gray-400 leading-tight">{bucket.g}/{bucket.ab}</div>
                         </div>
                       );
@@ -1502,8 +1503,8 @@ export default function SuppDraftPage() {
                           </>
                         ) : (
                           <>
-                            <div className={`text-center text-xs font-medium ${player.abl != null ? (player.abl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
-                              {player.abl != null ? player.abl.toFixed(2) : '—'}
+                            <div className={`text-center text-xs font-medium ${player.abl !== null && player.abl !== undefined ? (player.abl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
+                              {player.abl !== null && player.abl !== undefined ? player.abl.toFixed(2) : '—'}
                             </div>
                             <div className="hidden sm:block">
                               {renderBucket(ps?.lastN?.[splitPeriod])}
