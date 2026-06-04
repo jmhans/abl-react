@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
       };
 
       if (!showAll) {
-        query.$and.push({ status: 'Active' });
+        query.$and.push({ status: { $regex: '^active$', $options: 'i' } });
       }
 
       if (search) {
