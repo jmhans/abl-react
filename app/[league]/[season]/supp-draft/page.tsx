@@ -106,9 +106,10 @@ export default function SuppDraftPage() {
   const refreshDraft = useCallback(async (opts?: { includePlayers?: boolean }) => {
     const includePlayers = opts?.includePlayers ?? true;
     const qs = `?league=${league}&season=${season}`;
+    const playersQs = `${qs}&showAll=${activeOnly ? 'false' : 'true'}`;
     const draftPromise = fetch(`/api/supp-draft${qs}`, { cache: 'no-store' });
     const playersPromise = includePlayers
-      ? fetch(`/api/supp-draft/players${qs}`, { cache: 'no-store' })
+      ? fetch(`/api/supp-draft/players${playersQs}`, { cache: 'no-store' })
       : Promise.resolve(null);
     const [draftRes, playersRes] = await Promise.all([draftPromise, playersPromise]);
     if (!draftRes.ok) throw new Error('Failed to load supp draft');
@@ -125,7 +126,12 @@ export default function SuppDraftPage() {
       );
     }
     return nextDraft;
-  }, [league, season]);
+  }, [league, season, activeOnly]);
+
+  useEffect(() => {
+    if (loading || !draft) return;
+    refreshDraft({ includePlayers: true }).catch(() => {});
+  }, [activeOnly, loading, draft, refreshDraft]);
 
   // Load user's roster for drop indication (only when pending)
   const loadMyRoster = useCallback(async (teamId: string) => {
