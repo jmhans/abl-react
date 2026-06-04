@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { resolveLeagueContext } from '@/app/lib/league-context';
 
+const STANDINGS_CACHE_TTL_MS = 20 * 1000;
+const standingsCache = new Map<string, { expiresAt: number; payload: any[] }>();
+const standingsInFlight = new Map<string, Promise<any[]>>();
+
+function buildStandingsCacheKey(searchParams: URLSearchParams): string {
+  return [
+    searchParams.get('league') || '',
+    searchParams.get('season') || '',
+  ].join('|');
+}
+
+function getCachedStandings(cacheKey: string): any[] | null {
+  const hit = standingsCache.get(cacheKey);
+  if (!hit) return null;
+  if (Date.now() >= hit.expiresAt) {
+    standingsCache.delete(cacheKey);
+    return null;
+  }
+  return hit.payload;
+}
+
+function setCachedStandings(cacheKey: string, payload: any[]) {
+  const now = Date.now();
+  standingsCache.set(cacheKey, { expiresAt: now + STANDINGS_CACHE_TTL_MS, payload });
+  if (standingsCache.size > 64) {
+    for (const [key, value] of standingsCache) {
+      if (value.expiresAt <= now) standingsCache.delete(key);
+    }
+  }
+}
+
 interface GameScoreLine {
   team?: string;
   final?: {
@@ -182,8 +213,22 @@ function buildTeamGameStatsMap(games: any[]): Map<string, TeamGameStats> {
 // GET /api/standings?league=abl&season=2025 - Get season-scoped standings
 export async function GET(request: NextRequest) {
   try {
-    const db = await connectToDatabase();
     const { searchParams } = request.nextUrl;
+    const cacheKey = buildStandingsCacheKey(searchParams);
+
+    const cached = getCachedStandings(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: { 'x-standings-cache': 'HIT' } });
+    }
+
+    const inFlight = standingsInFlight.get(cacheKey);
+    if (inFlight) {
+      const payload = await inFlight;
+      return NextResponse.json(payload, { headers: { 'x-standings-cache': 'WAIT' } });
+    }
+
+    const computePromise = (async () => {
+      const db = await connectToDatabase();
     const leagueSlug = searchParams.get('league');
     const seasonSlug = searchParams.get('season');
 
@@ -243,7 +288,7 @@ export async function GET(request: NextRequest) {
         .toArray();
     }
 
-    const gamesForEra = await db.collection('games')
+    const gamesForStats = await db.collection('games')
       .find(
         baseMatch,
         {
@@ -251,27 +296,14 @@ export async function GET(request: NextRequest) {
             'result.scores.team': 1,
             'result.scores.final.abl_runs': 1,
             'result.scores.regulation.abl_runs': 1,
-          },
-        }
-      )
-      .toArray() as GameForEra[];
-    const runsAgainstByTeam = buildRunsAgainstMap(gamesForEra);
-
-    // Aggregate hitting stats from game player data (covers existing games that may not
-    // have these fields stored in regulation, as well as all newly calculated games).
-    const gamesForHitting = await db.collection('games')
-      .find(
-        baseMatch,
-        {
-          projection: {
-            'result.scores.team': 1,
             'result.scores.players.playedPosition': 1,
             'result.scores.players.dailyStats': 1,
           },
         }
       )
       .toArray();
-    const hittingStatsByTeam = buildTeamGameStatsMap(gamesForHitting);
+    const runsAgainstByTeam = buildRunsAgainstMap(gamesForStats as GameForEra[]);
+    const hittingStatsByTeam = buildTeamGameStatsMap(gamesForStats);
 
     // Calculate games behind (GB)
     // Find the best record
@@ -394,7 +426,17 @@ export async function GET(request: NextRequest) {
       return parseFloat(b.wpct) - parseFloat(a.wpct);
     });
 
-    return NextResponse.json(enrichedStandings);
+      setCachedStandings(cacheKey, enrichedStandings);
+      return enrichedStandings;
+    })();
+
+    standingsInFlight.set(cacheKey, computePromise);
+    try {
+      const payload = await computePromise;
+      return NextResponse.json(payload, { headers: { 'x-standings-cache': 'MISS' } });
+    } finally {
+      standingsInFlight.delete(cacheKey);
+    }
   } catch (error) {
     console.error('Error fetching standings:', error);
     return NextResponse.json(

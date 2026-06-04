@@ -3,11 +3,60 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { resolveLeagueContext } from '@/app/lib/league-context';
 
+const GAMES_CACHE_TTL_MS = 15 * 1000;
+const gamesCache = new Map<string, { expiresAt: number; payload: any[] }>();
+const gamesInFlight = new Map<string, Promise<any[]>>();
+
+function buildGamesCacheKey(searchParams: URLSearchParams): string {
+  return [
+    searchParams.get('view') || '',
+    searchParams.get('display') || '',
+    searchParams.get('league') || '',
+    searchParams.get('season') || '',
+    searchParams.get('gameType') || '',
+    searchParams.get('limit') || '',
+  ].join('|');
+}
+
+function getCachedGames(cacheKey: string): any[] | null {
+  const hit = gamesCache.get(cacheKey);
+  if (!hit) return null;
+  if (Date.now() >= hit.expiresAt) {
+    gamesCache.delete(cacheKey);
+    return null;
+  }
+  return hit.payload;
+}
+
+function setCachedGames(cacheKey: string, payload: any[]) {
+  const now = Date.now();
+  gamesCache.set(cacheKey, { expiresAt: now + GAMES_CACHE_TTL_MS, payload });
+  if (gamesCache.size > 64) {
+    for (const [key, value] of gamesCache) {
+      if (value.expiresAt <= now) gamesCache.delete(key);
+    }
+  }
+}
+
 // GET /api/games - Get all games with populated teams
 export async function GET(request: NextRequest) {
   try {
-    const db = await connectToDatabase();
     const { searchParams } = new URL(request.url);
+    const cacheKey = buildGamesCacheKey(searchParams);
+
+    const cached = getCachedGames(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: { 'x-games-cache': 'HIT' } });
+    }
+
+    const inFlight = gamesInFlight.get(cacheKey);
+    if (inFlight) {
+      const payload = await inFlight;
+      return NextResponse.json(payload, { headers: { 'x-games-cache': 'WAIT' } });
+    }
+
+    const computePromise = (async () => {
+      const db = await connectToDatabase();
     const view = searchParams.get('view');
     const display = searchParams.get('display');
     const leagueParam = searchParams.get('league');
@@ -28,7 +77,7 @@ export async function GET(request: NextRequest) {
         });
       } catch {
         // Unknown league/season — return empty
-        return NextResponse.json([]);
+        return [];
       }
     }
 
@@ -53,7 +102,7 @@ export async function GET(request: NextRequest) {
         $project: {
           awayTeamRoster: 0,
           homeTeamRoster: 0,
-          'results.scores.players': 0
+          'result.scores.players': 0,
         }
       });
     }
@@ -87,7 +136,17 @@ export async function GET(request: NextRequest) {
       if (game.result?.loser) game.result.loser = teamMap.get(game.result.loser.toString());
     });
 
-    return NextResponse.json(games);
+      setCachedGames(cacheKey, games);
+      return games;
+    })();
+
+    gamesInFlight.set(cacheKey, computePromise);
+    try {
+      const payload = await computePromise;
+      return NextResponse.json(payload, { headers: { 'x-games-cache': 'MISS' } });
+    } finally {
+      gamesInFlight.delete(cacheKey);
+    }
   } catch (error) {
     console.error('Error fetching games:', error);
     return NextResponse.json(

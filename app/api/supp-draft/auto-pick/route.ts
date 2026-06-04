@@ -32,8 +32,10 @@ import {
 const SEASON_START = new Date('2026-03-26T00:00:00Z');
 const AUTO_PICK_LOCK_STALE_MS = 30_000;
 const PLAYER_SOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
+const LATEST_LINEUPS_CACHE_TTL_MS = 15 * 1000;
 
 let cachedPlayerSource: { checkedAt: number; source: 'players_cache' | 'players_view' } | null = null;
+const latestLineupsBySeason = new Map<string, { expiresAt: number; payload: any[] }>();
 
 function currentSeasonStats(p: any): any {
   const lastUpdate = p.lastStatUpdate ? new Date(p.lastStatUpdate) : null;
@@ -55,6 +57,29 @@ async function getPlayerSourceCollection(db: any): Promise<'players_cache' | 'pl
   const source: 'players_cache' | 'players_view' = cacheCount > 0 ? 'players_cache' : 'players_view';
   cachedPlayerSource = { checkedAt: now, source };
   return source;
+}
+
+async function getLatestLineupsForSeason(db: any, season: any): Promise<any[]> {
+  const seasonKey = String(season._id);
+  const hit = latestLineupsBySeason.get(seasonKey);
+  if (hit && Date.now() < hit.expiresAt) {
+    return hit.payload;
+  }
+
+  const seasonTeamObjectIds = (season.teamIds || []).map((id: any) =>
+    typeof id === 'string' ? new ObjectId(id) : id
+  );
+  const latestLineups = await db.collection('lineups').aggregate([
+    { $match: { ablTeam: { $in: seasonTeamObjectIds } } },
+    { $sort: { effectiveDate: -1 } },
+    { $group: { _id: '$ablTeam', roster: { $first: '$roster' } } },
+  ]).toArray();
+
+  latestLineupsBySeason.set(seasonKey, {
+    expiresAt: Date.now() + LATEST_LINEUPS_CACHE_TTL_MS,
+    payload: latestLineups,
+  });
+  return latestLineups;
 }
 
 // Positions considered for need analysis (DH excluded — it fills itself).
@@ -115,14 +140,8 @@ export async function resolveAutoPickCandidate(db: any, draft: any, season: any)
   const dropIndicatedPlayerIds = new Set<string>(
     (draft.dropIndications || []).map((d: any) => String(d.playerId))
   );
-  const seasonTeamObjectIds = (season.teamIds || []).map((id: any) =>
-    typeof id === 'string' ? new ObjectId(id) : id
-  );
-  const latestLineups = await db.collection('lineups').aggregate([
-    { $match: { ablTeam: { $in: seasonTeamObjectIds } } },
-    { $sort: { effectiveDate: -1 } },
-    { $group: { _id: '$ablTeam', roster: { $first: '$roster' } } },
-  ]).toArray();
+  const latestLineups = await getLatestLineupsForSeason(db, season);
+  const sourceCollection = await getPlayerSourceCollection(db);
 
   const lockedPlayerIds = new Set<string>();
   for (const lu of latestLineups) {
@@ -150,8 +169,9 @@ export async function resolveAutoPickCandidate(db: any, draft: any, season: any)
       // Fetch the player doc to confirm they're still active
       let playerDoc: any = null;
       try {
-        playerDoc = await db.collection('players_cache').findOne({ _id: new ObjectId(queuedPlayerId) })
-          ?? await db.collection('players_view').findOne({ _id: new ObjectId(queuedPlayerId) });
+        const fallbackCollection = sourceCollection === 'players_cache' ? 'players_view' : 'players_cache';
+        playerDoc = await db.collection(sourceCollection).findOne({ _id: new ObjectId(queuedPlayerId) })
+          ?? await db.collection(fallbackCollection).findOne({ _id: new ObjectId(queuedPlayerId) });
       } catch { continue; }
       if (!playerDoc) continue;
       if (playerDoc.status !== 'Active') continue;
@@ -216,8 +236,6 @@ export async function resolveAutoPickCandidate(db: any, draft: any, season: any)
       .filter((p: any) => !p.forfeited && p.playerId)
       .map((p: any) => String(p.playerId))
   );
-
-  const sourceCollection = await getPlayerSourceCollection(db);
 
   type ScoredPlayer = { doc: any; abl: number };
 
