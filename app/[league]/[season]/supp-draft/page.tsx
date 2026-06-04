@@ -88,6 +88,7 @@ export default function SuppDraftPage() {
   const [splitPeriod, setSplitPeriod] = useState<number>(10);
   const [splitsData, setSplitsData] = useState<SplitsData | null>(null);
   const [splitsLoading, setSplitsLoading] = useState(false);
+  const lastSplitsRequestKeyRef = useRef<string | null>(null);
   // Drop indication state (for pending drafts)
   const [myRoster, setMyRoster] = useState<any[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -700,13 +701,17 @@ export default function SuppDraftPage() {
   // Fetch splits data whenever splits view is active and the player list changes
   useEffect(() => {
     if (playerListView !== 'splits') {
-      setSplitsData(null);
       return;
     }
     if (players.length === 0) return;
     const mlbIds = players.map(p => String(p.mlbID ?? '')).filter(Boolean);
     if (mlbIds.length === 0) return;
+    const requestKey = `${league}|${season}|${[...new Set(mlbIds)].sort().join(',')}`;
+    if (lastSplitsRequestKeyRef.current === requestKey && splitsData) {
+      return;
+    }
     const ctrl = new AbortController();
+    lastSplitsRequestKeyRef.current = requestKey;
     setSplitsLoading(true);
     fetch('/api/players/splits', {
       method: 'POST',
@@ -719,10 +724,15 @@ export default function SuppDraftPage() {
         return r.json();
       })
       .then(data => setSplitsData(data.splits ?? null))
-      .catch(err => { if (err.name !== 'AbortError') console.error('Splits fetch:', err); })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          lastSplitsRequestKeyRef.current = null;
+          console.error('Splits fetch:', err);
+        }
+      })
       .finally(() => setSplitsLoading(false));
     return () => ctrl.abort();
-  }, [players, playerListView, league, season]);
+  }, [players, playerListView, league, season, splitsData]);
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center text-xl">Loading supp draft...</div>;
