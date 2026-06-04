@@ -1437,7 +1437,8 @@ export default function SuppDraftPage() {
                     const isDropIndicated = player.isDropIndicated;
                     const mlbId = String(player.mlbID ?? '');
                     const ps = splitsData?.[mlbId];
-                    const hasPlayerAbl = player.abl !== null && player.abl !== undefined;
+                    const playerAbl = typeof player.abl === 'number' ? player.abl : null;
+                    const hasPlayerAbl = playerAbl !== null;
                     const renderBucket = (bucket: SplitBucket | undefined) => {
                       if (splitsLoading) return <div className="text-center text-xs text-gray-300">…</div>;
                       if (!bucket) return <div className="text-center text-xs text-gray-300">—</div>;
@@ -1514,8 +1515,8 @@ export default function SuppDraftPage() {
                           </>
                         ) : (
                           <>
-                            <div className={`text-center text-xs font-medium ${hasPlayerAbl ? (player.abl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
-                              {hasPlayerAbl ? player.abl.toFixed(2) : '—'}
+                            <div className={`text-center text-xs font-medium ${hasPlayerAbl ? (playerAbl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
+                              {hasPlayerAbl ? playerAbl.toFixed(2) : '—'}
                             </div>
                             <div className="hidden sm:block">
                               {renderBucket(ps?.lastN?.[splitPeriod])}
