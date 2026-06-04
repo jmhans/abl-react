@@ -20,6 +20,22 @@ interface StatRefreshResponse {
     skipped?: number;
     errors?: number;
   } | null;
+  liveSplitsSummary?: {
+    playersScanned?: number;
+    playersPersisted?: number;
+    error?: string;
+  };
+  error?: string;
+}
+
+interface LiveSplitsRefreshResponse {
+  ok: boolean;
+  league?: string;
+  season?: string;
+  liveSplitsSummary?: {
+    playersScanned?: number;
+    playersPersisted?: number;
+  };
   error?: string;
 }
 
@@ -35,6 +51,11 @@ export default function StatRefreshPage() {
   const [bulkResult, setBulkResult] = useState<StatRefreshResponse | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  const [splitsLeague, setSplitsLeague] = useState('abl');
+  const [splitsSeason, setSplitsSeason] = useState('active');
+  const [splitsBusy, setSplitsBusy] = useState(false);
+  const [splitsResult, setSplitsResult] = useState<LiveSplitsRefreshResponse | null>(null);
 
   const [coverage, setCoverage] = useState<{
     lastDate: string | null;
@@ -101,6 +122,26 @@ export default function StatRefreshPage() {
       setError(e instanceof Error ? e.message : 'Bulk refresh failed');
     } finally {
       setBulkBusy(false);
+    }
+  };
+
+  const runLiveSplitsRefresh = async () => {
+    setSplitsBusy(true);
+    setSplitsResult(null);
+    setError(null);
+    try {
+      const res = await fetch('/api/jobs/live-splits-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league: splitsLeague, season: splitsSeason }),
+      });
+      const data: LiveSplitsRefreshResponse = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || 'Live splits refresh failed');
+      setSplitsResult(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Live splits refresh failed');
+    } finally {
+      setSplitsBusy(false);
     }
   };
 
@@ -291,6 +332,50 @@ export default function StatRefreshPage() {
                 {(bulkResult.recalcSummary.errors ?? 0) > 0 && ` · ${bulkResult.recalcSummary.errors} errors`}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Live splits refresh */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+        <div>
+          <h2 className="font-semibold text-gray-900">Live Splits Cache Refresh</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Rebuild persisted compact split snapshots only (player_splits_live) without re-running MLB downloads.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={splitsLeague}
+            onChange={(e) => setSplitsLeague(e.target.value)}
+            placeholder="league slug (e.g. abl)"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <input
+            type="text"
+            value={splitsSeason}
+            onChange={(e) => setSplitsSeason(e.target.value)}
+            placeholder="season slug/year (e.g. active, 2026)"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <button
+            onClick={runLiveSplitsRefresh}
+            disabled={splitsBusy}
+            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            {splitsBusy ? 'Refreshing…' : 'Refresh Live Splits'}
+          </button>
+        </div>
+        {splitsResult?.ok && (
+          <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-3 text-sm text-indigo-900 space-y-1">
+            <div className="font-medium">
+              Live splits refreshed for {splitsResult.league} / {splitsResult.season}
+            </div>
+            <div>
+              {splitsResult.liveSplitsSummary?.playersPersisted ?? 0} players persisted
+              {' '}out of {splitsResult.liveSplitsSummary?.playersScanned ?? 0} scanned
+            </div>
           </div>
         )}
       </div>

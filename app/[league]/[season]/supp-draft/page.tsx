@@ -28,6 +28,11 @@ const POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH'];
 const GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_6rem] sm:grid-cols-[minmax(0,1fr)_3.5rem_4.5rem_6rem] md:grid-cols-[minmax(0,1.5fr)_3rem_3rem_3rem_3rem_3rem_3rem_3rem_4.5rem_6rem]';
 const STAT_COLS = ['AB', 'H', '2B', '3B', 'HR', 'BB', 'SB'] as const;
 const STAT_VIS = ['hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block', 'hidden md:block'] as const;
+// Splits view grid: xs: Player | ABL | Action  sm: Player | ABL | L{N} | Action  md+: Player | ABL | L{N} | ABL On | ABL Off | Action
+const SPLITS_GRID = 'grid grid-cols-[minmax(0,1fr)_4.5rem_6rem] sm:grid-cols-[minmax(0,1fr)_4.5rem_6rem_6rem] md:grid-cols-[minmax(0,1.5fr)_5rem_6rem_6rem_6rem_6rem]';
+const SPLIT_PERIODS = [7, 10, 14, 20, 30] as const;
+interface SplitBucket { g: number; ab: number; abl: number | null; }
+type SplitsData = Record<string, { lastN: Record<number, SplitBucket>; ablOn: SplitBucket; ablOff: SplitBucket }>;
 
 function getAblStat(player: PlayerForSuppDraft): number {
   return player.abl ?? 0;
@@ -78,6 +83,11 @@ export default function SuppDraftPage() {
   const [error, setError] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
+  // Player list view: stats or splits
+  const [playerListView, setPlayerListView] = useState<'stats' | 'splits'>('stats');
+  const [splitPeriod, setSplitPeriod] = useState<number>(10);
+  const [splitsData, setSplitsData] = useState<SplitsData | null>(null);
+  const [splitsLoading, setSplitsLoading] = useState(false);
   // Drop indication state (for pending drafts)
   const [myRoster, setMyRoster] = useState<any[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -402,10 +412,34 @@ export default function SuppDraftPage() {
         return matchSearch && matchPos;
       })
       .sort((a, b) => {
+        // Splits-specific sort columns
+        if (sortCol === 'splitL' || sortCol === 'splitOn' || sortCol === 'splitOff') {
+          const nullVal = sortDir === 'desc' ? -Infinity : Infinity;
+          const getSplitVal = (p: PlayerForSuppDraft) => {
+            const mlbId = String(p.mlbID ?? '');
+            const s = splitsData?.[mlbId];
+            if (!s) return nullVal;
+            if (sortCol === 'splitL')   return s.lastN?.[splitPeriod]?.abl ?? nullVal;
+            if (sortCol === 'splitOn')  return s.ablOn?.abl ?? nullVal;
+            return s.ablOff?.abl ?? nullVal;
+          };
+          const av = getSplitVal(a);
+          const bv = getSplitVal(b);
+          return sortDir === 'desc' ? bv - av : av - bv;
+        }
         if (sortCol && sortCol !== 'abl') {
           const av = getStatVal(a, sortCol as typeof STAT_COLS[number]) ?? (sortDir === 'desc' ? -Infinity : Infinity);
           const bv = getStatVal(b, sortCol as typeof STAT_COLS[number]) ?? (sortDir === 'desc' ? -Infinity : Infinity);
           return sortDir === 'desc' ? bv - av : av - bv;
+        }
+        // Default splits sort: L{splitPeriod} ABL descending when no column selected
+        if (!sortCol && playerListView === 'splits' && splitsData) {
+          const aId = String(a.mlbID ?? '');
+          const bId = String(b.mlbID ?? '');
+          const av2 = splitsData[aId]?.lastN?.[splitPeriod]?.abl ?? -Infinity;
+          const bv2 = splitsData[bId]?.lastN?.[splitPeriod]?.abl ?? -Infinity;
+          if (av2 !== bv2) return bv2 - av2;
+          return a.name.localeCompare(b.name);
         }
         const av = getAblStat(a);
         const bv = getAblStat(b);
@@ -413,7 +447,7 @@ export default function SuppDraftPage() {
         if (av !== bv) return bv - av;
         return a.name.localeCompare(b.name);
       });
-  }, [players, pickedPlayerIds, activeOnly, search, positionFilter, sortCol, sortDir]);
+  }, [players, pickedPlayerIds, activeOnly, search, positionFilter, sortCol, sortDir, playerListView, splitsData, splitPeriod]);
 
   const selectedTeam = useMemo(
     () => orderedTeams.find((t) => t._id === selectedTeamId) ?? orderedTeams[0] ?? null,
@@ -668,6 +702,33 @@ export default function SuppDraftPage() {
     else if (sortDir === 'desc') setSortDir('asc');
     else { setSortCol(null); setSortDir('desc'); }
   };
+
+  // Fetch splits data whenever splits view is active and the player list changes
+  useEffect(() => {
+    if (playerListView !== 'splits') {
+      setSplitsData(null);
+      return;
+    }
+    if (players.length === 0) return;
+    const mlbIds = players.map(p => String(p.mlbID ?? '')).filter(Boolean);
+    if (mlbIds.length === 0) return;
+    const ctrl = new AbortController();
+    setSplitsLoading(true);
+    fetch('/api/players/splits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mlbIds, days: [...SPLIT_PERIODS], league, season }),
+      signal: ctrl.signal,
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`Splits fetch failed: ${r.status}`);
+        return r.json();
+      })
+      .then(data => setSplitsData(data.splits ?? null))
+      .catch(err => { if (err.name !== 'AbortError') console.error('Splits fetch:', err); })
+      .finally(() => setSplitsLoading(false));
+    return () => ctrl.abort();
+  }, [players, playerListView, league, season]);
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center text-xl">Loading supp draft...</div>;
@@ -1276,30 +1337,101 @@ export default function SuppDraftPage() {
               </label>
             </div>
 
+            {/* Stats / Splits tabs */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { setPlayerListView('stats'); setSortCol(null); setSortDir('desc'); }}
+                className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${playerListView === 'stats' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Stats
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPlayerListView('splits'); setSortCol(null); setSortDir('desc'); }}
+                className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${playerListView === 'splits' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Splits
+              </button>
+              {playerListView === 'splits' && (
+                <select
+                  value={splitPeriod}
+                  onChange={e => setSplitPeriod(Number(e.target.value))}
+                  className="rounded border border-gray-300 px-2 py-1.5 text-xs"
+                >
+                  {SPLIT_PERIODS.map(n => (
+                    <option key={n} value={n}>Last {n} days</option>
+                  ))}
+                </select>
+              )}
+              {playerListView === 'splits' && splitsLoading && (
+                <span className="text-xs text-blue-500 animate-pulse">Loading splits…</span>
+              )}
+            </div>
+
             {showPlayers && (
               <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
                 {/* Header row */}
-                <div className={`${GRID} gap-x-2 border-b bg-gray-50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500`}>
-                  <div>Player</div>
-                  {STAT_COLS.map((col, i) => (
+                {playerListView === 'stats' ? (
+                  <div className={`${GRID} gap-x-2 border-b bg-gray-50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500`}>
+                    <div>Player</div>
+                    {STAT_COLS.map((col) => (
+                      <button
+                        key={col}
+                        type="button"
+                        onClick={() => handleSort(col)}
+                        className={`text-right hidden md:block hover:text-gray-800`}
+                      >
+                        {col}{sortIcon(col)}
+                      </button>
+                    ))}
                     <button
-                      key={col}
                       type="button"
-                      onClick={() => handleSort(col)}
-                      className={`text-right hidden md:block hover:text-gray-800`}
+                      onClick={() => handleSort('abl')}
+                      className="text-right hover:text-gray-800"
                     >
-                      {col}{sortIcon(col)}
+                      ABL{sortIcon('abl')}
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => handleSort('abl')}
-                    className="text-right hover:text-gray-800"
-                  >
-                    ABL{sortIcon('abl')}
-                  </button>
-                  <div className="text-right">Action</div>
-                </div>
+                    <div className="text-right">Action</div>
+                  </div>
+                ) : (
+                  <div className={`${SPLITS_GRID} gap-x-2 border-b bg-gray-50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500`}>
+                    <div>Player</div>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('abl')}
+                      className="text-center text-green-700 hover:opacity-80"
+                    >
+                      ABL{sortIcon('abl')}
+                      <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">season</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('splitL')}
+                      className="text-center hover:opacity-80 hidden sm:block"
+                    >
+                      L{splitPeriod}{sortIcon('splitL')}
+                      <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">G/AB</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('splitOn')}
+                      className="text-center text-blue-600 hover:opacity-80 hidden md:block"
+                    >
+                      ABL On{sortIcon('splitOn')}
+                      <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">G/AB</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSort('splitOff')}
+                      className="text-center text-orange-600 hover:opacity-80 hidden md:block"
+                    >
+                      ABL Off{sortIcon('splitOff')}
+                      <div className="text-[10px] font-normal normal-case text-gray-400 leading-tight">G/AB</div>
+                    </button>
+                    <div className="text-right">Action</div>
+                  </div>
+                )}
 
                 {/* Player rows */}
                 <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
@@ -1309,10 +1441,54 @@ export default function SuppDraftPage() {
                   {filteredPlayers.map((player) => {
                     const isPickup = !!player.onRosterTeamId && player.onRosterAcqType === 'pickup';
                     const isDropIndicated = player.isDropIndicated;
+                    const mlbId = String(player.mlbID ?? '');
+                    const ps = splitsData?.[mlbId];
+                    const playerAbl = typeof player.abl === 'number' ? player.abl : null;
+                    const hasPlayerAbl = playerAbl !== null;
+                    const renderBucket = (bucket: SplitBucket | undefined) => {
+                      if (splitsLoading) return <div className="text-center text-xs text-gray-300">…</div>;
+                      if (!bucket) return <div className="text-center text-xs text-gray-300">—</div>;
+                      const bucketAbl = bucket.abl;
+                      const hasBucketAbl = bucketAbl !== null;
+                      const ablColor = !hasBucketAbl ? 'text-gray-400' : bucketAbl >= 0 ? 'text-green-700' : 'text-red-500';
+                      return (
+                        <div className="text-center">
+                          <div className={`text-xs font-medium ${ablColor}`}>{hasBucketAbl ? bucketAbl.toFixed(2) : '—'}</div>
+                          <div className="text-[10px] text-gray-400 leading-tight">{bucket.g}/{bucket.ab}</div>
+                        </div>
+                      );
+                    };
+                    const actionCell = (
+                      <div className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {canPick && (
+                            <button
+                              type="button"
+                              onClick={() => handlePick(player)}
+                              disabled={isWorking}
+                              className="rounded bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              Pick
+                            </button>
+                          )}
+                          {activeDraft && userTeamId && !myQueue.includes(player._id) && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetQueue([...myQueue, player._id])}
+                              disabled={savingQueue}
+                              className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-30"
+                              title="Add to my queue"
+                            >
+                              +Q
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
                     return (
                       <div
                         key={player._id}
-                        className={`${GRID} gap-x-2 items-center px-3 py-2 text-sm hover:bg-gray-50 ${isDropIndicated ? 'bg-amber-50' : ''}`}
+                        className={`${playerListView === 'splits' ? SPLITS_GRID : GRID} gap-x-2 items-center px-3 py-2 text-sm hover:bg-gray-50 ${isDropIndicated ? 'bg-amber-50' : ''}`}
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1332,39 +1508,34 @@ export default function SuppDraftPage() {
                             )}
                           </div>
                         </div>
-                        {STAT_COLS.map((col) => (
-                          <div key={col} className="hidden md:block text-right text-gray-600 tabular-nums text-xs">
-                            {getStatVal(player, col) ?? '—'}
-                          </div>
-                        ))}
-                        <div className="text-right font-mono text-xs text-gray-800">
-                          {getAblStat(player).toFixed(2)}
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {canPick && (
-                              <button
-                                type="button"
-                                onClick={() => handlePick(player)}
-                                disabled={isWorking}
-                                className="rounded bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                Pick
-                              </button>
-                            )}
-                            {activeDraft && userTeamId && !myQueue.includes(player._id) && (
-                              <button
-                                type="button"
-                                onClick={() => handleSetQueue([...myQueue, player._id])}
-                                disabled={savingQueue}
-                                className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-30"
-                                title="Add to my queue"
-                              >
-                                +Q
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                        {playerListView === 'stats' ? (
+                          <>
+                            {STAT_COLS.map((col) => (
+                              <div key={col} className="hidden md:block text-right text-gray-600 tabular-nums text-xs">
+                                {getStatVal(player, col) ?? '—'}
+                              </div>
+                            ))}
+                            <div className="text-right font-mono text-xs text-gray-800">
+                              {getAblStat(player).toFixed(2)}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className={`text-center text-xs font-medium ${hasPlayerAbl ? (playerAbl >= 0 ? 'text-green-700' : 'text-red-500') : 'text-gray-400'}`}>
+                              {hasPlayerAbl ? playerAbl.toFixed(2) : '—'}
+                            </div>
+                            <div className="hidden sm:block">
+                              {renderBucket(ps?.lastN?.[splitPeriod])}
+                            </div>
+                            <div className="hidden md:block">
+                              {renderBucket(ps?.ablOn)}
+                            </div>
+                            <div className="hidden md:block">
+                              {renderBucket(ps?.ablOff)}
+                            </div>
+                          </>
+                        )}
+                        {actionCell}
                       </div>
                     );
                   })}

@@ -13,6 +13,9 @@ type RunState = 'idle' | 'running' | 'done' | 'error';
 export default function DevToolsPage() {
   const [runState, setRunState] = useState<RunState>('idle');
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [syncMode, setSyncMode] = useState<'delta' | 'full'>('delta');
+  const [sinceHours, setSinceHours] = useState(24);
+  const [collectionFilter, setCollectionFilter] = useState('');
   const logEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -33,6 +36,12 @@ export default function DevToolsPage() {
     try {
       const res = await fetch('/api/admin/sync-prod-to-dev', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: syncMode,
+          sinceHours,
+          collections: collectionFilter,
+        }),
         signal: abort.signal,
       });
 
@@ -124,6 +133,49 @@ export default function DevToolsPage() {
         </div>
 
         <div className="px-6 py-4 space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Mode</span>
+              <select
+                value={syncMode}
+                onChange={(e) => setSyncMode(e.target.value as 'delta' | 'full')}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                disabled={isRunning}
+              >
+                <option value="delta">Delta (recommended)</option>
+                <option value="full">Full copy (slow)</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Delta Window (hours)</span>
+              <input
+                type="number"
+                min={1}
+                value={sinceHours}
+                onChange={(e) => setSinceHours(Number(e.target.value) || 24)}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                disabled={isRunning || syncMode !== 'delta'}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 md:col-span-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Collections (optional CSV)</span>
+              <input
+                type="text"
+                value={collectionFilter}
+                onChange={(e) => setCollectionFilter(e.target.value)}
+                placeholder="players,players_cache,statlines"
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                disabled={isRunning}
+              />
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Delta mode upserts only recently changed docs based on timestamp fields and usually avoids 300s timeouts.
+          </p>
+
           <div className="flex flex-wrap gap-3 items-center">
             <button
               onClick={startSync}
