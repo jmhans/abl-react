@@ -3,6 +3,7 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { runDailyStatRefresh } from '@/app/lib/stat-refresh-service';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 import { syncPositionLog } from '@/app/api/players/sync-position-log/route';
+import { refreshPersistedLiveSplits } from '@/app/lib/stat-splits';
 
 async function isAuthorized(request: NextRequest): Promise<boolean> {
   const { isAdmin } = await getAdminAuthState();
@@ -50,6 +51,8 @@ async function handleRefresh(request: NextRequest) {
   const dateEndParam = (body?.dateEnd as string | undefined) || searchParams.get('dateEnd');
   const recalcParam = body?.recalculate ?? searchParams.get('recalculate');
   const recalculate = recalcParam === undefined ? true : String(recalcParam) !== 'false';
+  const leagueSlug = (body?.league as string | undefined) || searchParams.get('league') || 'abl';
+  const seasonSlug = (body?.season as string | undefined) || searchParams.get('season') || 'active';
 
   try {
     const db = await connectToDatabase();
@@ -96,6 +99,10 @@ async function handleRefresh(request: NextRequest) {
       }
 
       const posLogSummary = await syncPositionLog(db).catch((e) => ({ error: String(e) }));
+      const liveSplitsSummary = await refreshPersistedLiveSplits(db, {
+        leagueSlug,
+        seasonSlug,
+      }).catch((e) => ({ error: String(e) }));
 
       return NextResponse.json(
         {
@@ -118,6 +125,7 @@ async function handleRefresh(request: NextRequest) {
             },
           }),
           posLogSummary,
+          liveSplitsSummary,
           daysProcessed: results.length,
           byDay: results,
         },
@@ -129,6 +137,10 @@ async function handleRefresh(request: NextRequest) {
     const targetDate = parseTargetDate(dateParam);
     const summary = await runDailyStatRefresh(db, targetDate, { recalculate });
     const posLogSummary = await syncPositionLog(db).catch((e) => ({ error: String(e) }));
+    const liveSplitsSummary = await refreshPersistedLiveSplits(db, {
+      leagueSlug,
+      seasonSlug,
+    }).catch((e) => ({ error: String(e) }));
 
     return NextResponse.json(
       {
@@ -137,6 +149,7 @@ async function handleRefresh(request: NextRequest) {
         recalculate,
         ...summary,
         posLogSummary,
+        liveSplitsSummary,
       },
       { status: 200 }
     );
