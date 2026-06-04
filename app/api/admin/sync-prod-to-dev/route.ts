@@ -14,6 +14,10 @@ export const maxDuration = 300;
 
 type SyncMode = 'full' | 'delta';
 
+function isLiveSplitsCollection(name: string): boolean {
+  return name === 'player_splits_live';
+}
+
 function parseCollectionList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((v) => String(v).trim()).filter(Boolean);
@@ -67,7 +71,12 @@ async function fullCopyCollection(prodCol: any, devCol: any): Promise<number> {
   return copied;
 }
 
-async function deltaSyncCollection(prodCol: any, devCol: any, since: Date): Promise<{ upserted: number; field: string | null; skipped: boolean }> {
+async function deltaSyncCollection(
+  collectionName: string,
+  prodCol: any,
+  devCol: any,
+  since: Date
+): Promise<{ upserted: number; field: string | null; skipped: boolean }> {
   const timestampField = await detectTimestampField(prodCol);
   if (!timestampField) {
     return { upserted: 0, field: null, skipped: true };
@@ -76,15 +85,35 @@ async function deltaSyncCollection(prodCol: any, devCol: any, since: Date): Prom
   const cursor = prodCol.find({ [timestampField]: { $gte: since } });
   let upserted = 0;
   let ops: any[] = [];
+  const useLiveSplitsNaturalKey = isLiveSplitsCollection(collectionName);
 
   for await (const doc of cursor) {
-    ops.push({
-      replaceOne: {
-        filter: { _id: doc._id },
-        replacement: doc,
-        upsert: true,
-      },
-    });
+    if (useLiveSplitsNaturalKey) {
+      const { _id, ...rest } = doc;
+      ops.push({
+        updateOne: {
+          filter: {
+            leagueId: String(doc.leagueId ?? ''),
+            seasonId: String(doc.seasonId ?? ''),
+            mlbId: String(doc.mlbId ?? ''),
+          },
+          update: {
+            $set: rest,
+            $setOnInsert: { _id: doc._id },
+          },
+          upsert: true,
+        },
+      });
+    } else {
+      ops.push({
+        replaceOne: {
+          filter: { _id: doc._id },
+          replacement: doc,
+          upsert: true,
+        },
+      });
+    }
+
     if (ops.length >= BATCH_SIZE) {
       await devCol.bulkWrite(ops, { ordered: false });
       upserted += ops.length;
@@ -178,7 +207,7 @@ export async function POST(request: NextRequest) {
             send(`  ✓ ${name} — ${copied} docs copied`);
             totalDocs += copied;
           } else {
-            const result = await deltaSyncCollection(prodCol, devCol, since);
+            const result = await deltaSyncCollection(name, prodCol, devCol, since);
             if (result.skipped) {
               skippedNoTimestamp += 1;
               send(`  ↷ ${name} — skipped (no timestamp field found)`);
