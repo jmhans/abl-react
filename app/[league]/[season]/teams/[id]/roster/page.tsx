@@ -226,6 +226,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    dragPointerYRef.current = e.clientY;
     if (draggedIndex === null || draggedIndex === index || !roster || roster.locked || (!isOwner && !isAdmin)) return;
 
     const items = [...roster.roster];
@@ -260,9 +261,65 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Auto-scroll while dragging near the top/bottom edges of the viewport
+  const theadRef = useRef<HTMLTableSectionElement>(null);
+  const dragPointerYRef = useRef<number | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+
   useEffect(() => { rosterRef.current = roster; }, [roster]);
   useEffect(() => { isOwnerRef.current = isOwner; }, [isOwner]);
   useEffect(() => { canEditRef.current = isOwner || isAdmin; }, [isOwner, isAdmin]);
+  useEffect(() => { draggedIndexRef.current = draggedIndex; }, [draggedIndex]);
+
+  const AUTOSCROLL_EDGE = 60;
+  const AUTOSCROLL_MAX_SPEED = 18;
+
+  const runAutoScroll = useCallback(() => {
+    const y = dragPointerYRef.current;
+    if (y !== null && draggedIndexRef.current !== null) {
+      const topEdge = theadRef.current?.getBoundingClientRect().bottom ?? 0;
+      const bottomEdge = window.innerHeight;
+
+      let delta = 0;
+      if (y < topEdge + AUTOSCROLL_EDGE) {
+        const intensity = Math.min(1, (topEdge + AUTOSCROLL_EDGE - y) / AUTOSCROLL_EDGE);
+        delta = -intensity * AUTOSCROLL_MAX_SPEED;
+      } else if (y > bottomEdge - AUTOSCROLL_EDGE) {
+        const intensity = Math.min(1, (y - (bottomEdge - AUTOSCROLL_EDGE)) / AUTOSCROLL_EDGE);
+        delta = intensity * AUTOSCROLL_MAX_SPEED;
+      }
+      if (delta !== 0) {
+        window.scrollBy(0, delta);
+      }
+    }
+    autoScrollFrameRef.current = requestAnimationFrame(runAutoScroll);
+  }, []);
+
+  useEffect(() => {
+    if (draggedIndex !== null) {
+      autoScrollFrameRef.current = requestAnimationFrame(runAutoScroll);
+    }
+    return () => {
+      if (autoScrollFrameRef.current !== null) {
+        cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
+      dragPointerYRef.current = null;
+    };
+  }, [draggedIndex, runAutoScroll]);
+
+  // Native HTML5 drag doesn't fire onDragOver on rows when hovering above the
+  // first row (e.g. over the sticky header) or below the last row, so track
+  // the pointer position globally to keep auto-scroll working there too.
+  useEffect(() => {
+    const onDocDragOver = (e: DragEvent) => {
+      if (draggedIndexRef.current !== null) {
+        dragPointerYRef.current = e.clientY;
+      }
+    };
+    document.addEventListener('dragover', onDocDragOver);
+    return () => document.removeEventListener('dragover', onDocDragOver);
+  }, []);
 
   // React registers onTouchMove as passive (cannot call preventDefault), so iOS Safari
   // intercepts the gesture for scrolling before our handler can reorder rows.
@@ -308,6 +365,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
       const currentRoster = rosterRef.current;
       if (!currentRoster || currentRoster.locked || !canEditRef.current) return;
       const touch = e.touches[0];
+      dragPointerYRef.current = touch.clientY;
       const elem = document.elementFromPoint(touch.clientX, touch.clientY);
       const row = elem?.closest('tr[data-index]') as HTMLElement | null;
       if (!row) return;
@@ -835,6 +893,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
         )}
         <table className="min-w-full divide-y divide-gray-200">
           <thead
+            ref={theadRef}
             className="bg-gray-50 sticky z-10 shadow-sm"
             style={{ top: 'var(--app-header-height, 0px)' }}
           >
