@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { toggleNav } from '@/app/ui/navigation';
 
@@ -25,6 +25,21 @@ export default function Header() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [myLeagues, setMyLeagues] = useState<MyLeagueEntry[]>([]);
+  const headerRef = useRef<HTMLElement>(null);
+
+  // Expose the rendered header height as a CSS variable so other sticky
+  // elements (e.g. the roster table header) can stick just below it.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const setHeightVar = () => {
+      document.documentElement.style.setProperty('--app-header-height', `${el.offsetHeight}px`);
+    };
+    setHeightVar();
+    const observer = new ResizeObserver(setHeightVar);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const pathMatch = pathname?.match(/^\/([^/]+)(?:\/(\d{4})(\/.*)?)?$/);
   const pathLeague = pathMatch?.[1]?.toLowerCase();
@@ -84,7 +99,7 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="bg-blue-600 text-white px-4 py-3 shadow-md sticky top-0 z-20">
+    <header ref={headerRef} className="bg-blue-600 text-white px-4 py-3 shadow-md sticky top-0 z-20">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button
