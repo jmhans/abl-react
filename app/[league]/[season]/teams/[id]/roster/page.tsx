@@ -829,12 +829,15 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow-lg overflow-x-auto overflow-y-auto max-h-[calc(100dvh-320px)] min-h-60">
+      <div className="bg-white rounded-lg shadow-lg min-h-60">
         {rosterView === 'eligibility' && posLogsLoading && (
           <div className="text-center py-4 text-sm text-gray-500">Loading position data…</div>
         )}
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+          <thead
+            className="bg-gray-50 sticky z-10 shadow-sm"
+            style={{ top: 'var(--app-header-height, 0px)' }}
+          >
             <tr>
               <th className="px-2 py-3 w-8"></th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
