@@ -564,22 +564,27 @@ async function processResumedGameWithPlayByPlay(db: Db, game: any) {
   };
 }
 
+function gameStatusSummary(game: any) {
+  return {
+    abstractState: game?.status?.abstractGameState ?? '',
+    codedState: game?.status?.codedGameState ?? '',
+    detailedState: game?.status?.detailedState ?? '',
+  };
+}
+
 async function processGame(db: Db, game: any) {
+  const statusInfo = gameStatusSummary(game);
   if (shouldUsePlayByPlaySplit(game)) {
     try {
-      return await processResumedGameWithPlayByPlay(db, game);
+      return { ...await processResumedGameWithPlayByPlay(db, game), ...statusInfo };
     } catch (error) {
       console.warn(`Falling back to boxscore mode for resumed game ${game?.gamePk}:`, error);
       const fallback = await processGameBoxscore(db, game);
-      return {
-        ...fallback,
-        resumed: true,
-        attributionMode: 'boxscore-fallback',
-      };
+      return { ...fallback, resumed: true, attributionMode: 'boxscore-fallback', ...statusInfo };
     }
   }
 
-  return processGameBoxscore(db, game);
+  return { ...await processGameBoxscore(db, game), ...statusInfo };
 }
 
 export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
@@ -599,13 +604,25 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   const suspendedGames: any[] = [];
 
   for (const game of games) {
-    if (game?.status?.codedGameState === 'D') {
-      gameSummaries.push({ gamePk: game.gamePk, skipped: true, reason: 'postponed' });
+    const abstractState: string = game?.status?.abstractGameState ?? '';
+    const codedState: string = game?.status?.codedGameState ?? '';
+    const detailedState: string = game?.status?.detailedState ?? '';
+
+    if (codedState === 'D') {
+      gameSummaries.push({ gamePk: game.gamePk, skipped: true, reason: 'postponed', abstractState, codedState, detailedState });
       continue;
     }
 
-    // Skip spring training games - only process regular season (galleryType=R)
+    // Skip spring training games - only process regular season (gameType=R)
     if (game?.gameType !== 'R') {
+      continue;
+    }
+
+    // Skip games that haven't started yet on this date (e.g. a suspended game
+    // scheduled to resume later today, or a postponed makeup not caught by 'D').
+    // These have no stats to record and must not block allMlbGamesComplete.
+    if (abstractState === 'Preview') {
+      gameSummaries.push({ gamePk: game.gamePk, skipped: true, reason: 'not-started', abstractState, codedState, detailedState });
       continue;
     }
 
