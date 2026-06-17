@@ -81,18 +81,25 @@ function playerDateKey(mlbId: string, ablDate: string): string {
   return `${mlbId}|${ablDate}`;
 }
 
-function shouldUsePlayByPlaySplit(game: any): boolean {
-  // Use play-by-play only for the continuation entry (has resumedFrom, meaning this IS the
-  // resumed game on the new date). The original suspended-game entry has resumeDate (forward-
-  // looking) but should just use the boxscore since the game hasn't finished yet.
-  return Boolean(game?.resumedFrom);
+function hasResumeFields(game: any): boolean {
+  return Boolean(game?.resumeDate || game?.resumeGameDate || game?.resumedFrom);
 }
 
-function isCurrentlySuspended(game: any): boolean {
-  return (
+function shouldUsePlayByPlaySplit(game: any): boolean {
+  // Use play-by-play only when a resumed game has fully completed (Final).
+  // While the resumption is still Live/In Progress, use the boxscore instead.
+  return hasResumeFields(game) && game?.status?.abstractGameState === 'Final';
+}
+
+function isNotYetComplete(game: any): boolean {
+  // Mid-game suspension (codedGameState 'U')
+  if (
     game?.status?.codedGameState === 'U' ||
     String(game?.status?.detailedState || '').toLowerCase().startsWith('suspended')
-  );
+  ) return true;
+  // Resumption currently in progress — Live but with resume fields set
+  if (game?.status?.abstractGameState === 'Live' && hasResumeFields(game)) return true;
+  return false;
 }
 
 function toBoxscoreStatsFromAccumulator(acc: PlayerDateAccumulator) {
@@ -626,8 +633,8 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
       continue;
     }
 
-    if (isCurrentlySuspended(game)) {
-      // Suspended mid-game: capture partial stats but don't block other games from finalizing
+    if (isNotYetComplete(game)) {
+      // Suspended or actively resuming: capture partial stats but don't block other games from finalizing
       suspendedGames.push(game);
     } else {
       activeGames.push(game);
