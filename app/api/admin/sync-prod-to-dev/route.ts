@@ -67,7 +67,11 @@ async function fullCopyCollection(prodCol: any, devCol: any): Promise<number> {
   return copied;
 }
 
-async function deltaSyncCollection(prodCol: any, devCol: any, since: Date): Promise<{ upserted: number; field: string | null; skipped: boolean }> {
+async function deltaSyncCollection(
+  prodCol: any,
+  devCol: any,
+  since: Date,
+): Promise<{ upserted: number; field: string | null; skipped: boolean; fullFallback?: boolean }> {
   const timestampField = await detectTimestampField(prodCol);
   if (!timestampField) {
     return { upserted: 0, field: null, skipped: true };
@@ -76,8 +80,10 @@ async function deltaSyncCollection(prodCol: any, devCol: any, since: Date): Prom
   const cursor = prodCol.find({ [timestampField]: { $gte: since } });
   let upserted = 0;
   let ops: any[] = [];
+  const allDocs: any[] = [];
 
   for await (const doc of cursor) {
+    allDocs.push(doc);
     ops.push({
       replaceOne: {
         filter: { _id: doc._id },
@@ -86,14 +92,32 @@ async function deltaSyncCollection(prodCol: any, devCol: any, since: Date): Prom
       },
     });
     if (ops.length >= BATCH_SIZE) {
-      await devCol.bulkWrite(ops, { ordered: false });
+      try {
+        await devCol.bulkWrite(ops, { ordered: false });
+      } catch (err: any) {
+        if (err?.code === 11000 || err?.name === 'MongoBulkWriteError') {
+          // Unique-index conflict: prod re-created docs with new _ids.
+          // Fall back to full copy of this collection.
+          const copied = await fullCopyCollection(prodCol, devCol);
+          return { upserted: copied, field: timestampField, skipped: false, fullFallback: true };
+        }
+        throw err;
+      }
       upserted += ops.length;
       ops = [];
     }
   }
 
   if (ops.length > 0) {
-    await devCol.bulkWrite(ops, { ordered: false });
+    try {
+      await devCol.bulkWrite(ops, { ordered: false });
+    } catch (err: any) {
+      if (err?.code === 11000 || err?.name === 'MongoBulkWriteError') {
+        const copied = await fullCopyCollection(prodCol, devCol);
+        return { upserted: copied, field: timestampField, skipped: false, fullFallback: true };
+      }
+      throw err;
+    }
     upserted += ops.length;
   }
 
@@ -182,6 +206,9 @@ export async function POST(request: NextRequest) {
             if (result.skipped) {
               skippedNoTimestamp += 1;
               send(`  ↷ ${name} — skipped (no timestamp field found)`);
+            } else if (result.fullFallback) {
+              send(`  ✓ ${name} — ${result.upserted} docs (full copy; duplicate-key conflict in delta mode)`);
+              totalDocs += result.upserted;
             } else {
               send(`  ✓ ${name} — ${result.upserted} docs upserted via ${result.field}`);
               totalDocs += result.upserted;
