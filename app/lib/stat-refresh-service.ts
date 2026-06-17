@@ -82,7 +82,17 @@ function playerDateKey(mlbId: string, ablDate: string): string {
 }
 
 function shouldUsePlayByPlaySplit(game: any): boolean {
-  return Boolean(game?.resumeDate || game?.resumeGameDate || game?.resumedFrom);
+  // Use play-by-play only for the continuation entry (has resumedFrom, meaning this IS the
+  // resumed game on the new date). The original suspended-game entry has resumeDate (forward-
+  // looking) but should just use the boxscore since the game hasn't finished yet.
+  return Boolean(game?.resumedFrom);
+}
+
+function isCurrentlySuspended(game: any): boolean {
+  return (
+    game?.status?.codedGameState === 'U' ||
+    String(game?.status?.detailedState || '').toLowerCase().startsWith('suspended')
+  );
 }
 
 function toBoxscoreStatsFromAccumulator(acc: PlayerDateAccumulator) {
@@ -583,7 +593,10 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   const gameSummaries: any[] = [];
   const CONCURRENT_GAME_BATCH = 4;
 
+  // activeGames: must all be Final before ABL day is considered complete
+  // suspendedGames: have partial stats to capture but do NOT block finality
   const activeGames: any[] = [];
+  const suspendedGames: any[] = [];
 
   for (const game of games) {
     if (game?.status?.codedGameState === 'D') {
@@ -596,21 +609,35 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
       continue;
     }
 
-    activeGames.push(game);
-  }
-
-  for (let i = 0; i < activeGames.length; i += CONCURRENT_GAME_BATCH) {
-    const batch = activeGames.slice(i, i + CONCURRENT_GAME_BATCH);
-    const batchResults = await Promise.all(batch.map((game) => processGame(db, game)));
-
-    for (const result of batchResults) {
-      playersUpdated += result.playerUpdates;
-      statlinesUpdated += result.playerUpdates;
-      gameSummaries.push(result);
+    if (isCurrentlySuspended(game)) {
+      // Suspended mid-game: capture partial stats but don't block other games from finalizing
+      suspendedGames.push(game);
+    } else {
+      activeGames.push(game);
     }
   }
 
-  // All active (non-postponed, regular season) MLB games must be Final for scores to be official
+  const allProcessableGames = [...activeGames, ...suspendedGames];
+  for (let i = 0; i < allProcessableGames.length; i += CONCURRENT_GAME_BATCH) {
+    const batch = allProcessableGames.slice(i, i + CONCURRENT_GAME_BATCH);
+    // allSettled so one failing game never kills the rest of the batch
+    const batchResults = await Promise.allSettled(batch.map((game) => processGame(db, game)));
+
+    for (const settled of batchResults) {
+      if (settled.status === 'fulfilled') {
+        playersUpdated += settled.value.playerUpdates;
+        statlinesUpdated += settled.value.playerUpdates;
+        gameSummaries.push(settled.value);
+      } else {
+        console.warn('[refreshMlbStatsForDate] Game processing failed:', settled.reason);
+        gameSummaries.push({ skipped: true, reason: 'error', error: String(settled.reason) });
+      }
+    }
+  }
+
+  // All active (non-postponed, non-suspended, regular season) MLB games must be Final for
+  // scores to be official. Suspended games have partial stats already captured and will be
+  // fully reconciled when the continuation game is processed on resumption day.
   const allMlbGamesComplete =
     activeGames.length === 0 ||
     activeGames.every((game: any) => game?.status?.abstractGameState === 'Final');
@@ -619,6 +646,7 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   // be calculated. If all games are still in 'Preview', MLB stats haven't recorded yet
   // and we should leave ABL games in 'Scheduled' status.
   const anyMlbGamesStarted =
+    suspendedGames.length > 0 ||
     activeGames.some((game: any) =>
       game?.status?.abstractGameState === 'Live' ||
       game?.status?.abstractGameState === 'Final',
@@ -716,6 +744,7 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   return {
     date: dateYmd,
     scheduledGames: games.length,
+    suspendedGames: suspendedGames.length,
     playersUpdated,
     statlinesUpdated,
     gameSummaries,
