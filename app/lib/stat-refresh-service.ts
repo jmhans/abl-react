@@ -81,18 +81,25 @@ function playerDateKey(mlbId: string, ablDate: string): string {
   return `${mlbId}|${ablDate}`;
 }
 
-function shouldUsePlayByPlaySplit(game: any): boolean {
-  // Use play-by-play only for the continuation entry (has resumedFrom, meaning this IS the
-  // resumed game on the new date). The original suspended-game entry has resumeDate (forward-
-  // looking) but should just use the boxscore since the game hasn't finished yet.
-  return Boolean(game?.resumedFrom);
+function hasResumeFields(game: any): boolean {
+  return Boolean(game?.resumeDate || game?.resumeGameDate || game?.resumedFrom);
 }
 
-function isCurrentlySuspended(game: any): boolean {
-  return (
+function shouldUsePlayByPlaySplit(game: any): boolean {
+  // Use play-by-play only when a resumed game has fully completed (Final).
+  // While the resumption is still Live/In Progress, use the boxscore instead.
+  return hasResumeFields(game) && game?.status?.abstractGameState === 'Final';
+}
+
+function isNotYetComplete(game: any): boolean {
+  // Mid-game suspension (codedGameState 'U')
+  if (
     game?.status?.codedGameState === 'U' ||
     String(game?.status?.detailedState || '').toLowerCase().startsWith('suspended')
-  );
+  ) return true;
+  // Resumption currently in progress — Live but with resume fields set
+  if (game?.status?.abstractGameState === 'Live' && hasResumeFields(game)) return true;
+  return false;
 }
 
 function toBoxscoreStatsFromAccumulator(acc: PlayerDateAccumulator) {
@@ -564,22 +571,27 @@ async function processResumedGameWithPlayByPlay(db: Db, game: any) {
   };
 }
 
+function gameStatusSummary(game: any) {
+  return {
+    abstractState: game?.status?.abstractGameState ?? '',
+    codedState: game?.status?.codedGameState ?? '',
+    detailedState: game?.status?.detailedState ?? '',
+  };
+}
+
 async function processGame(db: Db, game: any) {
+  const statusInfo = gameStatusSummary(game);
   if (shouldUsePlayByPlaySplit(game)) {
     try {
-      return await processResumedGameWithPlayByPlay(db, game);
+      return { ...await processResumedGameWithPlayByPlay(db, game), ...statusInfo };
     } catch (error) {
       console.warn(`Falling back to boxscore mode for resumed game ${game?.gamePk}:`, error);
       const fallback = await processGameBoxscore(db, game);
-      return {
-        ...fallback,
-        resumed: true,
-        attributionMode: 'boxscore-fallback',
-      };
+      return { ...fallback, resumed: true, attributionMode: 'boxscore-fallback', ...statusInfo };
     }
   }
 
-  return processGameBoxscore(db, game);
+  return { ...await processGameBoxscore(db, game), ...statusInfo };
 }
 
 export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
@@ -599,18 +611,30 @@ export async function refreshMlbStatsForDate(db: Db, gameDate: Date) {
   const suspendedGames: any[] = [];
 
   for (const game of games) {
-    if (game?.status?.codedGameState === 'D') {
-      gameSummaries.push({ gamePk: game.gamePk, skipped: true, reason: 'postponed' });
+    const abstractState: string = game?.status?.abstractGameState ?? '';
+    const codedState: string = game?.status?.codedGameState ?? '';
+    const detailedState: string = game?.status?.detailedState ?? '';
+
+    if (codedState === 'D') {
+      gameSummaries.push({ gamePk: game.gamePk, skipped: true, reason: 'postponed', abstractState, codedState, detailedState });
       continue;
     }
 
-    // Skip spring training games - only process regular season (galleryType=R)
+    // Skip spring training games - only process regular season (gameType=R)
     if (game?.gameType !== 'R') {
       continue;
     }
 
-    if (isCurrentlySuspended(game)) {
-      // Suspended mid-game: capture partial stats but don't block other games from finalizing
+    // Skip games that haven't started yet on this date (e.g. a suspended game
+    // scheduled to resume later today, or a postponed makeup not caught by 'D').
+    // These have no stats to record and must not block allMlbGamesComplete.
+    if (abstractState === 'Preview') {
+      gameSummaries.push({ gamePk: game.gamePk, skipped: true, reason: 'not-started', abstractState, codedState, detailedState });
+      continue;
+    }
+
+    if (isNotYetComplete(game)) {
+      // Suspended or actively resuming: capture partial stats but don't block other games from finalizing
       suspendedGames.push(game);
     } else {
       activeGames.push(game);
