@@ -186,7 +186,7 @@ export default function StandingsPage() {
 
   // Lazy-load simulation results only when that tab is first opened
   useEffect(() => {
-    if (activeTab !== 'simulated' || simResult || simLoading || simError) return;
+    if (activeTab !== 'simulated' || simResult || simLoading || simError || simNotFound) return;
     setSimLoading(true);
     setSimError(null);
     fetch(`/api/simulate-standings?${seasonQuery}`)
@@ -201,7 +201,7 @@ export default function StandingsPage() {
       .then((data) => { if (data) setSimResult(data); })
       .catch((err) => setSimError(err.message))
       .finally(() => setSimLoading(false));
-  }, [activeTab, seasonQuery, simResult, simLoading]);
+  }, [activeTab, seasonQuery, simResult, simLoading, simError, simNotFound]);
 
   if (loading) {
     return (
