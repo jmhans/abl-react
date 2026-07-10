@@ -145,6 +145,7 @@ export default function StandingsPage() {
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [simLoading, setSimLoading] = useState(false);
   const [simError, setSimError] = useState<string | null>(null);
+  const [simNotFound, setSimNotFound] = useState(false);
   const seasonQuery = useMemo(() => leagueSeasonQuery(ctx), [ctx]);
   const headToHeadMatrix = useMemo(
     () => (activeTab === 'headToHead' ? buildHeadToHeadMatrix(standings, games) : {}),
@@ -185,18 +186,19 @@ export default function StandingsPage() {
 
   // Lazy-load simulation results only when that tab is first opened
   useEffect(() => {
-    if (activeTab !== 'simulated' || simResult || simLoading) return;
+    if (activeTab !== 'simulated' || simResult || simLoading || simError) return;
     setSimLoading(true);
     setSimError(null);
     fetch(`/api/simulate-standings?${seasonQuery}`)
       .then(async (res) => {
+        if (res.status === 404) { setSimNotFound(true); return null; }
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? 'Failed to load simulation results');
         }
         return res.json();
       })
-      .then((data) => setSimResult(data))
+      .then((data) => { if (data) setSimResult(data); })
       .catch((err) => setSimError(err.message))
       .finally(() => setSimLoading(false));
   }, [activeTab, seasonQuery, simResult, simLoading]);
@@ -278,6 +280,8 @@ export default function StandingsPage() {
           simResult={simResult}
           simLoading={simLoading}
           simError={simError}
+          simNotFound={simNotFound}
+          seasonQuery={seasonQuery}
         />
       )}
 
@@ -624,13 +628,31 @@ function SimulatedStandingsPanel({
   simResult,
   simLoading,
   simError,
+  simNotFound,
+  seasonQuery,
 }: {
   simResult: SimulationResult | null;
   simLoading: boolean;
   simError: string | null;
+  simNotFound: boolean;
+  seasonQuery: string;
 }) {
   if (simLoading) {
     return <div className="py-12 text-center text-gray-500">Loading simulation results…</div>;
+  }
+
+  if (simNotFound) {
+    return (
+      <div className="py-12 text-center text-gray-500">
+        <p className="font-medium text-gray-700">No simulation results yet.</p>
+        <p className="text-sm mt-2">
+          An admin can seed them by calling:
+        </p>
+        <code className="block mt-2 bg-gray-100 rounded px-3 py-2 text-xs text-gray-700 inline-block">
+          POST /api/simulate-standings?{seasonQuery}&scenarios=1
+        </code>
+      </div>
+    );
   }
 
   if (simError) {
@@ -638,12 +660,6 @@ function SimulatedStandingsPanel({
       <div className="py-12 text-center text-red-600">
         <p className="font-medium">Could not load simulation results.</p>
         <p className="text-sm mt-1">{simError}</p>
-        <p className="text-sm mt-2 text-gray-500">
-          An admin can generate results via{' '}
-          <code className="bg-gray-100 px-1 rounded">
-            POST /api/simulate-standings?league=…&season=…&scenarios=1
-          </code>
-        </p>
       </div>
     );
   }
