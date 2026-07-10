@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   const numScenarios = Math.max(
     1,
-    parseInt(process.env.SIMULATE_STANDINGS_SCENARIOS ?? '1000', 10),
+    parseInt(process.env.SIMULATE_STANDINGS_SCENARIOS ?? '10000', 10),
   );
 
   try {
