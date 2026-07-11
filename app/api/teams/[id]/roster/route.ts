@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore, getFirstMlbGameTimeForDate, SEASON_START } from '@/app/lib/roster-utils';
+import { getNextRosterGameDate, getNextRosterLockTime, isRosterLocked, getTimeUntilLock, calculateAblScore, calculateSlashLine, getFirstMlbGameTimeForDate, SEASON_START } from '@/app/lib/roster-utils';
 
 // GET /api/teams/:id/roster?asOf=YYYY-MM-DD - Get roster for team (current or historical)
 export async function GET(
@@ -78,9 +78,13 @@ export async function GET(
         const lastUpdate = p.lastStatUpdate ? new Date(p.lastStatUpdate) : null;
         const statsAreStale = !lastUpdate || lastUpdate < SEASON_START;
         const stats = statsAreStale ? undefined : p.stats;
+        const slash = calculateSlashLine(stats);
         return {
           ...p,
-          stats,
+          stats: stats ? {
+            ...stats,
+            batting: stats.batting ? { ...stats.batting, ...slash } : stats.batting,
+          } : undefined,
           abl: calculateAblScore(stats),
         };
       });

@@ -28,6 +28,30 @@ export function calculateAblScore(stats: any): number {
   return points / b.atBats - 4.5;
 }
 
+/** Compute AVG / SLG / OPS from raw batting stats. Returns nulls when AB = 0. */
+export function calculateSlashLine(stats: any): { avg: number | null; slg: number | null; ops: number | null } {
+  const b = stats?.batting;
+  if (!b || !b.atBats) return { avg: null, slg: null, ops: null };
+
+  const ab   = b.atBats      ?? 0;
+  const h    = b.hits        ?? 0;
+  const d    = b.doubles     ?? 0;
+  const t    = b.triples     ?? 0;
+  const hr   = b.homeRuns    ?? 0;
+  const bb   = b.baseOnBalls ?? 0;
+  const hbp  = b.hitByPitch  ?? 0;
+  const sf   = b.sacFlies    ?? 0;
+
+  const avg = h / ab;
+  const tb  = (h - d - t - hr) + 2 * d + 3 * t + 4 * hr;
+  const slg = tb / ab;
+  const obpDenom = ab + bb + hbp + sf;
+  const obp = obpDenom > 0 ? (h + bb + hbp) / obpDenom : 0;
+  const ops = obp + slg;
+
+  return { avg, slg, ops };
+}
+
 /**
  * Calculate raw ABL points (numerator only, before division by AB)
  * Used for team-level aggregation
