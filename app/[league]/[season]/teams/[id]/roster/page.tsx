@@ -1035,15 +1035,21 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                       )}
                     </div>
                     {/* Line 2: supplemental stats */}
-                    {rosterView === 'stats' && (
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
-                        {b?.gamesPlayed != null && <span className="text-[11px] text-gray-400">G {b.gamesPlayed}</span>}
-                        {b?.atBats != null && <span className="text-[11px] text-gray-400">AB {b.atBats}</span>}
-                        {b?.homeRuns != null && b.homeRuns > 0 && <span className="text-[11px] text-gray-400">HR {b.homeRuns}</span>}
-                        {netSb !== null && netSb !== 0 && <span className="text-[11px] text-gray-400">SB {netSb}</span>}
-                      </div>
-                    )}
+                    {rosterView === 'stats' && (() => {
+                      const fmt = (n: number | null | undefined) => {
+                        if (n == null) return '—';
+                        const s = n.toFixed(3);
+                        return s.startsWith('0.') ? s.slice(1) : s;
+                      };
+                      const slashLine = `${fmt(b?.avg)}/${fmt(b?.slg)}/${fmt(b?.ops)}`;
+                      return (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                          {b?.atBats != null && <span className="text-[11px] text-gray-400">AB {b.atBats}</span>}
+                          <span className="text-[11px] text-gray-500 font-medium">{slashLine}</span>
+                        </div>
+                      );
+                    })()}
                     {rosterView === 'splits' && (
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
