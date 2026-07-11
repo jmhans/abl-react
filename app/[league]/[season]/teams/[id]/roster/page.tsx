@@ -945,7 +945,160 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
         {rosterView === 'eligibility' && posLogsLoading && (
           <div className="text-center py-4 text-sm text-gray-500">Loading position data…</div>
         )}
-        <table className="min-w-full divide-y divide-gray-200">
+
+        {/* ── Mobile card list (hidden on md+) ── */}
+        <div className="block md:hidden divide-y divide-gray-100">
+          {(() => {
+            const starterSet = getStarterSet(roster.roster);
+            return roster.roster.map((item, index) => {
+              const isDrafted = item.acqType === 'draft' || item.acqType === 'supp_draft';
+              const isStarter = starterSet.has(index);
+              const canDrag = !roster.locked && (isOwner || isAdmin);
+              const canDrop = !roster.locked && !isDrafted && (isOwner || isAdmin);
+              const b = item.player.stats?.batting;
+              const sb = b?.stolenBases ?? null;
+              const cs = b?.caughtStealing ?? null;
+              const netSb = (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null;
+
+              const upBlocked = index === 0 ||
+                ((item.acqType === 'fa' || item.acqType === 'trade') &&
+                  (roster.roster[index - 1]?.acqType === 'draft' || roster.roster[index - 1]?.acqType === 'supp_draft'));
+              const downBlocked = index >= roster.roster.length - 1 ||
+                ((item.acqType === 'draft' || item.acqType === 'supp_draft') &&
+                  (roster.roster[index + 1]?.acqType === 'fa' || roster.roster[index + 1]?.acqType === 'trade'));
+
+              const mlbId = String(item.player.mlbID ?? '');
+              const ps = splitsData?.[mlbId];
+
+              return (
+                <div
+                  key={item.player._id}
+                  className={`flex items-stretch gap-0 ${isStarter ? 'bg-emerald-50' : isDrafted ? 'bg-yellow-50' : 'bg-white'}`}
+                >
+                  {/* Up/down arrows */}
+                  {canDrag ? (
+                    <div className="flex flex-col items-center justify-center gap-0 px-2 py-3 shrink-0">
+                      <button
+                        onClick={() => handleMoveUp(index)}
+                        disabled={upBlocked}
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-1 leading-none"
+                        aria-label="Move up"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 2L11 8H1L6 2Z"/></svg>
+                      </button>
+                      <button
+                        onClick={() => handleMoveDown(index)}
+                        disabled={downBlocked}
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-1 leading-none"
+                        aria-label="Move down"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L1 4H11L6 10Z"/></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-8 shrink-0" />
+                  )}
+
+                  {/* Main content */}
+                  <div className="flex-1 min-w-0 py-2.5 pr-2">
+                    {/* Line 1: name + starter badge */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-sm text-gray-900 truncate">{item.player.name}</span>
+                      {isStarter && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1 rounded leading-tight shrink-0">STR</span>}
+                    </div>
+                    {/* Line 2: team · eligible | status | pos | ABL */}
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-xs text-gray-500">
+                        {item.player.team}{item.player.eligible?.length ? ` · ${item.player.eligible.join(', ')}` : ''}
+                      </span>
+                      {item.player.status?.includes('Injured') && <span className="px-1.5 py-0.5 text-[10px] rounded bg-red-200 text-red-800 font-medium leading-tight">INJ</span>}
+                      {item.player.status?.includes('Minors') && <span className="px-1.5 py-0.5 text-[10px] rounded bg-orange-200 text-orange-800 font-medium leading-tight">MIN</span>}
+                      {!item.player.status && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 text-gray-500 font-medium leading-tight">NR</span>}
+                      {/* Position selector / display */}
+                      {!roster.locked && (isOwner || isAdmin) ? (
+                        <select
+                          value={item.lineupPosition || ''}
+                          onChange={e => handlePositionChange(index, e.target.value)}
+                          className="text-xs border rounded px-1 py-0.5 bg-white"
+                        >
+                          <option value="">--</option>
+                          {item.player.status?.includes('Injured') && <option value="INJ">INJ</option>}
+                          {item.player.status?.includes('Minors') && <option value="NA">NA</option>}
+                          {!item.player.status && <option value="NR">NR</option>}
+                          {item.player.eligible?.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                        </select>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-700">{item.lineupPosition || '--'}</span>
+                      )}
+                    </div>
+                    {/* Line 3: supplemental stats */}
+                    {rosterView === 'stats' && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                        {b?.gamesPlayed != null && <span className="text-[11px] text-gray-400">G {b.gamesPlayed}</span>}
+                        {b?.atBats != null && <span className="text-[11px] text-gray-400">AB {b.atBats}</span>}
+                        {b?.homeRuns != null && b.homeRuns > 0 && <span className="text-[11px] text-gray-400">HR {b.homeRuns}</span>}
+                        {netSb !== null && netSb !== 0 && <span className="text-[11px] text-gray-400">SB {netSb}</span>}
+                      </div>
+                    )}
+                    {rosterView === 'splits' && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                        {splitsLoading ? (
+                          <span className="text-[11px] text-gray-300">…</span>
+                        ) : ps?.lastN?.[splitPeriod] ? (
+                          <span className="text-[11px] text-gray-400">L{splitPeriod}: {ps.lastN[splitPeriod].abl?.toFixed(2) ?? '—'} ({ps.lastN[splitPeriod].g}/{ps.lastN[splitPeriod].ab})</span>
+                        ) : null}
+                      </div>
+                    )}
+                    {rosterView === 'eligibility' && (() => {
+                      const log = posLogs.get(item.player.mlbID);
+                      if (!log) return <span className="text-[11px] text-gray-300 mt-1 block">…</span>;
+                      return (
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                          {STANDARD_POSITIONS.map(pos => {
+                            const entry = log.positionsLog.find(e => e.pos === pos);
+                            const ct = entry?.ct ?? 0;
+                            if (ct === 0) return null;
+                            const elig = ct >= ELIGIBILITY_THRESHOLD;
+                            return (
+                              <span key={pos} className={`text-[11px] font-medium ${elig ? 'text-green-700' : 'text-gray-400'}`}>
+                                {pos} {ct}{elig ? '✓' : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Right: drop button */}
+                  <div className="flex items-center px-2 shrink-0">
+                    {canDrop && (
+                      <button
+                        onClick={() => handleDropPlayer(item.player._id, item.player.name, item.acqType || '')}
+                        className="text-red-500 hover:text-red-700 text-xs font-medium"
+                      >
+                        Drop
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+          {roster.roster.length === 0 && (
+            <div className="text-center py-12 text-gray-500">
+              {seasonStatus === 'pre-draft'
+                ? 'No players yet — rosters are filled during the draft.'
+                : 'No players on roster. Add players from Free Agents.'}
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (hidden below md) ── */}
+        <table className="hidden md:table min-w-full divide-y divide-gray-200">
           <thead
             ref={theadRef}
             className="bg-gray-50 sticky z-10 shadow-sm"
@@ -1227,7 +1380,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
         </table>
 
         {roster.roster.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="hidden md:block text-center py-12 text-gray-500">
             {seasonStatus === 'pre-draft'
               ? 'No players yet — rosters are filled during the draft.'
               : 'No players on roster. Add players from Free Agents.'}
