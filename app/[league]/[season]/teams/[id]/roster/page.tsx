@@ -1000,38 +1000,41 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   )}
 
                   {/* Main content */}
-                  <div className="flex-1 min-w-0 py-2.5 pr-2">
-                    {/* Line 1: name + starter badge */}
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-sm text-gray-900 truncate">{item.player.name}</span>
-                      {isStarter && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1 rounded leading-tight shrink-0">STR</span>}
-                    </div>
-                    {/* Line 2: team · eligible | status | pos | ABL */}
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span className="text-xs text-gray-500">
-                        {item.player.team}{item.player.eligible?.length ? ` · ${item.player.eligible.join(', ')}` : ''}
-                      </span>
-                      {item.player.status?.includes('Injured') && <span className="px-1.5 py-0.5 text-[10px] rounded bg-red-200 text-red-800 font-medium leading-tight">INJ</span>}
-                      {item.player.status?.includes('Minors') && <span className="px-1.5 py-0.5 text-[10px] rounded bg-orange-200 text-orange-800 font-medium leading-tight">MIN</span>}
-                      {!item.player.status && <span className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 text-gray-500 font-medium leading-tight">NR</span>}
-                      {/* Position selector / display */}
-                      {!roster.locked && (isOwner || isAdmin) ? (
-                        <select
-                          value={item.lineupPosition || ''}
-                          onChange={e => handlePositionChange(index, e.target.value)}
-                          className="text-xs border rounded px-1 py-0.5 bg-white"
-                        >
-                          <option value="">--</option>
-                          {item.player.status?.includes('Injured') && <option value="INJ">INJ</option>}
-                          {item.player.status?.includes('Minors') && <option value="NA">NA</option>}
-                          {!item.player.status && <option value="NR">NR</option>}
-                          {item.player.eligible?.map(pos => <option key={pos} value={pos}>{pos}</option>)}
-                        </select>
+                  <div className="flex-1 min-w-0 py-2.5">
+                    {/* Line 1: name · team · elig · status icon */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm text-gray-900">{item.player.name}</span>
+                      {(item.player.team || item.player.eligible?.length) && (
+                        <span className="text-xs text-gray-400">
+                          {item.player.team}{item.player.eligible?.length ? ` · ${item.player.eligible.join(', ')}` : ''}
+                        </span>
+                      )}
+                      {/* Status icon */}
+                      {item.player.status?.includes('Injured') ? (
+                        /* Red cross — IL */
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 shrink-0" title="Injured List">
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                            <rect x="3" y="0" width="2" height="8" rx="1"/>
+                            <rect x="0" y="3" width="8" height="2" rx="1"/>
+                          </svg>
+                        </span>
+                      ) : item.player.status?.includes('Minors') ? (
+                        /* Amber down-arrow — sent down */
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 shrink-0" title="In Minors">
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                            <path d="M4 7L0.5 2.5h7L4 7Z"/>
+                            <rect x="3" y="0" width="2" height="3.5" rx="1"/>
+                          </svg>
+                        </span>
+                      ) : item.player.status ? (
+                        /* Green A — active */
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500 text-white text-[9px] font-bold leading-none shrink-0" title="Active">A</span>
                       ) : (
-                        <span className="text-xs font-medium text-gray-700">{item.lineupPosition || '--'}</span>
+                        /* Gray NR — non-roster */
+                        <span className="text-[10px] text-gray-400 font-medium shrink-0">NR</span>
                       )}
                     </div>
-                    {/* Line 3: supplemental stats */}
+                    {/* Line 2: supplemental stats */}
                     {rosterView === 'stats' && (
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
@@ -1073,12 +1076,27 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                     })()}
                   </div>
 
-                  {/* Right: drop button */}
-                  <div className="flex items-center px-2 shrink-0">
+                  {/* Right column: pos selector + drop, full-height centered */}
+                  <div className="flex flex-col items-center justify-center gap-1 px-3 py-2 border-l border-gray-100 shrink-0 min-w-[4rem]">
+                    {!roster.locked && (isOwner || isAdmin) ? (
+                      <select
+                        value={item.lineupPosition || ''}
+                        onChange={e => handlePositionChange(index, e.target.value)}
+                        className="text-xs border rounded px-1 py-1 bg-white w-full text-center"
+                      >
+                        <option value="">--</option>
+                        {item.player.status?.includes('Injured') && <option value="INJ">INJ</option>}
+                        {item.player.status?.includes('Minors') && <option value="NA">NA</option>}
+                        {!item.player.status && <option value="NR">NR</option>}
+                        {item.player.eligible?.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-sm font-medium text-gray-700">{item.lineupPosition || '--'}</span>
+                    )}
                     {canDrop && (
                       <button
                         onClick={() => handleDropPlayer(item.player._id, item.player.name, item.acqType || '')}
-                        className="text-red-500 hover:text-red-700 text-xs font-medium"
+                        className="text-red-400 hover:text-red-600 text-[10px] font-medium"
                       >
                         Drop
                       </button>
