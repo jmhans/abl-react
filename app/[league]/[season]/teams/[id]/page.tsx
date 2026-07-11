@@ -208,28 +208,40 @@ export default function TeamDetailPage() {
             </div>
           </>
         ) : (
-          <div className="relative flex items-start justify-center min-h-[3.5rem]">
+          <div className="relative flex items-center justify-center min-h-[2.5rem]">
+            {/* Back arrow */}
             <Link
               href={`/${league}/${season}/teams`}
-              className="absolute left-0 top-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 text-sm"
+              className="absolute left-0 p-1.5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Back to Teams"
             >
-              ← Back to Teams
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 4l-6 6 6 6"/>
+              </svg>
             </Link>
-            <div className="text-center px-28">
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+
+            {/* Team name */}
+            <div className="text-center px-10 sm:px-16">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white leading-tight">
                 {teamInfo.location && <span>{teamInfo.location} </span>}
                 {teamInfo.nickname || <span className="text-gray-400 italic">Unnamed Team</span>}
               </h1>
               {teamInfo.stadium && (
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">🏟️ {teamInfo.stadium}</p>
+                <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">🏟️ {teamInfo.stadium}</p>
               )}
             </div>
+
+            {/* Pencil icon */}
             {(isOwner || isAdmin) && (
               <button
                 onClick={() => { setTeamInfoDraft(teamInfo); setEditingTeamInfo(true); setTeamInfoError(''); }}
-                className="absolute right-0 top-0 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30 whitespace-nowrap"
+                className="absolute right-0 p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Edit team info"
               >
-                ✏️ Edit
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
               </button>
             )}
           </div>

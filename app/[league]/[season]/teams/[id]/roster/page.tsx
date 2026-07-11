@@ -55,6 +55,32 @@ interface RosterData {
   asOf?: string | null;
 }
 
+function getStarterSet(items: RosterItem[]): Set<number> {
+  const starters = new Set<number>();
+  const filledInfield = { C: false, '1B': false, '2B': false, '3B': false, SS: false };
+  let ofCount = 0;
+  let dhFilled = false;
+  const isActive = (pos: string | null) => !!pos && pos !== 'INJ' && pos !== 'NA' && pos !== 'NR';
+
+  for (let i = 0; i < items.length; i++) {
+    const pos = items[i].lineupPosition;
+    if (!isActive(pos)) continue;
+    if (pos === 'DH' && !dhFilled) { starters.add(i); dhFilled = true; }
+    else if (pos === 'OF' && ofCount < 3) { starters.add(i); ofCount++; }
+    else if (pos && pos in filledInfield && !filledInfield[pos as keyof typeof filledInfield]) {
+      starters.add(i);
+      filledInfield[pos as keyof typeof filledInfield] = true;
+    }
+  }
+  // Implied DH: first active player not already filling a slot
+  if (!dhFilled) {
+    for (let i = 0; i < items.length; i++) {
+      if (!starters.has(i) && isActive(items[i].lineupPosition)) { starters.add(i); break; }
+    }
+  }
+  return starters;
+}
+
 export default function TeamRosterPage({ embedded = false }: { embedded?: boolean }) {
   const params = useParams();
   const teamId = params.id as string;
@@ -252,6 +278,34 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
   };
 
   const handleDragEnd = () => { setDraggedIndex(null); };
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0 || !roster || roster.locked || (!isOwner && !isAdmin)) return;
+    const items = [...roster.roster];
+    const moving = items[index];
+    const above = items[index - 1];
+    const isMovingPickup = moving.acqType === 'fa' || moving.acqType === 'trade';
+    const isAboveDrafted = above.acqType === 'draft' || above.acqType === 'supp_draft';
+    if (isMovingPickup && isAboveDrafted) return;
+    [items[index - 1], items[index]] = [items[index], items[index - 1]];
+    items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+    setRoster({ ...roster, roster: items });
+    setHasChanges(true);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (!roster || index >= roster.roster.length - 1 || roster.locked || (!isOwner && !isAdmin)) return;
+    const items = [...roster.roster];
+    const moving = items[index];
+    const below = items[index + 1];
+    const isMovingDrafted = moving.acqType === 'draft' || moving.acqType === 'supp_draft';
+    const isBelowPickup = below.acqType === 'fa' || below.acqType === 'trade';
+    if (isMovingDrafted && isBelowPickup) return;
+    [items[index], items[index + 1]] = [items[index + 1], items[index]];
+    items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+    setRoster({ ...roster, roster: items });
+    setHasChanges(true);
+  };
 
   // Refs so native (non-passive) touch handlers always see fresh state without stale closures
   const rosterRef = useRef<RosterData | null>(null);
@@ -891,7 +945,184 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
         {rosterView === 'eligibility' && posLogsLoading && (
           <div className="text-center py-4 text-sm text-gray-500">Loading position data…</div>
         )}
-        <table className="min-w-full divide-y divide-gray-200">
+
+        {/* ── Mobile card list (hidden on md+) ── */}
+        <div className="block md:hidden divide-y divide-gray-100">
+          {(() => {
+            const starterSet = getStarterSet(roster.roster);
+            return roster.roster.map((item, index) => {
+              const isDrafted = item.acqType === 'draft' || item.acqType === 'supp_draft';
+              const isStarter = starterSet.has(index);
+              const canDrag = !roster.locked && (isOwner || isAdmin);
+              const canDrop = !roster.locked && !isDrafted && (isOwner || isAdmin);
+              const b = item.player.stats?.batting;
+              const sb = b?.stolenBases ?? null;
+              const cs = b?.caughtStealing ?? null;
+              const netSb = (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null;
+
+              const upBlocked = index === 0 ||
+                ((item.acqType === 'fa' || item.acqType === 'trade') &&
+                  (roster.roster[index - 1]?.acqType === 'draft' || roster.roster[index - 1]?.acqType === 'supp_draft'));
+              const downBlocked = index >= roster.roster.length - 1 ||
+                ((item.acqType === 'draft' || item.acqType === 'supp_draft') &&
+                  (roster.roster[index + 1]?.acqType === 'fa' || roster.roster[index + 1]?.acqType === 'trade'));
+
+              const mlbId = String(item.player.mlbID ?? '');
+              const ps = splitsData?.[mlbId];
+
+              return (
+                <div
+                  key={item.player._id}
+                  className={`flex items-stretch gap-0 ${isStarter ? 'bg-emerald-50' : isDrafted ? 'bg-yellow-50' : 'bg-white'}`}
+                >
+                  {/* Up/down arrows */}
+                  {canDrag ? (
+                    <div className="flex flex-col items-center justify-center gap-0 px-2 py-3 shrink-0">
+                      <button
+                        onClick={() => handleMoveUp(index)}
+                        disabled={upBlocked}
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-1 leading-none"
+                        aria-label="Move up"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 2L11 8H1L6 2Z"/></svg>
+                      </button>
+                      <button
+                        onClick={() => handleMoveDown(index)}
+                        disabled={downBlocked}
+                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-1 leading-none"
+                        aria-label="Move down"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M6 10L1 4H11L6 10Z"/></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-8 shrink-0" />
+                  )}
+
+                  {/* Main content */}
+                  <div className="flex-1 min-w-0 py-2.5">
+                    {/* Line 1: name · team · elig · status icon */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm text-gray-900">{item.player.name}</span>
+                      {(item.player.team || item.player.eligible?.length) && (
+                        <span className="text-xs text-gray-400">
+                          {item.player.team}{item.player.eligible?.length ? ` · ${item.player.eligible.join(', ')}` : ''}
+                        </span>
+                      )}
+                      {/* Status icon */}
+                      {item.player.status?.includes('Injured') ? (
+                        /* Red cross — IL */
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 shrink-0" title="Injured List">
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                            <rect x="3" y="0" width="2" height="8" rx="1"/>
+                            <rect x="0" y="3" width="8" height="2" rx="1"/>
+                          </svg>
+                        </span>
+                      ) : item.player.status?.includes('Minors') ? (
+                        /* Amber down-arrow — sent down */
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 shrink-0" title="In Minors">
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                            <path d="M4 7L0.5 2.5h7L4 7Z"/>
+                            <rect x="3" y="0" width="2" height="3.5" rx="1"/>
+                          </svg>
+                        </span>
+                      ) : item.player.status ? (
+                        /* Green A — active */
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500 text-white text-[9px] font-bold leading-none shrink-0" title="Active">A</span>
+                      ) : (
+                        /* Gray NR — non-roster */
+                        <span className="text-[10px] text-gray-400 font-medium shrink-0">NR</span>
+                      )}
+                    </div>
+                    {/* Line 2: supplemental stats */}
+                    {rosterView === 'stats' && (() => {
+                      const fmt = (n: number | null | undefined) => {
+                        if (n == null) return '—';
+                        const s = n.toFixed(3);
+                        return s.startsWith('0.') ? s.slice(1) : s;
+                      };
+                      const slashLine = `${fmt(b?.avg)}/${fmt(b?.slg)}/${fmt(b?.ops)}`;
+                      return (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                          {b?.atBats != null && <span className="text-[11px] text-gray-400">AB {b.atBats}</span>}
+                          <span className="text-[11px] text-gray-500 font-medium">{slashLine}</span>
+                        </div>
+                      );
+                    })()}
+                    {rosterView === 'splits' && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                        {splitsLoading ? (
+                          <span className="text-[11px] text-gray-300">…</span>
+                        ) : ps?.lastN?.[splitPeriod] ? (
+                          <span className="text-[11px] text-gray-400">L{splitPeriod}: {ps.lastN[splitPeriod].abl?.toFixed(2) ?? '—'} ({ps.lastN[splitPeriod].g}/{ps.lastN[splitPeriod].ab})</span>
+                        ) : null}
+                      </div>
+                    )}
+                    {rosterView === 'eligibility' && (() => {
+                      const log = posLogs.get(item.player.mlbID);
+                      if (!log) return <span className="text-[11px] text-gray-300 mt-1 block">…</span>;
+                      return (
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="text-xs font-semibold text-blue-700">ABL {item.player.abl?.toFixed(2) ?? '—'}</span>
+                          {STANDARD_POSITIONS.map(pos => {
+                            const entry = log.positionsLog.find(e => e.pos === pos);
+                            const ct = entry?.ct ?? 0;
+                            if (ct === 0) return null;
+                            const elig = ct >= ELIGIBILITY_THRESHOLD;
+                            return (
+                              <span key={pos} className={`text-[11px] font-medium ${elig ? 'text-green-700' : 'text-gray-400'}`}>
+                                {pos} {ct}{elig ? '✓' : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Right column: pos selector + drop, full-height centered */}
+                  <div className="flex flex-col items-center justify-center gap-1 px-3 py-2 border-l border-gray-100 shrink-0 min-w-[4rem]">
+                    {!roster.locked && (isOwner || isAdmin) ? (
+                      <select
+                        value={item.lineupPosition || ''}
+                        onChange={e => handlePositionChange(index, e.target.value)}
+                        className="text-xs border rounded px-1 py-1 bg-white w-full text-center"
+                      >
+                        <option value="">--</option>
+                        {item.player.status?.includes('Injured') && <option value="INJ">INJ</option>}
+                        {item.player.status?.includes('Minors') && <option value="NA">NA</option>}
+                        {!item.player.status && <option value="NR">NR</option>}
+                        {item.player.eligible?.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-sm font-medium text-gray-700">{item.lineupPosition || '--'}</span>
+                    )}
+                    {canDrop && (
+                      <button
+                        onClick={() => handleDropPlayer(item.player._id, item.player.name, item.acqType || '')}
+                        className="text-red-400 hover:text-red-600 text-[10px] font-medium"
+                      >
+                        Drop
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+          {roster.roster.length === 0 && (
+            <div className="text-center py-12 text-gray-500">
+              {seasonStatus === 'pre-draft'
+                ? 'No players yet — rosters are filled during the draft.'
+                : 'No players on roster. Add players from Free Agents.'}
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop table (hidden below md) ── */}
+        <table className="hidden md:table min-w-full divide-y divide-gray-200">
           <thead
             ref={theadRef}
             className="bg-gray-50 sticky z-10 shadow-sm"
@@ -899,7 +1130,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
           >
             <tr>
               <th className="px-2 py-3 w-8"></th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
+              <th className="hidden sm:table-cell px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pos</th>
@@ -943,16 +1174,26 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {roster.roster.map((item, index) => {
+            {(() => {
+              const starterSet = getStarterSet(roster.roster);
+              return roster.roster.map((item, index) => {
               const isDrafted =
                 item.acqType === 'draft' ||
                 item.acqType === 'supp_draft';
+              const isStarter = starterSet.has(index);
               const canDrag = !roster.locked && (isOwner || isAdmin);
               const canDrop = !roster.locked && !isDrafted && (isOwner || isAdmin);
               const b = item.player.stats?.batting;
               const sb = b?.stolenBases ?? null;
               const cs = b?.caughtStealing ?? null;
               const netSb = (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null;
+
+              const upBlocked = index === 0 ||
+                ((item.acqType === 'fa' || item.acqType === 'trade') &&
+                  (roster.roster[index - 1]?.acqType === 'draft' || roster.roster[index - 1]?.acqType === 'supp_draft'));
+              const downBlocked = index >= roster.roster.length - 1 ||
+                ((item.acqType === 'draft' || item.acqType === 'supp_draft') &&
+                  (roster.roster[index + 1]?.acqType === 'fa' || roster.roster[index + 1]?.acqType === 'trade'));
 
               return (
                 <tr
@@ -964,59 +1205,88 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   onDragEnd={handleDragEnd}
                   className={`${draggedIndex === index ? 'opacity-50' : ''} ${
                     canDrag ? 'hover:bg-gray-50' : ''
-                  } ${isDrafted ? 'bg-yellow-50' : ''}`}
+                  } ${isStarter ? 'bg-emerald-50' : isDrafted ? 'bg-yellow-50' : ''}`}
                 >
-                  <td className="px-2 py-4 w-8 text-center">
+                  <td className="px-1 py-2 sm:px-2 sm:py-4 w-8 text-center">
                     {canDrag && (
-                      <div
-                        className="cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 flex items-center justify-center select-none"
-                        style={{ touchAction: 'none' }}
-                        data-drag-handle="true"
-                        aria-label="Drag to reorder"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                          <circle cx="5.5" cy="4" r="1.5" />
-                          <circle cx="10.5" cy="4" r="1.5" />
-                          <circle cx="5.5" cy="8" r="1.5" />
-                          <circle cx="10.5" cy="8" r="1.5" />
-                          <circle cx="5.5" cy="12" r="1.5" />
-                          <circle cx="10.5" cy="12" r="1.5" />
-                        </svg>
-                      </div>
+                      <>
+                        {/* Desktop: drag handle */}
+                        <div
+                          className="hidden sm:flex cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 items-center justify-center select-none"
+                          style={{ touchAction: 'none' }}
+                          data-drag-handle="true"
+                          aria-label="Drag to reorder"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <circle cx="5.5" cy="4" r="1.5" />
+                            <circle cx="10.5" cy="4" r="1.5" />
+                            <circle cx="5.5" cy="8" r="1.5" />
+                            <circle cx="10.5" cy="8" r="1.5" />
+                            <circle cx="5.5" cy="12" r="1.5" />
+                            <circle cx="10.5" cy="12" r="1.5" />
+                          </svg>
+                        </div>
+                        {/* Mobile: up/down arrows */}
+                        <div className="flex sm:hidden flex-col items-center gap-0.5">
+                          <button
+                            onClick={() => handleMoveUp(index)}
+                            disabled={upBlocked}
+                            className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-0.5 leading-none"
+                            aria-label="Move up"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                              <path d="M6 2L11 8H1L6 2Z"/>
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleMoveDown(index)}
+                            disabled={downBlocked}
+                            className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-0.5 leading-none"
+                            aria-label="Move down"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                              <path d="M6 10L1 4H11L6 10Z"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </>
                     )}
                   </td>
-                  <td className="px-3 py-4 text-sm font-medium text-gray-900">{item.rosterOrder}</td>
-                  <td className="px-3 py-4 text-sm">
-                    <div className="font-medium text-gray-900">{item.player.name}</div>
+                  <td className="hidden sm:table-cell px-3 py-2 sm:py-4 text-sm font-medium text-gray-900">{item.rosterOrder}</td>
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-sm">
+                    <div className="font-medium text-gray-900 flex items-center gap-1">
+                      {item.player.name}
+                      {isStarter && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1 rounded leading-tight">STR</span>}
+                    </div>
                     <div className="text-xs text-gray-500">
                       {item.player.team} {item.player.eligible ? `- ${item.player.eligible.join(', ')}` : ''}
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-center">
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-center">
                     <div className="flex gap-1 justify-center items-center">
                       {item.player.status ? (
                         <>
                           {item.player.status.includes('Injured') && (
-                            <span className="px-2 py-1 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
                           )}
                           {item.player.status.includes('Minors') && (
-                            <span className="px-2 py-1 text-xs rounded bg-orange-200 text-orange-800 font-medium">MIN</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-orange-200 text-orange-800 font-medium">MIN</span>
                           )}
                           {!item.player.status.includes('Injured') && !item.player.status.includes('Minors') && (
                             <span className="text-xs text-gray-600">{item.player.status}</span>
                           )}
                         </>
                       ) : (
-                        <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600 font-medium">NR</span>
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-200 text-gray-600 font-medium">NR</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-center">
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-center">
                     {!roster.locked && (isOwner || isAdmin) ? (
                       <select
                         value={item.lineupPosition || ''}
                         onChange={e => handlePositionChange(index, e.target.value)}
-                        className="text-sm border rounded px-2 py-1"
+                        className="text-xs sm:text-sm border rounded px-1 sm:px-2 py-1"
                       >
                         <option value="">--</option>
                         {item.player.status?.includes('Injured') && (
@@ -1038,17 +1308,17 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   </td>
                   {rosterView === 'stats' ? (
                     <>
-                      <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2 sm:py-4 text-center text-sm font-medium text-gray-900">
                         {item.player.abl?.toFixed(2) ?? '—'}
                       </td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">
                         {(item.player.stats?.fielding?.errors ?? 0) > 0 ? (
                           <span className="text-red-600 font-medium">{item.player.stats.fielding.errors}</span>
                         ) : '—'}
@@ -1070,16 +1340,16 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                       };
                       return (
                         <>
-                          <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                          <td className="px-3 py-2 sm:py-4 text-center text-sm font-medium text-gray-900">
                             {item.player.abl?.toFixed(2) ?? '—'}
                           </td>
-                          <td className="hidden sm:table-cell px-3 py-4 text-center">
+                          <td className="hidden sm:table-cell px-3 py-2 sm:py-4 text-center">
                             {renderBucketContent(ps?.lastN?.[splitPeriod])}
                           </td>
-                          <td className="hidden md:table-cell px-3 py-4 text-center">
+                          <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center">
                             {renderBucketContent(ps?.ablOn)}
                           </td>
-                          <td className="hidden md:table-cell px-3 py-4 text-center">
+                          <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center">
                             {renderBucketContent(ps?.ablOff)}
                           </td>
                         </>
@@ -1087,7 +1357,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                     })()
                   : (
                     <>
-                      <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2 sm:py-4 text-center text-sm font-medium text-gray-900">
                         {item.player.abl?.toFixed(2) ?? '—'}
                       </td>
                       {STANDARD_POSITIONS.map(pos => {
@@ -1097,7 +1367,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                         const eligible = ct >= ELIGIBILITY_THRESHOLD;
                         const hasGames = ct > 0;
                         return (
-                          <td key={pos} className="px-3 py-4 text-center text-sm tabular-nums">
+                          <td key={pos} className="px-3 py-2 sm:py-4 text-center text-sm tabular-nums">
                             {!log ? (
                               <span className="text-gray-300">…</span>
                             ) : hasGames ? (
@@ -1112,7 +1382,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                       })}
                     </>
                   )}
-                  <td className="px-3 py-4 text-center">
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-center">
                     {canDrop ? (
                       <button
                         onClick={() =>
@@ -1128,12 +1398,13 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   </td>
                 </tr>
               );
-            })}
+              });
+            })()}
           </tbody>
         </table>
 
         {roster.roster.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="hidden md:block text-center py-12 text-gray-500">
             {seasonStatus === 'pre-draft'
               ? 'No players yet — rosters are filled during the draft.'
               : 'No players on roster. Add players from Free Agents.'}
