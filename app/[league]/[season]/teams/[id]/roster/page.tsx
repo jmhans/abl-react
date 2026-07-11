@@ -55,6 +55,32 @@ interface RosterData {
   asOf?: string | null;
 }
 
+function getStarterSet(items: RosterItem[]): Set<number> {
+  const starters = new Set<number>();
+  const filledInfield = { C: false, '1B': false, '2B': false, '3B': false, SS: false };
+  let ofCount = 0;
+  let dhFilled = false;
+  const isActive = (pos: string | null) => !!pos && pos !== 'INJ' && pos !== 'NA' && pos !== 'NR';
+
+  for (let i = 0; i < items.length; i++) {
+    const pos = items[i].lineupPosition;
+    if (!isActive(pos)) continue;
+    if (pos === 'DH' && !dhFilled) { starters.add(i); dhFilled = true; }
+    else if (pos === 'OF' && ofCount < 3) { starters.add(i); ofCount++; }
+    else if (pos && pos in filledInfield && !filledInfield[pos as keyof typeof filledInfield]) {
+      starters.add(i);
+      filledInfield[pos as keyof typeof filledInfield] = true;
+    }
+  }
+  // Implied DH: first active player not already filling a slot
+  if (!dhFilled) {
+    for (let i = 0; i < items.length; i++) {
+      if (!starters.has(i) && isActive(items[i].lineupPosition)) { starters.add(i); break; }
+    }
+  }
+  return starters;
+}
+
 export default function TeamRosterPage({ embedded = false }: { embedded?: boolean }) {
   const params = useParams();
   const teamId = params.id as string;
@@ -252,6 +278,34 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
   };
 
   const handleDragEnd = () => { setDraggedIndex(null); };
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0 || !roster || roster.locked || (!isOwner && !isAdmin)) return;
+    const items = [...roster.roster];
+    const moving = items[index];
+    const above = items[index - 1];
+    const isMovingPickup = moving.acqType === 'fa' || moving.acqType === 'trade';
+    const isAboveDrafted = above.acqType === 'draft' || above.acqType === 'supp_draft';
+    if (isMovingPickup && isAboveDrafted) return;
+    [items[index - 1], items[index]] = [items[index], items[index - 1]];
+    items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+    setRoster({ ...roster, roster: items });
+    setHasChanges(true);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (!roster || index >= roster.roster.length - 1 || roster.locked || (!isOwner && !isAdmin)) return;
+    const items = [...roster.roster];
+    const moving = items[index];
+    const below = items[index + 1];
+    const isMovingDrafted = moving.acqType === 'draft' || moving.acqType === 'supp_draft';
+    const isBelowPickup = below.acqType === 'fa' || below.acqType === 'trade';
+    if (isMovingDrafted && isBelowPickup) return;
+    [items[index], items[index + 1]] = [items[index + 1], items[index]];
+    items.forEach((item, idx) => { item.rosterOrder = idx + 1; });
+    setRoster({ ...roster, roster: items });
+    setHasChanges(true);
+  };
 
   // Refs so native (non-passive) touch handlers always see fresh state without stale closures
   const rosterRef = useRef<RosterData | null>(null);
@@ -899,7 +953,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
           >
             <tr>
               <th className="px-2 py-3 w-8"></th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
+              <th className="hidden sm:table-cell px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-12">#</th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pos</th>
@@ -943,16 +997,26 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {roster.roster.map((item, index) => {
+            {(() => {
+              const starterSet = getStarterSet(roster.roster);
+              return roster.roster.map((item, index) => {
               const isDrafted =
                 item.acqType === 'draft' ||
                 item.acqType === 'supp_draft';
+              const isStarter = starterSet.has(index);
               const canDrag = !roster.locked && (isOwner || isAdmin);
               const canDrop = !roster.locked && !isDrafted && (isOwner || isAdmin);
               const b = item.player.stats?.batting;
               const sb = b?.stolenBases ?? null;
               const cs = b?.caughtStealing ?? null;
               const netSb = (sb !== null || cs !== null) ? (sb ?? 0) - (cs ?? 0) : null;
+
+              const upBlocked = index === 0 ||
+                ((item.acqType === 'fa' || item.acqType === 'trade') &&
+                  (roster.roster[index - 1]?.acqType === 'draft' || roster.roster[index - 1]?.acqType === 'supp_draft'));
+              const downBlocked = index >= roster.roster.length - 1 ||
+                ((item.acqType === 'draft' || item.acqType === 'supp_draft') &&
+                  (roster.roster[index + 1]?.acqType === 'fa' || roster.roster[index + 1]?.acqType === 'trade'));
 
               return (
                 <tr
@@ -964,59 +1028,88 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   onDragEnd={handleDragEnd}
                   className={`${draggedIndex === index ? 'opacity-50' : ''} ${
                     canDrag ? 'hover:bg-gray-50' : ''
-                  } ${isDrafted ? 'bg-yellow-50' : ''}`}
+                  } ${isStarter ? 'bg-emerald-50' : isDrafted ? 'bg-yellow-50' : ''}`}
                 >
-                  <td className="px-2 py-4 w-8 text-center">
+                  <td className="px-1 py-2 sm:px-2 sm:py-4 w-8 text-center">
                     {canDrag && (
-                      <div
-                        className="cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 flex items-center justify-center select-none"
-                        style={{ touchAction: 'none' }}
-                        data-drag-handle="true"
-                        aria-label="Drag to reorder"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                          <circle cx="5.5" cy="4" r="1.5" />
-                          <circle cx="10.5" cy="4" r="1.5" />
-                          <circle cx="5.5" cy="8" r="1.5" />
-                          <circle cx="10.5" cy="8" r="1.5" />
-                          <circle cx="5.5" cy="12" r="1.5" />
-                          <circle cx="10.5" cy="12" r="1.5" />
-                        </svg>
-                      </div>
+                      <>
+                        {/* Desktop: drag handle */}
+                        <div
+                          className="hidden sm:flex cursor-grab text-gray-400 hover:text-gray-600 active:text-gray-800 items-center justify-center select-none"
+                          style={{ touchAction: 'none' }}
+                          data-drag-handle="true"
+                          aria-label="Drag to reorder"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <circle cx="5.5" cy="4" r="1.5" />
+                            <circle cx="10.5" cy="4" r="1.5" />
+                            <circle cx="5.5" cy="8" r="1.5" />
+                            <circle cx="10.5" cy="8" r="1.5" />
+                            <circle cx="5.5" cy="12" r="1.5" />
+                            <circle cx="10.5" cy="12" r="1.5" />
+                          </svg>
+                        </div>
+                        {/* Mobile: up/down arrows */}
+                        <div className="flex sm:hidden flex-col items-center gap-0.5">
+                          <button
+                            onClick={() => handleMoveUp(index)}
+                            disabled={upBlocked}
+                            className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-0.5 leading-none"
+                            aria-label="Move up"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                              <path d="M6 2L11 8H1L6 2Z"/>
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleMoveDown(index)}
+                            disabled={downBlocked}
+                            className="text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed p-0.5 leading-none"
+                            aria-label="Move down"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                              <path d="M6 10L1 4H11L6 10Z"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </>
                     )}
                   </td>
-                  <td className="px-3 py-4 text-sm font-medium text-gray-900">{item.rosterOrder}</td>
-                  <td className="px-3 py-4 text-sm">
-                    <div className="font-medium text-gray-900">{item.player.name}</div>
+                  <td className="hidden sm:table-cell px-3 py-2 sm:py-4 text-sm font-medium text-gray-900">{item.rosterOrder}</td>
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-sm">
+                    <div className="font-medium text-gray-900 flex items-center gap-1">
+                      {item.player.name}
+                      {isStarter && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1 rounded leading-tight">STR</span>}
+                    </div>
                     <div className="text-xs text-gray-500">
                       {item.player.team} {item.player.eligible ? `- ${item.player.eligible.join(', ')}` : ''}
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-center">
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-center">
                     <div className="flex gap-1 justify-center items-center">
                       {item.player.status ? (
                         <>
                           {item.player.status.includes('Injured') && (
-                            <span className="px-2 py-1 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-red-200 text-red-800 font-medium">INJ</span>
                           )}
                           {item.player.status.includes('Minors') && (
-                            <span className="px-2 py-1 text-xs rounded bg-orange-200 text-orange-800 font-medium">MIN</span>
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-orange-200 text-orange-800 font-medium">MIN</span>
                           )}
                           {!item.player.status.includes('Injured') && !item.player.status.includes('Minors') && (
                             <span className="text-xs text-gray-600">{item.player.status}</span>
                           )}
                         </>
                       ) : (
-                        <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600 font-medium">NR</span>
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-200 text-gray-600 font-medium">NR</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-4 text-center">
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-center">
                     {!roster.locked && (isOwner || isAdmin) ? (
                       <select
                         value={item.lineupPosition || ''}
                         onChange={e => handlePositionChange(index, e.target.value)}
-                        className="text-sm border rounded px-2 py-1"
+                        className="text-xs sm:text-sm border rounded px-1 sm:px-2 py-1"
                       >
                         <option value="">--</option>
                         {item.player.status?.includes('Injured') && (
@@ -1038,17 +1131,17 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   </td>
                   {rosterView === 'stats' ? (
                     <>
-                      <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2 sm:py-4 text-center text-sm font-medium text-gray-900">
                         {item.player.abl?.toFixed(2) ?? '—'}
                       </td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
-                      <td className="hidden md:table-cell px-3 py-4 text-center text-sm text-gray-900">
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.gamesPlayed ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.atBats ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.hits ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{b?.homeRuns ?? '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{(b?.baseOnBalls ?? 0) > 0 ? b?.baseOnBalls : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{netSb !== null ? netSb : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">{(b?.hitByPitch ?? 0) > 0 ? b?.hitByPitch : '—'}</td>
+                      <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center text-sm text-gray-900">
                         {(item.player.stats?.fielding?.errors ?? 0) > 0 ? (
                           <span className="text-red-600 font-medium">{item.player.stats.fielding.errors}</span>
                         ) : '—'}
@@ -1070,16 +1163,16 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                       };
                       return (
                         <>
-                          <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                          <td className="px-3 py-2 sm:py-4 text-center text-sm font-medium text-gray-900">
                             {item.player.abl?.toFixed(2) ?? '—'}
                           </td>
-                          <td className="hidden sm:table-cell px-3 py-4 text-center">
+                          <td className="hidden sm:table-cell px-3 py-2 sm:py-4 text-center">
                             {renderBucketContent(ps?.lastN?.[splitPeriod])}
                           </td>
-                          <td className="hidden md:table-cell px-3 py-4 text-center">
+                          <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center">
                             {renderBucketContent(ps?.ablOn)}
                           </td>
-                          <td className="hidden md:table-cell px-3 py-4 text-center">
+                          <td className="hidden md:table-cell px-3 py-2 sm:py-4 text-center">
                             {renderBucketContent(ps?.ablOff)}
                           </td>
                         </>
@@ -1087,7 +1180,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                     })()
                   : (
                     <>
-                      <td className="px-3 py-4 text-center text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2 sm:py-4 text-center text-sm font-medium text-gray-900">
                         {item.player.abl?.toFixed(2) ?? '—'}
                       </td>
                       {STANDARD_POSITIONS.map(pos => {
@@ -1097,7 +1190,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                         const eligible = ct >= ELIGIBILITY_THRESHOLD;
                         const hasGames = ct > 0;
                         return (
-                          <td key={pos} className="px-3 py-4 text-center text-sm tabular-nums">
+                          <td key={pos} className="px-3 py-2 sm:py-4 text-center text-sm tabular-nums">
                             {!log ? (
                               <span className="text-gray-300">…</span>
                             ) : hasGames ? (
@@ -1112,7 +1205,7 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                       })}
                     </>
                   )}
-                  <td className="px-3 py-4 text-center">
+                  <td className="px-2 sm:px-3 py-2 sm:py-4 text-center">
                     {canDrop ? (
                       <button
                         onClick={() =>
@@ -1128,7 +1221,8 @@ export default function TeamRosterPage({ embedded = false }: { embedded?: boolea
                   </td>
                 </tr>
               );
-            })}
+              });
+            })()}
           </tbody>
         </table>
 
