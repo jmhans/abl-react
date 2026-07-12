@@ -148,19 +148,23 @@ function PlayerCard({ player, revealed, align }: { player: PlayerEntry | null; r
   const ab        = player.dailyStats?.ab ?? 0;
   const ablScore  = ab > 0 ? ((ablPoints ?? 0) / ab - 4.5) : null;
 
+  const meta = [player.mlbTeam, player.playedPosition || player.position].filter(Boolean).join(' · ');
+
   return (
-    <div className={`flex-1 rounded-lg border p-3 flex flex-col gap-1 min-h-[90px] ${cardClass} ${isRight ? 'items-end text-right' : 'items-start text-left'}`}>
-      <div className="font-semibold text-sm text-gray-900 leading-tight">{player.name}</div>
-      <div className="text-[11px] text-gray-500">
-        {[player.mlbTeam, player.playedPosition || player.position].filter(Boolean).join(' · ')}
+    <div className={`flex-1 rounded-lg border px-2.5 py-2 flex flex-col gap-1 ${cardClass} ${isRight ? 'items-end text-right' : 'items-start text-left'}`}>
+      {/* Line 1: name · team/pos */}
+      <div className={`flex items-baseline gap-1.5 flex-wrap ${isRight ? 'flex-row-reverse justify-start' : ''}`}>
+        <span className="font-semibold text-sm text-gray-900 leading-tight">{player.name}</span>
+        {meta && <span className="text-[10px] text-gray-400 leading-tight shrink-0">{meta}</span>}
       </div>
-      <div className="text-[11px] font-mono text-gray-700">{statLine(player)}</div>
-      <div className={`flex items-center gap-2 ${isRight ? 'flex-row-reverse' : ''}`}>
-        <StarDisplay stars={stars} />
+      {/* Line 2: stat line + pts + stars */}
+      <div className={`flex items-center gap-2 flex-wrap ${isRight ? 'flex-row-reverse' : ''}`}>
+        <span className="text-[11px] font-mono text-gray-700">{statLine(player)}</span>
         <span className="text-[10px] text-gray-500 tabular-nums">
-          {ablScore !== null ? `${ablScore.toFixed(2)} ABL` : '—'}
+          {ablScore !== null ? `${ablScore.toFixed(2)}` : '—'}
           {ablPoints != null ? ` · ${ablPoints.toFixed(1)}pts` : ''}
         </span>
+        <StarDisplay stars={stars} />
       </div>
     </div>
   );
