@@ -160,6 +160,14 @@ export default function LeagueSeasonHome() {
         )}
 
         {userTeamId && (
+          <Link href={`${base}/drama`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-pink-400 hover:shadow transition group">
+            <div className="text-2xl mb-2">🎭</div>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-pink-700">Drama Mode</h2>
+            <p className="text-xs text-gray-500 mt-1">Reveal your last game result one slot at a time</p>
+          </Link>
+        )}
+
+        {userTeamId && (
           <Link href={`${base}/teams/${userTeamId}/free-agents`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
             <div className="text-2xl mb-2">👤</div>
             <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Free Agents</h2>
