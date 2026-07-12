@@ -188,6 +188,7 @@ export default function DramaModePage() {
   const [roster, setRoster] = useState<GameRoster | null>(null);
 
   const [revealedCount, setRevealedCount] = useState(0);
+  const [regulationRevealed, setRegulationRevealed] = useState(false);
   const [scoreRevealed, setScoreRevealed] = useState(false);
 
   // Bootstrap: find user's team and their completed games
@@ -232,6 +233,7 @@ export default function DramaModePage() {
     if (!selectedGameId) return;
     setGameLoading(true);
     setRevealedCount(0);
+    setRegulationRevealed(false);
     setScoreRevealed(false);
     setGame(null);
     setRoster(null);
@@ -267,9 +269,20 @@ export default function DramaModePage() {
     return [...zip(homeMain, awayMain, false), ...zip(homeXtra, awayXtra, true)];
   }, [roster]);
 
+  // mainSlotCount is the index where extras begin (or total length if no extras)
+  const mainSlotCount = useMemo(() => {
+    const idx = slots.findIndex(s => s.isExtra);
+    return idx === -1 ? slots.length : idx;
+  }, [slots]);
+  const hasExtras = useMemo(() => slots.some(s => s.isExtra), [slots]);
+
+  const allMainRevealed = mainSlotCount > 0 && revealedCount >= mainSlotCount;
   const allRevealed = revealedCount >= slots.length && slots.length > 0;
 
-  // Running score from revealed slots only (raw pts/AB - 4.5, no HTA/error adjustments)
+  // Only render extra slots after regulation is revealed
+  const visibleSlots = regulationRevealed ? slots : slots.slice(0, mainSlotCount);
+
+  // Running score from revealed slots only. Home team always gets +0.5 HFA.
   const runningScores = useMemo(() => {
     const compute = (getter: (s: RevealSlot) => PlayerEntry | null) => {
       let pts = 0, ab = 0;
@@ -282,7 +295,11 @@ export default function DramaModePage() {
       }
       return ab > 0 ? pts / ab - 4.5 : null;
     };
-    return { away: compute(s => s.away), home: compute(s => s.home) };
+    const homeRaw = compute(s => s.home);
+    return {
+      away: compute(s => s.away),
+      home: homeRaw !== null ? homeRaw + 0.5 : null,
+    };
   }, [slots, revealedCount]);
 
   // ── Early exit states ──────────────────────────────────────────────────────
@@ -418,14 +435,34 @@ export default function DramaModePage() {
 
           {/* Action button — anchored at top above the slots */}
           <div className="flex flex-col items-center gap-2 mb-5">
-            {!allRevealed && (
+            {/* Still revealing main slots */}
+            {!allMainRevealed && (
               <button
                 onClick={() => setRevealedCount(c => c + 1)}
                 className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
               >
-                Reveal Slot {revealedCount + 1} of {slots.length}
+                Reveal Slot {revealedCount + 1} of {mainSlotCount}
               </button>
             )}
+            {/* All main slots done — reveal regulation score */}
+            {allMainRevealed && !regulationRevealed && (
+              <button
+                onClick={() => setRegulationRevealed(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
+              >
+                📊 Reveal Regulation Score
+              </button>
+            )}
+            {/* Revealing extra innings slots */}
+            {regulationRevealed && !allRevealed && (
+              <button
+                onClick={() => setRevealedCount(c => c + 1)}
+                className="bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
+              >
+                Reveal Extra Slot {revealedCount - mainSlotCount + 1} of {slots.length - mainSlotCount}
+              </button>
+            )}
+            {/* All slots done — reveal final score */}
             {allRevealed && !scoreRevealed && (
               <button
                 onClick={() => setScoreRevealed(true)}
@@ -439,7 +476,7 @@ export default function DramaModePage() {
             )}
             {!allRevealed && revealedCount > 0 && (
               <button
-                onClick={() => { setRevealedCount(slots.length); setScoreRevealed(true); }}
+                onClick={() => { setRevealedCount(slots.length); setRegulationRevealed(true); setScoreRevealed(true); }}
                 className="text-xs text-gray-400 hover:text-gray-600 underline"
               >
                 Reveal all
@@ -456,18 +493,23 @@ export default function DramaModePage() {
 
           {/* Reveal slots */}
           <div className="flex flex-col gap-2">
-            {slots.map((slot, i) => {
+            {visibleSlots.map((slot, i) => {
               const revealed   = i < revealedCount;
               const isNext     = i === revealedCount;
-              const firstExtra = slot.isExtra && (i === 0 || !slots[i - 1].isExtra);
+              const firstExtra = slot.isExtra && (i === 0 || !visibleSlots[i - 1].isExtra);
               return (
-                <div key={i}>
+                <div key={`${slot.order}-${slot.isExtra ? 'x' : 'm'}`}>
                   {firstExtra && (
-                    <div className="flex items-center gap-2 my-2">
-                      <div className="flex-1 border-t border-dashed border-amber-300"/>
-                      <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide whitespace-nowrap">Extra Innings</span>
-                      <div className="flex-1 border-t border-dashed border-amber-300"/>
-                    </div>
+                    <>
+                      <div className="flex items-center justify-center gap-2 my-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
+                        <span className="text-amber-600 font-bold text-sm">⚡ Extra Innings!</span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 border-t border-dashed border-amber-300"/>
+                        <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide whitespace-nowrap">Extra Innings</span>
+                        <div className="flex-1 border-t border-dashed border-amber-300"/>
+                      </div>
+                    </>
                   )}
                   <div
                     className={`grid grid-cols-[1fr_1.5rem_1fr] gap-3 items-center transition-opacity duration-300 ${
@@ -476,9 +518,10 @@ export default function DramaModePage() {
                   >
                     <PlayerCard player={slot.away} revealed={revealed} align="left" />
                     <div className={`flex items-center justify-center rounded-full w-6 h-6 text-[10px] font-bold shrink-0 ${
-                      isNext    ? 'bg-blue-100 text-blue-600' :
-                      revealed  ? 'bg-gray-100 text-gray-400' :
-                                 'text-gray-200'
+                      isNext && slot.isExtra ? 'bg-amber-100 text-amber-600' :
+                      isNext                ? 'bg-blue-100 text-blue-600' :
+                      revealed              ? 'bg-gray-100 text-gray-400' :
+                                             'text-gray-200'
                     }`}>
                       {slot.order}
                     </div>
