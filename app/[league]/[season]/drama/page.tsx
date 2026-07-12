@@ -67,18 +67,19 @@ interface RevealSlot {
   order: number;
   home: PlayerEntry | null;
   away: PlayerEntry | null;
+  isExtra?: boolean;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function getStars(abl_points: number, ab: number): number {
-  if (!ab) return 3;
-  const score = abl_points / ab - 4.5;
-  if (score < -3) return 0;
-  if (score < -1.5) return 1;
-  if (score < 0) return 2;
-  if (score < 1.5) return 3;
-  if (score < 3) return 4;
+  if (!ab) return 2;
+  const x = abl_points / ab - 4.5;
+  if (x < -2) return 0;
+  if (x <  0) return 1;
+  if (x <  3) return 2;
+  if (x <  5) return 3;
+  if (x <  8) return 4;
   return 5;
 }
 
@@ -244,21 +245,26 @@ export default function DramaModePage() {
     }).finally(() => setGameLoading(false));
   }, [selectedGameId]);
 
-  // Build ordered reveal slots (zip home + away by lineup order)
+  // Build ordered reveal slots: STARTER+SUB first, then XTRA (extra innings)
   const slots: RevealSlot[] = useMemo(() => {
     if (!roster) return [];
-    const sort = (ps: PlayerEntry[]) =>
-      ps
-        .filter(p => p.ablPlayedType === 'STARTER' || p.ablPlayedType === 'SUB')
-        .sort((a, b) => (a.lineupOrder ?? 99) - (b.lineupOrder ?? 99));
-    const home = sort(roster.homeTeam);
-    const away = sort(roster.awayTeam);
-    const len = Math.max(home.length, away.length);
-    return Array.from({ length: len }, (_, i) => ({
-      order: home[i]?.lineupOrder ?? away[i]?.lineupOrder ?? i + 1,
-      home: home[i] ?? null,
-      away: away[i] ?? null,
-    }));
+    const byOrder = (ps: PlayerEntry[]) =>
+      [...ps].sort((a, b) => (a.lineupOrder ?? 99) - (b.lineupOrder ?? 99));
+
+    const homeMain = byOrder(roster.homeTeam.filter(p => p.ablPlayedType === 'STARTER' || p.ablPlayedType === 'SUB'));
+    const awayMain = byOrder(roster.awayTeam.filter(p => p.ablPlayedType === 'STARTER' || p.ablPlayedType === 'SUB'));
+    const homeXtra = byOrder(roster.homeTeam.filter(p => p.ablPlayedType === 'XTRA'));
+    const awayXtra = byOrder(roster.awayTeam.filter(p => p.ablPlayedType === 'XTRA'));
+
+    const zip = (h: PlayerEntry[], a: PlayerEntry[], isExtra: boolean): RevealSlot[] =>
+      Array.from({ length: Math.max(h.length, a.length) }, (_, i) => ({
+        order: h[i]?.lineupOrder ?? a[i]?.lineupOrder ?? i + 1,
+        home: h[i] ?? null,
+        away: a[i] ?? null,
+        isExtra,
+      }));
+
+    return [...zip(homeMain, awayMain, false), ...zip(homeXtra, awayXtra, true)];
   }, [roster]);
 
   const allRevealed = revealedCount >= slots.length && slots.length > 0;
@@ -451,24 +457,33 @@ export default function DramaModePage() {
           {/* Reveal slots */}
           <div className="flex flex-col gap-2">
             {slots.map((slot, i) => {
-              const revealed = i < revealedCount;
-              const isNext   = i === revealedCount;
+              const revealed   = i < revealedCount;
+              const isNext     = i === revealedCount;
+              const firstExtra = slot.isExtra && (i === 0 || !slots[i - 1].isExtra);
               return (
-                <div
-                  key={i}
-                  className={`grid grid-cols-[1fr_1.5rem_1fr] gap-3 items-center transition-opacity duration-300 ${
-                    !revealed && !isNext ? 'opacity-25' : ''
-                  }`}
-                >
-                  <PlayerCard player={slot.away} revealed={revealed} align="left" />
-                  <div className={`flex items-center justify-center rounded-full w-6 h-6 text-[10px] font-bold shrink-0 ${
-                    isNext    ? 'bg-blue-100 text-blue-600' :
-                    revealed  ? 'bg-gray-100 text-gray-400' :
-                               'text-gray-200'
-                  }`}>
-                    {slot.order}
+                <div key={i}>
+                  {firstExtra && (
+                    <div className="flex items-center gap-2 my-2">
+                      <div className="flex-1 border-t border-dashed border-amber-300"/>
+                      <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide whitespace-nowrap">Extra Innings</span>
+                      <div className="flex-1 border-t border-dashed border-amber-300"/>
+                    </div>
+                  )}
+                  <div
+                    className={`grid grid-cols-[1fr_1.5rem_1fr] gap-3 items-center transition-opacity duration-300 ${
+                      !revealed && !isNext ? 'opacity-25' : ''
+                    }`}
+                  >
+                    <PlayerCard player={slot.away} revealed={revealed} align="left" />
+                    <div className={`flex items-center justify-center rounded-full w-6 h-6 text-[10px] font-bold shrink-0 ${
+                      isNext    ? 'bg-blue-100 text-blue-600' :
+                      revealed  ? 'bg-gray-100 text-gray-400' :
+                                 'text-gray-200'
+                    }`}>
+                      {slot.order}
+                    </div>
+                    <PlayerCard player={slot.home} revealed={revealed} align="right" />
                   </div>
-                  <PlayerCard player={slot.home} revealed={revealed} align="right" />
                 </div>
               );
             })}
