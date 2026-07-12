@@ -213,6 +213,7 @@ export default function DramaModePage() {
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [games, setGames] = useState<GameSummary[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const [selectorOpen, setSelectorOpen] = useState(false);
 
   const [gameLoading, setGameLoading] = useState(false);
   const [game, setGame] = useState<GameSummary | null>(null);
@@ -408,36 +409,43 @@ export default function DramaModePage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+    <div className="max-w-2xl mx-auto px-4 py-3">
+      {/* Compact top bar: back · title · change-game */}
+      <div className="flex items-center gap-2 mb-3">
         <Link
           href={`/${league}/${season}`}
-          className="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors"
+          className="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
           aria-label="Back to dashboard"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 4l-6 6 6 6"/>
           </svg>
         </Link>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">🎭 Drama Mode</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Reveal your game results one position at a time</p>
-        </div>
+        <span className="font-bold text-gray-900 text-base">🎭 Drama Mode</span>
+        <div className="flex-1"/>
+        <button
+          onClick={() => setSelectorOpen(o => !o)}
+          className="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 hover:border-blue-400 rounded-lg px-2.5 py-1 transition-colors shrink-0"
+        >
+          {selectorOpen ? 'Cancel' : 'Change game'}
+        </button>
       </div>
 
-      {/* Game selector */}
-      <div className="mb-6">
-        <select
-          value={selectedGameId ?? ''}
-          onChange={e => setSelectedGameId(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-        >
-          {games.map(g => (
-            <option key={g._id} value={g._id}>{gameLabel(g)}</option>
-          ))}
-        </select>
-      </div>
+      {/* Collapsible game selector */}
+      {selectorOpen && (
+        <div className="mb-3">
+          <select
+            value={selectedGameId ?? ''}
+            onChange={e => { setSelectedGameId(e.target.value); setSelectorOpen(false); }}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+            autoFocus
+          >
+            {games.map(g => (
+              <option key={g._id} value={g._id}>{gameLabel(g)}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {gameLoading && (
         <div className="text-center py-16 text-gray-400 text-sm">Loading game…</div>
@@ -445,53 +453,48 @@ export default function DramaModePage() {
 
       {!gameLoading && game && roster && (
         <>
-          {/* Matchup header card */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 text-center shadow-sm">
-            <div className="text-xs text-gray-400 mb-3">
-              {new Date(game.gameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          {/* Single-line matchup bar */}
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-2.5 mb-3 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Away */}
+              <span className={`font-semibold text-sm truncate flex-1 text-right ${winnerId === game.awayTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-800'}`}>
+                {game.awayTeam.nickname}
+              </span>
+              {/* Away score */}
+              <span className={`tabular-nums font-black text-lg shrink-0 w-14 text-center ${winnerId === game.awayTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-700'}`}>
+                {scoreRevealed
+                  ? (awayScore?.toFixed(2) ?? '—')
+                  : runningScores.away !== null
+                    ? runningScores.away.toFixed(2)
+                    : '—'}
+              </span>
+              {/* Divider */}
+              <span className="text-gray-300 font-bold shrink-0">·</span>
+              {/* Home score */}
+              <span className={`tabular-nums font-black text-lg shrink-0 w-14 text-center ${winnerId === game.homeTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-700'}`}>
+                {scoreRevealed
+                  ? (homeScore?.toFixed(2) ?? '—')
+                  : runningScores.home !== null
+                    ? runningScores.home.toFixed(2)
+                    : '—'}
+              </span>
+              {/* Home */}
+              <span className={`font-semibold text-sm truncate flex-1 ${winnerId === game.homeTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-800'}`}>
+                {game.homeTeam.nickname}
+              </span>
             </div>
-            <div className="flex items-center justify-center gap-6">
-              {/* Away team */}
-              <div className="text-center min-w-0">
-                <div className="font-bold text-gray-800 truncate">{game.awayTeam.location}</div>
-                <div className="text-sm text-gray-500 truncate">{game.awayTeam.nickname}</div>
-                {scoreRevealed ? (
-                  <div className={`text-3xl font-black mt-1 tabular-nums ${winnerId === game.awayTeam._id ? 'text-green-600' : 'text-gray-400'}`}>
-                    {awayScore?.toFixed(2) ?? '—'}
-                  </div>
-                ) : revealedCount > 0 && runningScores.away !== null ? (
-                  <div className="text-xl font-bold mt-1 tabular-nums text-gray-600">
-                    {runningScores.away.toFixed(2)}
-                    <span className="text-xs font-normal text-gray-400 ml-1">so far</span>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="text-xl text-gray-300 font-bold shrink-0">@</div>
-
-              {/* Home team */}
-              <div className="text-center min-w-0">
-                <div className="font-bold text-gray-800 truncate">{game.homeTeam.location}</div>
-                <div className="text-sm text-gray-500 truncate">{game.homeTeam.nickname}</div>
-                {scoreRevealed ? (
-                  <div className={`text-3xl font-black mt-1 tabular-nums ${winnerId === game.homeTeam._id ? 'text-green-600' : 'text-gray-400'}`}>
-                    {homeScore?.toFixed(2) ?? '—'}
-                  </div>
-                ) : revealedCount > 0 && runningScores.home !== null ? (
-                  <div className="text-xl font-bold mt-1 tabular-nums text-gray-600">
-                    {runningScores.home.toFixed(2)}
-                    <span className="text-xs font-normal text-gray-400 ml-1">so far</span>
-                  </div>
-                ) : null}
-              </div>
+            {/* Win/loss result + date on second micro-line */}
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="text-[10px] text-gray-400">
+                {new Date(game.gameDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {!scoreRevealed && revealedCount > 0 && <span className="ml-1 italic">in progress…</span>}
+              </span>
+              {scoreRevealed && roster.result?.winner && (
+                <span className={`text-[11px] font-semibold ${iWon ? 'text-green-600' : 'text-red-500'}`}>
+                  {iWon ? '🎉 You win!' : `${roster.result.winner.nickname} wins`}
+                </span>
+              )}
             </div>
-            {scoreRevealed && roster.result?.winner && (
-              <div className={`mt-3 text-sm font-semibold ${iWon ? 'text-green-600' : 'text-red-500'}`}>
-                {iWon
-                  ? '🎉 Your team wins!'
-                  : `${roster.result.winner.location ?? ''} ${roster.result.winner.nickname} wins`}
-              </div>
-            )}
           </div>
 
           {/* Action button — anchored at top above the slots */}
