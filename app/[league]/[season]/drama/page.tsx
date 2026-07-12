@@ -87,8 +87,14 @@ function getStars(abl_points: number, ab: number): number {
 }
 
 const STAR_COLOR  = ['text-red-500',   'text-red-400',    'text-orange-400', 'text-gray-400',  'text-lime-500',    'text-emerald-500'  ];
-const CARD_STYLE  = ['bg-red-50 border-red-200',   'bg-red-50 border-red-200',   'bg-orange-50 border-orange-200',
-                     'bg-gray-50 border-gray-200',  'bg-lime-50 border-lime-200',  'bg-emerald-50 border-emerald-200'];
+const CARD_STYLE  = [
+  'bg-red-50    border-red-200    dark:bg-red-950/50    dark:border-red-800',
+  'bg-red-50    border-red-200    dark:bg-red-950/50    dark:border-red-800',
+  'bg-orange-50 border-orange-200 dark:bg-orange-950/50 dark:border-orange-800',
+  'bg-gray-50   border-gray-200   dark:bg-gray-800      dark:border-gray-600',
+  'bg-lime-50   border-lime-200   dark:bg-lime-950/50   dark:border-lime-800',
+  'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/50 dark:border-emerald-800',
+];
 
 function statLine(p: PlayerEntry): string {
   const s = p.dailyStats;
@@ -140,21 +146,21 @@ function PlayerCard({ player, revealed, align, isSupp = false }: {
 
   if (!player) {
     if (isSupp) return null;
-    return <div className="flex-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 min-h-[90px]"/>;
+    return <div className="flex-1 rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 min-h-[90px]"/>;
   }
 
   if (!revealed) {
     return (
-      <div className="flex-1 rounded-lg border border-gray-200 bg-gray-100 min-h-[90px] flex flex-col items-center justify-center gap-1">
+      <div className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 min-h-[90px] flex flex-col items-center justify-center gap-1">
         <span className="text-2xl">🎭</span>
-        <span className="text-xs text-gray-400 tracking-widest">???</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 tracking-widest">???</span>
       </div>
     );
   }
 
   const stars = getStars(player.dailyStats?.abl_points ?? 0, player.dailyStats?.ab ?? 0);
   const cardClass = isSupp
-    ? 'bg-white border-gray-200'
+    ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
     : CARD_STYLE[stars];
   const ablPoints = player.dailyStats?.abl_points;
   const ab        = player.dailyStats?.ab ?? 0;
@@ -168,13 +174,13 @@ function PlayerCard({ player, revealed, align, isSupp = false }: {
     <div className={`rounded-lg border px-2.5 py-1.5 flex flex-col gap-0.5 ${cardClass} ${isRight ? 'items-end text-right' : 'items-start text-left'} ${isSupp ? 'opacity-80' : ''}`}>
       {/* Line 1: name · team/pos */}
       <div className={`flex items-baseline gap-1.5 flex-wrap ${isRight ? 'flex-row-reverse justify-start' : ''}`}>
-        <span className={`font-semibold leading-tight text-gray-900 ${isSupp ? 'text-xs' : 'text-sm'}`}>{player.name}</span>
-        {meta && <span className="text-[10px] text-gray-400 leading-tight shrink-0">{meta}</span>}
+        <span className={`font-semibold leading-tight text-gray-900 dark:text-gray-100 ${isSupp ? 'text-xs' : 'text-sm'}`}>{player.name}</span>
+        {meta && <span className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight shrink-0">{meta}</span>}
       </div>
       {/* Line 2: stat line + pts + stars */}
       <div className={`flex items-center gap-2 flex-wrap ${isRight ? 'flex-row-reverse' : ''}`}>
-        <span className="text-[11px] font-mono text-gray-700">{statLine(player)}</span>
-        <span className="text-[10px] text-gray-500 tabular-nums">
+        <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300">{statLine(player)}</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
           {ablScore !== null ? `${ablScore.toFixed(2)}` : '—'}
           {ablPoints != null ? ` · ${ablPoints.toFixed(1)}pts` : ''}
         </span>
@@ -414,18 +420,18 @@ export default function DramaModePage() {
       <div className="flex items-center gap-2 mb-3">
         <Link
           href={`/${league}/${season}`}
-          className="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+          className="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
           aria-label="Back to dashboard"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 4l-6 6 6 6"/>
           </svg>
         </Link>
-        <span className="font-bold text-gray-900 text-base">🎭 Drama Mode</span>
+        <span className="font-bold text-gray-900 dark:text-gray-100 text-base">🎭 Drama Mode</span>
         <div className="flex-1"/>
         <button
           onClick={() => setSelectorOpen(o => !o)}
-          className="text-xs text-blue-500 hover:text-blue-700 border border-blue-200 hover:border-blue-400 rounded-lg px-2.5 py-1 transition-colors shrink-0"
+          className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border border-blue-200 dark:border-blue-700 hover:border-blue-400 dark:hover:border-blue-500 rounded-lg px-2.5 py-1 transition-colors shrink-0"
         >
           {selectorOpen ? 'Cancel' : 'Change game'}
         </button>
@@ -437,7 +443,7 @@ export default function DramaModePage() {
           <select
             value={selectedGameId ?? ''}
             onChange={e => { setSelectedGameId(e.target.value); setSelectorOpen(false); }}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
             autoFocus
           >
             {games.map(g => (
@@ -454,14 +460,14 @@ export default function DramaModePage() {
       {!gameLoading && game && roster && (
         <>
           {/* Single-line matchup bar */}
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-2.5 mb-3 shadow-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 mb-3 shadow-sm">
             <div className="flex items-center gap-2 min-w-0">
               {/* Away */}
-              <span className={`font-semibold text-sm truncate flex-1 text-right ${winnerId === game.awayTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-800'}`}>
+              <span className={`font-semibold text-sm truncate flex-1 text-right ${winnerId === game.awayTeam._id && scoreRevealed ? 'text-green-500 dark:text-green-400' : 'text-gray-800 dark:text-gray-200'}`}>
                 {game.awayTeam.nickname}
               </span>
               {/* Away score */}
-              <span className={`tabular-nums font-black text-lg shrink-0 w-14 text-center ${winnerId === game.awayTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-700'}`}>
+              <span className={`tabular-nums font-black text-lg shrink-0 w-14 text-center ${winnerId === game.awayTeam._id && scoreRevealed ? 'text-green-500 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}`}>
                 {scoreRevealed
                   ? (awayScore?.toFixed(2) ?? '—')
                   : runningScores.away !== null
@@ -469,9 +475,9 @@ export default function DramaModePage() {
                     : '—'}
               </span>
               {/* Divider */}
-              <span className="text-gray-300 font-bold shrink-0">·</span>
+              <span className="text-gray-300 dark:text-gray-600 font-bold shrink-0">·</span>
               {/* Home score */}
-              <span className={`tabular-nums font-black text-lg shrink-0 w-14 text-center ${winnerId === game.homeTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-700'}`}>
+              <span className={`tabular-nums font-black text-lg shrink-0 w-14 text-center ${winnerId === game.homeTeam._id && scoreRevealed ? 'text-green-500 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}`}>
                 {scoreRevealed
                   ? (homeScore?.toFixed(2) ?? '—')
                   : runningScores.home !== null
@@ -479,18 +485,18 @@ export default function DramaModePage() {
                     : '—'}
               </span>
               {/* Home */}
-              <span className={`font-semibold text-sm truncate flex-1 ${winnerId === game.homeTeam._id && scoreRevealed ? 'text-green-600' : 'text-gray-800'}`}>
+              <span className={`font-semibold text-sm truncate flex-1 ${winnerId === game.homeTeam._id && scoreRevealed ? 'text-green-500 dark:text-green-400' : 'text-gray-800 dark:text-gray-200'}`}>
                 {game.homeTeam.nickname}
               </span>
             </div>
             {/* Win/loss result + date on second micro-line */}
             <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[10px] text-gray-400">
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
                 {new Date(game.gameDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 {!scoreRevealed && revealedCount > 0 && <span className="ml-1 italic">in progress…</span>}
               </span>
               {scoreRevealed && roster.result?.winner && (
-                <span className={`text-[11px] font-semibold ${iWon ? 'text-green-600' : 'text-red-500'}`}>
+                <span className={`text-[11px] font-semibold ${iWon ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
                   {iWon ? '🎉 You win!' : `${roster.result.winner.nickname} wins`}
                 </span>
               )}
@@ -536,12 +542,12 @@ export default function DramaModePage() {
               </button>
             )}
             {allRevealed && scoreRevealed && (
-              <p className="text-sm text-gray-500">{iWon ? '🏆 Great game!' : '💪 Better luck next time!'}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{iWon ? '🏆 Great game!' : '💪 Better luck next time!'}</p>
             )}
             {!allRevealed && revealedCount > 0 && (
               <button
                 onClick={() => { setRevealedCount(slots.length); setRegulationRevealed(true); setScoreRevealed(true); }}
-                className="text-xs text-gray-400 hover:text-gray-600 underline"
+                className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 underline"
               >
                 Reveal all
               </button>
@@ -550,9 +556,9 @@ export default function DramaModePage() {
 
           {/* Column labels */}
           <div className="grid grid-cols-[1fr_1.5rem_1fr] gap-3 mb-2 px-1">
-            <div className="text-xs font-semibold text-gray-500 text-center truncate">{game.awayTeam.nickname}</div>
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 text-center truncate">{game.awayTeam.nickname}</div>
             <div />
-            <div className="text-xs font-semibold text-gray-500 text-center truncate">{game.homeTeam.nickname}</div>
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 text-center truncate">{game.homeTeam.nickname}</div>
           </div>
 
           {/* Reveal slots */}
@@ -565,13 +571,13 @@ export default function DramaModePage() {
                 <div key={`${slot.order}-${slot.isExtra ? 'x' : 'm'}`}>
                   {firstExtra && (
                     <>
-                      <div className="flex items-center justify-center gap-2 my-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
-                        <span className="text-amber-600 font-bold text-sm">⚡ Extra Innings!</span>
+                      <div className="flex items-center justify-center gap-2 my-3 py-2 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-800">
+                        <span className="text-amber-600 dark:text-amber-400 font-bold text-sm">⚡ Extra Innings!</span>
                       </div>
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="flex-1 border-t border-dashed border-amber-300"/>
-                        <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide whitespace-nowrap">Extra Innings</span>
-                        <div className="flex-1 border-t border-dashed border-amber-300"/>
+                        <div className="flex-1 border-t border-dashed border-amber-300 dark:border-amber-700"/>
+                        <span className="text-[10px] font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide whitespace-nowrap">Extra Innings</span>
+                        <div className="flex-1 border-t border-dashed border-amber-300 dark:border-amber-700"/>
                       </div>
                     </>
                   )}
@@ -582,10 +588,10 @@ export default function DramaModePage() {
                   >
                     <PlayerSlotCell main={slot.away} subs={slot.awaySubs} revealed={revealed} align="left" />
                     <div className={`flex items-center justify-center rounded-full w-6 h-6 text-[10px] font-bold shrink-0 self-start mt-2 ${
-                      isNext && slot.isExtra ? 'bg-amber-100 text-amber-600' :
-                      isNext                ? 'bg-blue-100 text-blue-600' :
-                      revealed              ? 'bg-gray-100 text-gray-400' :
-                                             'text-gray-200'
+                      isNext && slot.isExtra ? 'bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400' :
+                      isNext                ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400' :
+                      revealed              ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500' :
+                                             'text-gray-200 dark:text-gray-700'
                     }`}>
                       {slot.order}
                     </div>
