@@ -144,6 +144,9 @@ function PlayerCard({ player, revealed, align }: { player: PlayerEntry | null; r
 
   const stars = getStars(player.dailyStats?.abl_points ?? 0, player.dailyStats?.ab ?? 0);
   const cardClass = CARD_STYLE[stars];
+  const ablPoints = player.dailyStats?.abl_points;
+  const ab        = player.dailyStats?.ab ?? 0;
+  const ablScore  = ab > 0 ? ((ablPoints ?? 0) / ab - 4.5) : null;
 
   return (
     <div className={`flex-1 rounded-lg border p-3 flex flex-col gap-1 min-h-[90px] ${cardClass} ${isRight ? 'items-end text-right' : 'items-start text-left'}`}>
@@ -152,8 +155,12 @@ function PlayerCard({ player, revealed, align }: { player: PlayerEntry | null; r
         {[player.mlbTeam, player.playedPosition || player.position].filter(Boolean).join(' · ')}
       </div>
       <div className="text-[11px] font-mono text-gray-700">{statLine(player)}</div>
-      <div className={isRight ? 'flex flex-row-reverse' : ''}>
+      <div className={`flex items-center gap-2 ${isRight ? 'flex-row-reverse' : ''}`}>
         <StarDisplay stars={stars} />
+        <span className="text-[10px] text-gray-500 tabular-nums">
+          {ablScore !== null ? `${ablScore.toFixed(2)} ABL` : '—'}
+          {ablPoints != null ? ` · ${ablPoints.toFixed(1)}pts` : ''}
+        </span>
       </div>
     </div>
   );
@@ -252,6 +259,22 @@ export default function DramaModePage() {
 
   const allRevealed = revealedCount >= slots.length && slots.length > 0;
 
+  // Running score from revealed slots only (raw pts/AB - 4.5, no HTA/error adjustments)
+  const runningScores = useMemo(() => {
+    const compute = (getter: (s: RevealSlot) => PlayerEntry | null) => {
+      let pts = 0, ab = 0;
+      for (let i = 0; i < revealedCount && i < slots.length; i++) {
+        const p = getter(slots[i]);
+        if (p?.dailyStats) {
+          pts += p.dailyStats.abl_points ?? 0;
+          ab  += p.dailyStats.ab ?? 0;
+        }
+      }
+      return ab > 0 ? pts / ab - 4.5 : null;
+    };
+    return { away: compute(s => s.away), home: compute(s => s.home) };
+  }, [slots, revealedCount]);
+
   // ── Early exit states ──────────────────────────────────────────────────────
 
   if (bootstrapping) {
@@ -335,29 +358,43 @@ export default function DramaModePage() {
       {!gameLoading && game && roster && (
         <>
           {/* Matchup header card */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 text-center shadow-sm">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 text-center shadow-sm">
             <div className="text-xs text-gray-400 mb-3">
               {new Date(game.gameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </div>
             <div className="flex items-center justify-center gap-6">
+              {/* Away team */}
               <div className="text-center min-w-0">
                 <div className="font-bold text-gray-800 truncate">{game.awayTeam.location}</div>
                 <div className="text-sm text-gray-500 truncate">{game.awayTeam.nickname}</div>
-                {scoreRevealed && (
+                {scoreRevealed ? (
                   <div className={`text-3xl font-black mt-1 tabular-nums ${winnerId === game.awayTeam._id ? 'text-green-600' : 'text-gray-400'}`}>
                     {awayScore?.toFixed(2) ?? '—'}
                   </div>
-                )}
+                ) : revealedCount > 0 && runningScores.away !== null ? (
+                  <div className="text-xl font-bold mt-1 tabular-nums text-gray-600">
+                    {runningScores.away.toFixed(2)}
+                    <span className="text-xs font-normal text-gray-400 ml-1">so far</span>
+                  </div>
+                ) : null}
               </div>
+
               <div className="text-xl text-gray-300 font-bold shrink-0">@</div>
+
+              {/* Home team */}
               <div className="text-center min-w-0">
                 <div className="font-bold text-gray-800 truncate">{game.homeTeam.location}</div>
                 <div className="text-sm text-gray-500 truncate">{game.homeTeam.nickname}</div>
-                {scoreRevealed && (
+                {scoreRevealed ? (
                   <div className={`text-3xl font-black mt-1 tabular-nums ${winnerId === game.homeTeam._id ? 'text-green-600' : 'text-gray-400'}`}>
                     {homeScore?.toFixed(2) ?? '—'}
                   </div>
-                )}
+                ) : revealedCount > 0 && runningScores.home !== null ? (
+                  <div className="text-xl font-bold mt-1 tabular-nums text-gray-600">
+                    {runningScores.home.toFixed(2)}
+                    <span className="text-xs font-normal text-gray-400 ml-1">so far</span>
+                  </div>
+                ) : null}
               </div>
             </div>
             {scoreRevealed && roster.result?.winner && (
@@ -369,6 +406,37 @@ export default function DramaModePage() {
             )}
           </div>
 
+          {/* Action button — anchored at top above the slots */}
+          <div className="flex flex-col items-center gap-2 mb-5">
+            {!allRevealed && (
+              <button
+                onClick={() => setRevealedCount(c => c + 1)}
+                className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
+              >
+                Reveal Slot {revealedCount + 1} of {slots.length}
+              </button>
+            )}
+            {allRevealed && !scoreRevealed && (
+              <button
+                onClick={() => setScoreRevealed(true)}
+                className="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
+              >
+                🎭 Reveal Final Score
+              </button>
+            )}
+            {allRevealed && scoreRevealed && (
+              <p className="text-sm text-gray-500">{iWon ? '🏆 Great game!' : '💪 Better luck next time!'}</p>
+            )}
+            {!allRevealed && revealedCount > 0 && (
+              <button
+                onClick={() => { setRevealedCount(slots.length); setScoreRevealed(true); }}
+                className="text-xs text-gray-400 hover:text-gray-600 underline"
+              >
+                Reveal all
+              </button>
+            )}
+          </div>
+
           {/* Column labels */}
           <div className="grid grid-cols-[1fr_1.5rem_1fr] gap-3 mb-2 px-1">
             <div className="text-xs font-semibold text-gray-500 text-center truncate">{game.awayTeam.nickname}</div>
@@ -377,7 +445,7 @@ export default function DramaModePage() {
           </div>
 
           {/* Reveal slots */}
-          <div className="flex flex-col gap-2 mb-8">
+          <div className="flex flex-col gap-2">
             {slots.map((slot, i) => {
               const revealed = i < revealedCount;
               const isNext   = i === revealedCount;
@@ -400,42 +468,6 @@ export default function DramaModePage() {
                 </div>
               );
             })}
-          </div>
-
-          {/* Action button */}
-          <div className="flex flex-col items-center gap-3">
-            {!allRevealed && (
-              <button
-                onClick={() => setRevealedCount(c => c + 1)}
-                className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
-              >
-                Reveal Slot {revealedCount + 1} of {slots.length}
-              </button>
-            )}
-
-            {allRevealed && !scoreRevealed && (
-              <button
-                onClick={() => setScoreRevealed(true)}
-                className="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all"
-              >
-                🎭 Reveal Final Score
-              </button>
-            )}
-
-            {allRevealed && scoreRevealed && (
-              <p className="text-sm text-gray-500 text-center">
-                {iWon ? '🏆 Great game!' : '💪 Better luck next time!'}
-              </p>
-            )}
-
-            {!allRevealed && revealedCount > 0 && (
-              <button
-                onClick={() => { setRevealedCount(slots.length); setScoreRevealed(true); }}
-                className="text-xs text-gray-400 hover:text-gray-600 underline"
-              >
-                Reveal all
-              </button>
-            )}
           </div>
         </>
       )}
