@@ -32,6 +32,7 @@ interface PlayerEntry {
   position?: string;
   playedPosition?: string;
   lineupOrder?: number;
+  lineupPosition?: string;
   ablPlayedType?: string;
   mlbTeam?: string;
   dailyStats?: DailyStats;
@@ -66,7 +67,9 @@ interface GameSummary {
 interface RevealSlot {
   order: number;
   home: PlayerEntry | null;
+  homeSubs: PlayerEntry[];
   away: PlayerEntry | null;
+  awaySubs: PlayerEntry[];
   isExtra?: boolean;
 }
 
@@ -127,10 +130,16 @@ function StarDisplay({ stars }: { stars: number }) {
   );
 }
 
-function PlayerCard({ player, revealed, align }: { player: PlayerEntry | null; revealed: boolean; align: 'left' | 'right' }) {
+function PlayerCard({ player, revealed, align, isSupp = false }: {
+  player: PlayerEntry | null;
+  revealed: boolean;
+  align: 'left' | 'right';
+  isSupp?: boolean;
+}) {
   const isRight = align === 'right';
 
   if (!player) {
+    if (isSupp) return null;
     return <div className="flex-1 rounded-lg border border-dashed border-gray-200 bg-gray-50 min-h-[90px]"/>;
   }
 
@@ -144,18 +153,22 @@ function PlayerCard({ player, revealed, align }: { player: PlayerEntry | null; r
   }
 
   const stars = getStars(player.dailyStats?.abl_points ?? 0, player.dailyStats?.ab ?? 0);
-  const cardClass = CARD_STYLE[stars];
+  const cardClass = isSupp
+    ? 'bg-white border-gray-200'
+    : CARD_STYLE[stars];
   const ablPoints = player.dailyStats?.abl_points;
   const ab        = player.dailyStats?.ab ?? 0;
   const ablScore  = ab > 0 ? ((ablPoints ?? 0) / ab - 4.5) : null;
 
-  const meta = [player.mlbTeam, player.playedPosition || player.position].filter(Boolean).join(' · ');
+  const posMeta = player.mlbTeam ?? '';
+  const suppBadge = isSupp ? 'supp' : (player.playedPosition || player.position);
+  const meta = [posMeta, suppBadge].filter(Boolean).join(' · ');
 
   return (
-    <div className={`flex-1 rounded-lg border px-2.5 py-2 flex flex-col gap-1 ${cardClass} ${isRight ? 'items-end text-right' : 'items-start text-left'}`}>
+    <div className={`rounded-lg border px-2.5 py-1.5 flex flex-col gap-0.5 ${cardClass} ${isRight ? 'items-end text-right' : 'items-start text-left'} ${isSupp ? 'opacity-80' : ''}`}>
       {/* Line 1: name · team/pos */}
       <div className={`flex items-baseline gap-1.5 flex-wrap ${isRight ? 'flex-row-reverse justify-start' : ''}`}>
-        <span className="font-semibold text-sm text-gray-900 leading-tight">{player.name}</span>
+        <span className={`font-semibold leading-tight text-gray-900 ${isSupp ? 'text-xs' : 'text-sm'}`}>{player.name}</span>
         {meta && <span className="text-[10px] text-gray-400 leading-tight shrink-0">{meta}</span>}
       </div>
       {/* Line 2: stat line + pts + stars */}
@@ -165,8 +178,26 @@ function PlayerCard({ player, revealed, align }: { player: PlayerEntry | null; r
           {ablScore !== null ? `${ablScore.toFixed(2)}` : '—'}
           {ablPoints != null ? ` · ${ablPoints.toFixed(1)}pts` : ''}
         </span>
-        <StarDisplay stars={stars} />
+        {!isSupp && <StarDisplay stars={stars} />}
       </div>
+    </div>
+  );
+}
+
+function PlayerSlotCell({ main, subs, revealed, align }: {
+  main: PlayerEntry | null;
+  subs: PlayerEntry[];
+  revealed: boolean;
+  align: 'left' | 'right';
+}) {
+  return (
+    <div className="flex-1 flex flex-col gap-1 min-w-0">
+      <PlayerCard player={main} revealed={revealed} align={align} />
+      {revealed && subs.map((sub, i) => (
+        <div key={i} className={align === 'right' ? 'pr-3' : 'pl-3'}>
+          <PlayerCard player={sub} revealed={revealed} align={align} isSupp />
+        </div>
+      ))}
     </div>
   );
 }
@@ -247,26 +278,54 @@ export default function DramaModePage() {
     }).finally(() => setGameLoading(false));
   }, [selectedGameId]);
 
-  // Build ordered reveal slots: STARTER+SUB first, then XTRA (extra innings)
+  // Build ordered reveal slots: STARTERs with their SUBs folded in, then XTRA
   const slots: RevealSlot[] = useMemo(() => {
     if (!roster) return [];
+
+    // Returns starters sorted by lineupOrder, each paired with their subs (same lineupPosition)
+    const buildMainSlots = (players: PlayerEntry[]) => {
+      const starters = [...players.filter(p => p.ablPlayedType === 'STARTER')]
+        .sort((a, b) => (a.lineupOrder ?? 99) - (b.lineupOrder ?? 99));
+      const subs = players.filter(p => p.ablPlayedType === 'SUB');
+      return starters.map(s => ({
+        player: s,
+        subs: subs.filter(sub => sub.lineupPosition === s.lineupPosition),
+      }));
+    };
+
+    const homeMain = buildMainSlots(roster.homeTeam);
+    const awayMain = buildMainSlots(roster.awayTeam);
+
     const byOrder = (ps: PlayerEntry[]) =>
       [...ps].sort((a, b) => (a.lineupOrder ?? 99) - (b.lineupOrder ?? 99));
-
-    const homeMain = byOrder(roster.homeTeam.filter(p => p.ablPlayedType === 'STARTER' || p.ablPlayedType === 'SUB'));
-    const awayMain = byOrder(roster.awayTeam.filter(p => p.ablPlayedType === 'STARTER' || p.ablPlayedType === 'SUB'));
     const homeXtra = byOrder(roster.homeTeam.filter(p => p.ablPlayedType === 'XTRA'));
     const awayXtra = byOrder(roster.awayTeam.filter(p => p.ablPlayedType === 'XTRA'));
 
-    const zip = (h: PlayerEntry[], a: PlayerEntry[], isExtra: boolean): RevealSlot[] =>
-      Array.from({ length: Math.max(h.length, a.length) }, (_, i) => ({
-        order: h[i]?.lineupOrder ?? a[i]?.lineupOrder ?? i + 1,
-        home: h[i] ?? null,
-        away: a[i] ?? null,
-        isExtra,
-      }));
+    const mainSlots: RevealSlot[] = Array.from(
+      { length: Math.max(homeMain.length, awayMain.length) },
+      (_, i) => ({
+        order: homeMain[i]?.player.lineupOrder ?? awayMain[i]?.player.lineupOrder ?? i + 1,
+        home:     homeMain[i]?.player ?? null,
+        homeSubs: homeMain[i]?.subs   ?? [],
+        away:     awayMain[i]?.player ?? null,
+        awaySubs: awayMain[i]?.subs   ?? [],
+        isExtra: false,
+      })
+    );
 
-    return [...zip(homeMain, awayMain, false), ...zip(homeXtra, awayXtra, true)];
+    const xtraSlots: RevealSlot[] = Array.from(
+      { length: Math.max(homeXtra.length, awayXtra.length) },
+      (_, i) => ({
+        order: homeXtra[i]?.lineupOrder ?? awayXtra[i]?.lineupOrder ?? i + 1,
+        home:     homeXtra[i] ?? null,
+        homeSubs: [],
+        away:     awayXtra[i] ?? null,
+        awaySubs: [],
+        isExtra: true,
+      })
+    );
+
+    return [...mainSlots, ...xtraSlots];
   }, [roster]);
 
   // mainSlotCount is the index where extras begin (or total length if no extras)
@@ -283,21 +342,23 @@ export default function DramaModePage() {
   const visibleSlots = regulationRevealed ? slots : slots.slice(0, mainSlotCount);
 
   // Running score from revealed slots only. Home team always gets +0.5 HFA.
+  // Includes subs since they're revealed alongside their starter.
   const runningScores = useMemo(() => {
-    const compute = (getter: (s: RevealSlot) => PlayerEntry | null) => {
+    const compute = (main: (s: RevealSlot) => PlayerEntry | null, subs: (s: RevealSlot) => PlayerEntry[]) => {
       let pts = 0, ab = 0;
       for (let i = 0; i < revealedCount && i < slots.length; i++) {
-        const p = getter(slots[i]);
-        if (p?.dailyStats) {
-          pts += p.dailyStats.abl_points ?? 0;
-          ab  += p.dailyStats.ab ?? 0;
+        for (const p of [main(slots[i]), ...subs(slots[i])]) {
+          if (p?.dailyStats) {
+            pts += p.dailyStats.abl_points ?? 0;
+            ab  += p.dailyStats.ab ?? 0;
+          }
         }
       }
       return ab > 0 ? pts / ab - 4.5 : null;
     };
-    const homeRaw = compute(s => s.home);
+    const homeRaw = compute(s => s.home, s => s.homeSubs);
     return {
-      away: compute(s => s.away),
+      away: compute(s => s.away, s => s.awaySubs),
       home: homeRaw !== null ? homeRaw + 0.5 : null,
     };
   }, [slots, revealedCount]);
@@ -516,8 +577,8 @@ export default function DramaModePage() {
                       !revealed && !isNext ? 'opacity-25' : ''
                     }`}
                   >
-                    <PlayerCard player={slot.away} revealed={revealed} align="left" />
-                    <div className={`flex items-center justify-center rounded-full w-6 h-6 text-[10px] font-bold shrink-0 ${
+                    <PlayerSlotCell main={slot.away} subs={slot.awaySubs} revealed={revealed} align="left" />
+                    <div className={`flex items-center justify-center rounded-full w-6 h-6 text-[10px] font-bold shrink-0 self-start mt-2 ${
                       isNext && slot.isExtra ? 'bg-amber-100 text-amber-600' :
                       isNext                ? 'bg-blue-100 text-blue-600' :
                       revealed              ? 'bg-gray-100 text-gray-400' :
@@ -525,7 +586,7 @@ export default function DramaModePage() {
                     }`}>
                       {slot.order}
                     </div>
-                    <PlayerCard player={slot.home} revealed={revealed} align="right" />
+                    <PlayerSlotCell main={slot.home} subs={slot.homeSubs} revealed={revealed} align="right" />
                   </div>
                 </div>
               );
