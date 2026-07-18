@@ -23,6 +23,7 @@ interface DailyStats {
   sb?: number;
   cs?: number;
   e?: number;
+  pb?: number;
   abl_points?: number;
 }
 
@@ -33,6 +34,7 @@ interface PlayerEntry {
   playedPosition?: string;
   lineupOrder?: number;
   lineupPosition?: string;
+  ablRosterPosition?: number;
   ablPlayedType?: string;
   mlbTeam?: string;
   dailyStats?: DailyStats;
@@ -100,8 +102,6 @@ function statLine(p: PlayerEntry): string {
   const s = p.dailyStats;
   if (!s || (s.ab == null && !s.h)) return 'DNP';
   const ab = s.ab ?? 0;
-  if (ab === 0) return 'PA only';
-  const hits = `${s.h ?? 0}-${ab}`;
   const extras: string[] = [];
   if (s['2b'])  extras.push(`${s['2b']}2B`);
   if (s['3b'])  extras.push(`${s['3b']}3B`);
@@ -109,6 +109,8 @@ function statLine(p: PlayerEntry): string {
   if (s.bb)     extras.push(`${s.bb}BB`);
   if (s.sb)     extras.push(`${s.sb}SB`);
   if (s.e)      extras.push(`${s.e}E`);
+  if (ab === 0) return extras.length ? `PA only, ${extras.join(' ')}` : 'PA only';
+  const hits = `${s.h ?? 0}-${ab}`;
   return extras.length ? `${hits}, ${extras.join(' ')}` : hits;
 }
 
@@ -296,7 +298,9 @@ export default function DramaModePage() {
       const subs = players.filter(p => p.ablPlayedType === 'SUB');
       return starters.map(s => ({
         player: s,
-        subs: subs.filter(sub => sub.lineupPosition === s.lineupPosition),
+        // Match subs by ablRosterPosition so each OF slot only gets its own subs,
+        // not all subs who happen to play OF (which would duplicate across all 3 OF slots).
+        subs: subs.filter(sub => sub.ablRosterPosition === s.ablRosterPosition),
       }));
     };
 
@@ -348,25 +352,50 @@ export default function DramaModePage() {
   // Only render extra slots after regulation is revealed
   const visibleSlots = regulationRevealed ? slots : slots.slice(0, mainSlotCount);
 
-  // Running score from revealed slots only. Home team always gets +0.5 HFA.
-  // Includes subs since they're revealed alongside their starter.
+  // Running score from revealed slots only. Mirrors the final scoring formula:
+  //   abl_runs = (abl_points / ab) - 4.5 + (opp_e × 0.5) + (opp_pb × 0.2) + (0.5 if home)
+  // opp_e/opp_pb = errors/PBs from the revealed opponent players, excluding DH/XTRA positions.
   const runningScores = useMemo(() => {
-    const compute = (main: (s: RevealSlot) => PlayerEntry | null, subs: (s: RevealSlot) => PlayerEntry[]) => {
-      let pts = 0, ab = 0;
-      for (let i = 0; i < revealedCount && i < slots.length; i++) {
-        for (const p of [main(slots[i]), ...subs(slots[i])]) {
-          if (p?.dailyStats) {
-            pts += p.dailyStats.abl_points ?? 0;
-            ab  += p.dailyStats.ab ?? 0;
-          }
+    let homePts = 0, homeAb = 0, homeOppE = 0, homeOppPB = 0;
+    let awayPts = 0, awayAb = 0, awayOppE = 0, awayOppPB = 0;
+
+    for (let i = 0; i < revealedCount && i < slots.length; i++) {
+      const slot = slots[i];
+
+      for (const p of [slot.home, ...slot.homeSubs]) {
+        if (p?.dailyStats) {
+          homePts += p.dailyStats.abl_points ?? 0;
+          homeAb  += p.dailyStats.ab ?? 0;
+        }
+        // Home player errors/PBs benefit the away team (skip DH and XTRA)
+        if (p && p.playedPosition !== 'DH' && p.playedPosition !== 'XTRA') {
+          awayOppE  += p.dailyStats?.e  ?? 0;
+          awayOppPB += p.dailyStats?.pb ?? 0;
         }
       }
-      return ab > 0 ? pts / ab - 4.5 : null;
-    };
-    const homeRaw = compute(s => s.home, s => s.homeSubs);
+
+      for (const p of [slot.away, ...slot.awaySubs]) {
+        if (p?.dailyStats) {
+          awayPts += p.dailyStats.abl_points ?? 0;
+          awayAb  += p.dailyStats.ab ?? 0;
+        }
+        // Away player errors/PBs benefit the home team (skip DH and XTRA)
+        if (p && p.playedPosition !== 'DH' && p.playedPosition !== 'XTRA') {
+          homeOppE  += p.dailyStats?.e  ?? 0;
+          homeOppPB += p.dailyStats?.pb ?? 0;
+        }
+      }
+    }
+
+    const homeRaw = homeAb > 0
+      ? homePts / homeAb - 4.5 + homeOppE * 0.5 + homeOppPB * 0.2
+      : null;
+    const awayRaw = awayAb > 0
+      ? awayPts / awayAb - 4.5 + awayOppE * 0.5 + awayOppPB * 0.2
+      : null;
     return {
-      away: compute(s => s.away, s => s.awaySubs),
       home: homeRaw !== null ? homeRaw + 0.5 : null,
+      away: awayRaw,
     };
   }, [slots, revealedCount]);
 
