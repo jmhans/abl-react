@@ -195,6 +195,7 @@ export async function GET(
         mlbTeam: p.player?.team || p.mlbTeam || null,
         playedPosition: p.playedPosition,
         ablPlayedType: p.ablPlayedType ?? null,
+        ablRosterPosition: p.ablRosterPosition ?? null,
         lineupOrder: p.lineupOrder,
         lineupPosition: p.lineupPosition,
         rosterOrder: p.rosterOrder,
