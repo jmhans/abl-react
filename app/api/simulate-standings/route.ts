@@ -4,6 +4,15 @@ import { resolveLeagueContext } from '@/app/lib/league-context';
 import { runSimulation } from '@/app/lib/simulate-standings';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 
+function getSnapshotDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function getPlayoffProbability(positionProbabilities: Record<string, number> | undefined, cutoff = 4): number {
+  return Array.from({ length: cutoff }, (_, index) => positionProbabilities?.[String(index + 1)] ?? 0)
+    .reduce((sum, probability) => sum + probability, 0);
+}
+
 /** GET /api/simulate-standings?league=abl&season=2025
  *  Returns the most recent stored simulation result for this league+season.
  */
@@ -19,8 +28,9 @@ export async function GET(request: NextRequest) {
   try {
     const db = await connectToDatabase();
     const ctx = await resolveLeagueContext(db, leagueSlug, seasonSlug);
+    const collection = db.collection('simulation_results');
 
-    const result = await db.collection('simulation_results').findOne(
+    const result = await collection.findOne(
       { leagueId: ctx.league._id, seasonId: ctx.season._id },
       { sort: { calculatedAt: -1 } },
     );
@@ -29,7 +39,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No simulation results found. Run POST to generate.' }, { status: 404 });
     }
 
-    return NextResponse.json(result);
+    const historyResults = await collection.find(
+      { leagueId: ctx.league._id, seasonId: ctx.season._id },
+      {
+        sort: { calculatedAt: 1 },
+        projection: {
+          calculatedAt: 1,
+          snapshotDate: 1,
+          positionMatrix: 1,
+        },
+      },
+    ).toArray();
+
+    return NextResponse.json({
+      ...result,
+      history: historyResults.map((entry) => ({
+        calculatedAt: entry.calculatedAt,
+        snapshotDate: typeof entry.snapshotDate === 'string'
+          ? entry.snapshotDate
+          : getSnapshotDate(new Date(entry.calculatedAt)),
+        playoffProbabilities: Object.fromEntries(
+          Object.entries(entry.positionMatrix ?? {}).map(([teamId, positionProbabilities]) => [
+            teamId,
+            getPlayoffProbability(positionProbabilities),
+          ]),
+        ),
+      })),
+    });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
@@ -67,15 +103,17 @@ export async function POST(request: NextRequest) {
       ctx.season._id,
       numScenarios,
     );
+    const snapshotDate = getSnapshotDate(result.calculatedAt);
 
-    // Upsert — one document per league+season (replace each run)
+    // Upsert — one document per league+season+day (replace reruns within the same day)
     await db.collection('simulation_results').updateOne(
-      { leagueId: ctx.league._id, seasonId: ctx.season._id },
+      { leagueId: ctx.league._id, seasonId: ctx.season._id, snapshotDate },
       {
         $set: {
           ...result,
           leagueId: ctx.league._id,
           seasonId: ctx.season._id,
+          snapshotDate,
         },
       },
       { upsert: true },
