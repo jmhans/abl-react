@@ -15,6 +15,10 @@
     {
       "path": "/api/jobs/simulate-standings",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/jobs/recompute-standings-cache",
+      "schedule": "0 9 * * *"
     }
   ]
 }

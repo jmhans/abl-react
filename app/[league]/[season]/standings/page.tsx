@@ -157,7 +157,7 @@ export default function StandingsPage() {
       try {
         const [standingsRes, gamesRes] = await Promise.all([
           fetch(`/api/standings?${seasonQuery}`),
-          fetch(`/api/games?${seasonQuery}&gameType=R`),
+          fetch(`/api/games?${seasonQuery}&gameType=R&view=headToHead`),
         ]);
 
         if (!standingsRes.ok || !gamesRes.ok) {

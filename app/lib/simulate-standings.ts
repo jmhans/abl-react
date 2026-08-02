@@ -69,11 +69,21 @@ export async function getTeamRunStats(
   leagueId: ObjectId,
   seasonId: ObjectId,
 ): Promise<Record<string, TeamRunStats>> {
-  const games = await db.collection('games').find({
-    leagueId,
-    seasonId,
-    'result.isFinal': true,
-  }).toArray();
+  const games = await db.collection('games').find(
+    {
+      leagueId,
+      seasonId,
+      'result.isFinal': true,
+    },
+    {
+      projection: {
+        gameDate: 1,
+        'result.scores.team': 1,
+        'result.scores.location': 1,
+        'result.scores.regulation.abl_runs': 1,
+      },
+    }
+  ).toArray();
 
   const usedDates = new Map<string, Set<string>>(); // teamId -> Set<YYYY-MM-DD>
   const teamRuns = new Map<string, number[]>();
@@ -127,11 +137,14 @@ export async function runSimulation(
   const teamStats = await getTeamRunStats(db, leagueId, seasonId);
 
   // --- 2. Actual W/L from completed games ---
-  const playedGames = await db.collection('games').find({
-    leagueId,
-    seasonId,
-    'result.isFinal': true,
-  }).toArray();
+  const playedGames = await db.collection('games').find(
+    {
+      leagueId,
+      seasonId,
+      'result.isFinal': true,
+    },
+    { projection: { 'result.winner': 1, 'result.loser': 1 } }
+  ).toArray();
 
   const actualWins: Record<string, number> = {};
   const actualLosses: Record<string, number> = {};
@@ -144,11 +157,14 @@ export async function runSimulation(
   }
 
   // --- 3. Remaining (unplayed) games ---
-  const remainingGames = await db.collection('games').find({
-    leagueId,
-    seasonId,
-    result: { $exists: false },
-  }).toArray();
+  const remainingGames = await db.collection('games').find(
+    {
+      leagueId,
+      seasonId,
+      result: { $exists: false },
+    },
+    { projection: { homeTeam: 1, awayTeam: 1 } }
+  ).toArray();
 
   // --- 4. Full team list from season ---
   const season = await db.collection('seasons').findOne({ _id: seasonId });
