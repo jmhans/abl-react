@@ -259,6 +259,7 @@ export default function Navigation() {
         <nav className="space-y-0.5 p-3 flex-1 overflow-y-auto">
           <Link href={base} className={navLinkClass(base, true)}>Dashboard</Link>
           <Link href={`${base}/standings`} className={navLinkClass(`${base}/standings`)}>Standings</Link>
+          <Link href={`${base}/playoffs`} className={navLinkClass(`${base}/playoffs`)}>Playoffs</Link>
           <Link href={`${base}/games`} className={navLinkClass(`${base}/games`)}>Scores</Link>
           <Link href={`${base}/leaders`} className={navLinkClass(`${base}/leaders`)}>Leaders</Link>
           {hasDraft && (

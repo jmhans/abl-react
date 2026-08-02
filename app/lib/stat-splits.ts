@@ -1,6 +1,7 @@
 import { Db, ObjectId } from 'mongodb';
 import { calculateAblPoints } from './roster-utils';
 import { resolveLeagueContext } from './league-context';
+import { isAblGameDay } from './abl-date';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,12 +133,9 @@ function toAblDate(date: Date): string {
 
 /**
  * Returns true if the ABL date string falls on an ABL off-day (Monday or Thursday).
- * Evaluated at UTC noon to avoid any DST ambiguity.
  */
 function isAblOffDay(ablDateStr: string): boolean {
-  const d = new Date(ablDateStr + 'T12:00:00Z');
-  const dow = d.getUTCDay(); // 0=Sun, 1=Mon, 4=Thu
-  return dow === 1 || dow === 4;
+  return !isAblGameDay(ablDateStr);
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────

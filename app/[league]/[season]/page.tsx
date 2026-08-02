@@ -14,6 +14,32 @@ interface AdminResponse {
   isAdmin?: boolean;
 }
 
+function teamLabel(team: { nickname?: string; location?: string } | null | undefined): string {
+  if (!team) return 'TBD';
+  return [team.location, team.nickname].filter(Boolean).join(' ');
+}
+
+function playoffSummary(bracket: any): string {
+  switch (bracket?.status) {
+    case 'seeding_in_progress':
+      return 'Tiebreakers underway';
+    case 'seeded':
+      return 'Seeds set — series starting soon';
+    case 'first_round_in_progress':
+      return 'First round underway';
+    case 'first_round_complete':
+      return 'First round complete — championship starting soon';
+    case 'second_round_in_progress':
+      return 'Championship underway';
+    case 'complete': {
+      const champ = bracket.series?.find((s: any) => s.seriesId === 'CHAMP');
+      return champ?.winnerTeam ? `Champion: ${teamLabel(champ.winnerTeam)}` : 'Playoffs complete';
+    }
+    default:
+      return '';
+  }
+}
+
 export default function LeagueSeasonHome() {
   const { league, season } = useLeagueSeason();
   const base = `/${league}/${season}`;
@@ -23,6 +49,7 @@ export default function LeagueSeasonHome() {
   const [draftCompleted, setDraftCompleted] = useState(false);
   const [suppDraftStatus, setSuppDraftStatus] = useState<string | null>(null);
   const [seasonStatus, setSeasonStatus] = useState<string | null>(null);
+  const [playoffBracket, setPlayoffBracket] = useState<any>(null);
   const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -30,7 +57,7 @@ export default function LeagueSeasonHome() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [userRes, adminRes, draftCheck, suppDraftCheck, seasonRes, myLeaguesRes] = await Promise.all([
+        const [userRes, adminRes, draftCheck, suppDraftCheck, seasonRes, myLeaguesRes, bracketRes] = await Promise.all([
           fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null),
           fetch('/api/admin/me').then(r => r.ok ? r.json() : {} as AdminResponse).catch(() => ({} as AdminResponse)),
           fetch(`/api/draft?league=${league}&season=${season}`, { cache: 'no-store' })
@@ -39,8 +66,10 @@ export default function LeagueSeasonHome() {
             .then(r => r.ok ? r.json() : { draft: null }).catch(() => ({ draft: null })),
           fetch(`/api/seasons?league=${league}&year=${season}`).then(r => r.json()).catch(() => []),
           fetch('/api/auth/my-leagues').then(r => r.json()).catch(() => []),
+          fetch(`/api/playoffs/bracket?league=${league}&season=${season}`).then(r => r.ok ? r.json() : null).catch(() => null),
         ]);
-        
+        setPlayoffBracket(bracketRes);
+
         const sessionUser = userRes?.user || null;
         setUser(sessionUser);
         setIsAdmin(adminRes?.isAdmin ?? false);
@@ -79,6 +108,8 @@ export default function LeagueSeasonHome() {
   const leagueName = league.toUpperCase();
   const suppDraftVisible = !!suppDraftStatus && suppDraftStatus !== 'abandoned';
   const suppDraftActive = suppDraftStatus === 'active';
+  const playoffsVisible = !!playoffBracket?.status && !['not_started', 'awaiting_regular_season_end'].includes(playoffBracket.status);
+  const playoffsComplete = playoffBracket?.status === 'complete';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -102,6 +133,16 @@ export default function LeagueSeasonHome() {
           <h2 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">Standings</h2>
           <p className="text-xs text-gray-500 mt-1">{season} league standings and stats</p>
         </Link>
+
+        {playoffsVisible && (
+          <Link href={`${base}/playoffs`} className={`bg-white p-5 rounded-lg border hover:shadow transition group ${
+            playoffsComplete ? 'border-yellow-300 hover:border-yellow-500' : 'border-orange-300 hover:border-orange-500'
+          }`}>
+            <div className="text-2xl mb-2">🥇</div>
+            <h2 className="text-sm font-semibold text-gray-900 group-hover:text-orange-700">Playoffs</h2>
+            <p className={`text-xs mt-1 ${playoffsComplete ? 'text-yellow-700' : 'text-orange-600'}`}>{playoffSummary(playoffBracket)}</p>
+          </Link>
+        )}
 
         <Link href={`${base}/games`} className="bg-white p-5 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow transition group">
           <div className="text-2xl mb-2">📅</div>

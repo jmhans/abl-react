@@ -235,7 +235,9 @@ export async function computeStandingsForSeason(
           from: 'games',
           let: { nickname: '$tm.nickname' },
           pipeline: [
-            { $match: { seasonId } },
+            // gameType: 'R' — playoff/tiebreak games (gameType 'P') must never count
+            // toward regular-season standings.
+            { $match: { seasonId, gameType: 'R' } },
             ...advancedPipeline,
             { $match: { $expr: { $eq: ['$_id', '$$nickname'] } } },
           ],
@@ -245,7 +247,9 @@ export async function computeStandingsForSeason(
     return stage;
   });
 
-  const baseMatch = { seasonId, 'result.isFinal': { $ne: false } };
+  // gameType: 'R' — playoff/tiebreak games (gameType 'P') must never count toward
+  // regular-season standings.
+  const baseMatch = { seasonId, gameType: 'R', 'result.isFinal': { $ne: false } };
   const standings = await db.collection('games')
     .aggregate([{ $match: baseMatch }, ...scopedStandingsPipeline])
     .toArray();
