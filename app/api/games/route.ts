@@ -37,6 +37,37 @@ export async function GET(request: NextRequest) {
       pipeline.push({ $match: { gameType: gameTypeParam } });
     }
 
+    // Optional date-range filter (used to fetch only a visible window of games,
+    // e.g. "last N game dates ± a few", instead of a whole season at once).
+    const dateFromParam = searchParams.get('dateFrom');
+    const dateToParam = searchParams.get('dateTo');
+    if (dateFromParam || dateToParam) {
+      const gameDateMatch: Record<string, Date> = {};
+      if (dateFromParam) gameDateMatch.$gte = new Date(dateFromParam);
+      if (dateToParam) gameDateMatch.$lte = new Date(dateToParam);
+      pipeline.push({ $match: { gameDate: gameDateMatch } });
+    }
+
+    // Dates view - a cheap per-day summary (date, game count, whether any game that
+    // day has a final result) used to figure out which date window to actually fetch
+    // full game data for, without pulling every game in the season just to find out
+    // which dates exist.
+    if (view === 'dates') {
+      pipeline.push(
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$gameDate' } },
+            count: { $sum: 1 },
+            hasFinal: { $max: { $cond: [{ $eq: ['$result.isFinal', true] }, true, false] } },
+          },
+        },
+        { $sort: { _id: 1 } },
+        { $project: { _id: 0, date: '$_id', count: 1, hasFinal: 1 } },
+      );
+      const dates = await db.collection('games').aggregate(pipeline, { allowDiskUse: true }).toArray();
+      return NextResponse.json(dates);
+    }
+
     // Summary view - exclude heavy fields
     if (view === 'summary') {
       pipeline.push({
