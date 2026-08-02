@@ -13,6 +13,13 @@ function getPlayoffProbability(positionProbabilities: Record<string, number> | u
     .reduce((sum, probability) => sum + probability, 0);
 }
 
+function isPositionProbabilityMap(value: unknown): value is Record<string, number> {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && Object.values(value).every((entry) => typeof entry === 'number');
+}
+
 /** GET /api/simulate-standings?league=abl&season=2025
  *  Returns the most recent stored simulation result for this league+season.
  */
@@ -61,7 +68,9 @@ export async function GET(request: NextRequest) {
         playoffProbabilities: Object.fromEntries(
           Object.entries(entry.positionMatrix ?? {}).map(([teamId, positionProbabilities]) => [
             teamId,
-            getPlayoffProbability(positionProbabilities),
+            getPlayoffProbability(
+              isPositionProbabilityMap(positionProbabilities) ? positionProbabilities : undefined,
+            ),
           ]),
         ),
       })),
