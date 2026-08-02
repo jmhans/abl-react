@@ -1,6 +1,7 @@
 import { Db, ObjectId } from 'mongodb';
 import { deriveAblDate } from '@/app/lib/abl-date';
 import { calculateAndStoreLiveGameResult } from '@/app/lib/game-calculation-service';
+import { refreshStandingsCacheForGame } from '@/app/lib/standings-service';
 
 const MLB_API_BASE = 'https://statsapi.mlb.com/api/v1';
 
@@ -869,6 +870,7 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date, options
   let processed = 0;
   let skipped = 0;
   let errors = 0;
+  const touchedSeasons = new Map<string, { leagueId: ObjectId; seasonId: ObjectId }>();
 
   for (const game of games) {
     try {
@@ -877,10 +879,21 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date, options
         skipped++;
       } else {
         processed++;
+        if (game.leagueId && game.seasonId) {
+          touchedSeasons.set(game.seasonId.toString(), { leagueId: game.leagueId, seasonId: game.seasonId });
+        }
       }
     } catch {
       errors++;
     }
+  }
+
+  // Batch the standings_cache refresh once per distinct league/season touched today,
+  // rather than once per game — a single day's recalc can span hundreds of games.
+  for (const season of touchedSeasons.values()) {
+    await refreshStandingsCacheForGame(db, season).catch((err) => {
+      console.error('Failed to refresh standings cache after daily stat refresh:', err);
+    });
   }
 
   return {
@@ -891,6 +904,7 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date, options
     errors,
     rosterLockSummary,
     isFinal,
+    standingsCacheRefreshed: touchedSeasons.size,
   };
 }
 

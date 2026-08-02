@@ -3,6 +3,7 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { calculateAndStoreLiveGameResult } from '@/app/lib/game-calculation-service';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
+import { refreshStandingsCacheForGame } from '@/app/lib/standings-service';
 
 // POST /api/games/:id/calculate-results - Calculate and save game results
 export async function POST(
@@ -38,6 +39,13 @@ export async function POST(
     if (!calcOutcome.game) {
       return NextResponse.json({ error: 'Failed to update game' }, { status: 500 });
     }
+
+    // Keep standings_cache warm so the standings page doesn't recompute from raw
+    // game data on every load. Best-effort — a failure here shouldn't fail the
+    // game calculation itself (the recompute-standings-cache cron is the safety net).
+    await refreshStandingsCacheForGame(db, game).catch((err) => {
+      console.error('Failed to refresh standings cache after game calculation:', err);
+    });
 
     // Return the updated game with populated teams
     const teams = await db

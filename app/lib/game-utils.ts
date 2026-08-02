@@ -490,8 +490,17 @@ export async function calculateGameResultLive(
   }
 
   // 3. XTRA loop — add XTRA players while scores are tied (≤ 0.5 margin)
+  // Must mirror activateRosterXtra's own eligibility check (canPlaySlot): a bench player
+  // with stats but no XTRA-eligible position (e.g. a pitcher who already appeared) can
+  // never actually be activated. Counting them here without that filter previously caused
+  // an infinite loop — the condition stayed true forever while activateRosterXtra could
+  // make no progress.
   function benchWithStats(lineup: any[]) {
-    return lineup.filter(p => p.ablstatus !== 'active' && (p.dailyStats?.g || 0) > 0);
+    return lineup.filter(p =>
+      p.ablstatus !== 'active' &&
+      (p.dailyStats?.g || 0) > 0 &&
+      canPlaySlot(p.lineupPosition, 'XTRA')
+    );
   }
   function nextRosterPos(lineup: any[]) {
     return lineup.filter(p => p.ablstatus === 'active').reduce((max, p) => Math.max(p.ablRosterPosition ?? 0, max), 0) + 1;
@@ -503,10 +512,23 @@ export async function calculateGameResultLive(
     true,
   );
 
+  // Hard cap as defense-in-depth: bench depth bounds real iteration count well under this
+  // (a roster has on the order of 10-20 bench spots), so hitting the cap always means a
+  // logic bug rather than a legitimately long extra-innings game. Fail loud rather than
+  // hang the calculation indefinitely.
+  const MAX_XTRA_ITERATIONS = 100;
+  let xtraIterations = 0;
+
   while (
     Math.abs(finalScores.home.abl_runs - finalScores.away.abl_runs) <= 0.5 &&
     (benchWithStats(homeLineup).length + benchWithStats(awayLineup).length > 0)
   ) {
+    xtraIterations++;
+    if (xtraIterations > MAX_XTRA_ITERATIONS) {
+      console.error(`calculateGameResultLive: XTRA loop exceeded ${MAX_XTRA_ITERATIONS} iterations for game ${gameId} — aborting to avoid hanging. This indicates a bug in bench eligibility logic.`);
+      break;
+    }
+
     homeLineup = activateRosterXtra(homeLineup, nextRosterPos(homeLineup), isFinal);
     awayLineup = activateRosterXtra(awayLineup, nextRosterPos(awayLineup), isFinal);
 

@@ -14,10 +14,23 @@ export async function GET(request: NextRequest) {
     // Get games with results array (length >= 2)
     const games = await db
       .collection('games')
-      .find({
-        results: { $exists: true, $type: 'array' },
-        $expr: { $gte: [{ $size: '$results' }, 2] }
-      })
+      .find(
+        {
+          results: { $exists: true, $type: 'array' },
+          $expr: { $gte: [{ $size: '$results' }, 2] }
+        },
+        {
+          projection: {
+            gameDate: 1,
+            homeTeam: 1,
+            awayTeam: 1,
+            'results.calculatedAt': 1,
+            'results.winner': 1,
+            'results.scores.final': 1,
+            'results.scores.regulation': 1,
+          },
+        }
+      )
       .limit(limit)
       .toArray();
 

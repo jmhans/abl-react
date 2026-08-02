@@ -53,7 +53,24 @@ export async function GET(request: NextRequest) {
         $project: {
           awayTeamRoster: 0,
           homeTeamRoster: 0,
+          // 'result' (singular) is the live/current game result; 'results' (plural) is a
+          // legacy audit-trail array used only by the batch-comparison tooling. Both can
+          // carry the heavy per-player dailyStats blob, so both must be excluded here.
+          'result.scores.players': 0,
           'results.scores.players': 0
+        }
+      });
+    }
+
+    // Head-to-head view - only the outcome fields needed to build a W/L matrix.
+    // Skips roster/player-stat fields entirely and skips team population below,
+    // since callers only need the raw team ObjectIds off winner/loser.
+    if (view === 'headToHead') {
+      pipeline.push({
+        $project: {
+          'result.isFinal': 1,
+          'result.winner': 1,
+          'result.loser': 1,
         }
       });
     }
@@ -63,7 +80,11 @@ export async function GET(request: NextRequest) {
     if (limitParam) pipeline.push({ $limit: parseInt(limitParam, 10) });
 
     const games = await db.collection('games').aggregate(pipeline, { allowDiskUse: true }).toArray();
-    
+
+    if (view === 'headToHead') {
+      return NextResponse.json(games);
+    }
+
     // Populate team references
     const teamIds = new Set<string>();
     games.forEach(game => {
