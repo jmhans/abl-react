@@ -379,6 +379,7 @@ export function calculateTeamScore(
   isHome: boolean,
   oppErrors: number,
   oppPBs: number,
+  isNeutralSite: boolean = false,
 ): TeamScoreResult {
   let abl_points = 0, ab = 0, e = 0, pb = 0;
   let h = 0, doubles = 0, triples = 0, hr = 0;
@@ -406,9 +407,10 @@ export function calculateTeamScore(
     }
   }
 
+  const homeAdvantage = isHome && !isNeutralSite ? 0.5 : 0;
   const abl_runs = ab > 0
-    ? abl_points / ab - 4.5 + oppErrors * 0.5 + oppPBs * 0.2 + (isHome ? 0.5 : 0)
-    : (isHome ? 0.5 : 0) - 4.5;
+    ? abl_points / ab - 4.5 + oppErrors * 0.5 + oppPBs * 0.2 + homeAdvantage
+    : homeAdvantage - 4.5;
 
   return { abl_runs, abl_points, ab, h, '2b': doubles, '3b': triples, hr, bb, hbp, sac, sf, sb, cs, e, pb, opp_e: oppErrors, opp_pb: oppPBs };
 }
@@ -433,6 +435,7 @@ export async function calculateGameResultLive(
   awayRosterRaw: any[],
   gameDate: Date,
   isFinal: boolean = true,
+  isNeutralSite: boolean = false,
 ) {
   // Build a map of MLB team abbreviation → abstractGameState for today's schedule.
   // When isFinal=false (live day), fetch fresh game states directly from the MLB Stats API
@@ -484,8 +487,8 @@ export async function calculateGameResultLive(
     const awayOppE  = hPlayers.filter(p => p.playedPosition !== 'DH' && p.playedPosition !== 'XTRA').reduce((s, p) => s + (p.dailyStats?.e  || 0), 0);
     const awayOppPB = hPlayers.filter(p => p.playedPosition !== 'DH' && p.playedPosition !== 'XTRA').reduce((s, p) => s + (p.dailyStats?.pb || 0), 0);
 
-    const home = calculateTeamScore(hPlayers, true,  homeOppE,  homeOppPB);
-    const away = calculateTeamScore(aPlayers, false, awayOppE,  awayOppPB);
+    const home = calculateTeamScore(hPlayers, true,  homeOppE,  homeOppPB, isNeutralSite);
+    const away = calculateTeamScore(aPlayers, false, awayOppE,  awayOppPB, isNeutralSite);
     return { home, away };
   }
 

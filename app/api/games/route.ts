@@ -9,7 +9,6 @@ export async function GET(request: NextRequest) {
     const db = await connectToDatabase();
     const { searchParams } = new URL(request.url);
     const view = searchParams.get('view');
-    const display = searchParams.get('display');
     const leagueParam = searchParams.get('league');
     const seasonParam = searchParams.get('season');
 
@@ -32,19 +31,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Optional gameType filter (e.g. 'R' = regular, 'D' = draft, 'P' = playoffs)
+    // Optional gameType filter ('R' = regular, 'D' = draft, 'P' = playoffs)
     const gameTypeParam = searchParams.get('gameType');
     if (gameTypeParam) {
       pipeline.push({ $match: { gameType: gameTypeParam } });
-    }
-
-    // Playoffs filter
-    if (display === 'playoffs') {
-      pipeline.push({
-        $match: { 
-          gameDate: { $gte: new Date('2023-08-22T00:00:00Z') } 
-        }
-      });
     }
 
     // Summary view - exclude heavy fields

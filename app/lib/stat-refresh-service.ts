@@ -857,7 +857,7 @@ export async function recalculateAblGamesForDate(db: Db, gameDate: Date, options
 
   const games = await db
     .collection('games')
-    .find({ gameDate: { $gte: dayStart, $lte: dayEnd } })
+    .find({ gameDate: { $gte: dayStart, $lte: dayEnd }, cancelled: { $ne: true } })
     .sort({ gameDate: 1, _id: 1 })
     .allowDiskUse(true)
     .toArray();
