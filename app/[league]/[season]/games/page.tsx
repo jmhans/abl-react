@@ -56,6 +56,32 @@ function findScoreForTeam(scores: any[] | undefined, game: Game, side: 'away' | 
   });
 }
 
+interface DateSummary {
+  date: string; // YYYY-MM-DD (UTC)
+  count: number;
+  hasFinal: boolean;
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysIso(dateStr: string, delta: number): string {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+function dedupeGamesById(games: Game[]): Game[] {
+  const map = new Map(games.map((g) => [g._id, g]));
+  return Array.from(map.values());
+}
+
+function formatDateHeading(iso: string): string {
+  // Noon UTC avoids any local-timezone day-shift when converting the date-only string.
+  return new Date(iso + 'T12:00:00Z').toLocaleDateString();
+}
+
 export default function GamesPage() {
   const ctx = useLeagueSeason();
   const { league, season } = ctx;
@@ -73,15 +99,47 @@ export default function GamesPage() {
   const [now, setNow] = useState(() => new Date());
   const [showAllPast, setShowAllPast] = useState(false);
   const [showAllFuture, setShowAllFuture] = useState(false);
+  const [dateSummaries, setDateSummaries] = useState<DateSummary[]>([]);
+  const [loadedRange, setLoadedRange] = useState<{ from: string; to: string } | null>(null);
+  const [expandingPast, setExpandingPast] = useState(false);
+  const [expandingFuture, setExpandingFuture] = useState(false);
 
+  const fetchGamesForRange = useCallback(async (dateFrom: string, dateTo: string): Promise<Game[]> => {
+    const res = await fetch(
+      `/api/games?view=summary&${leagueSeasonQuery(ctx)}&dateFrom=${dateFrom}&dateTo=${dateTo}T23:59:59.999Z`
+    );
+    if (!res.ok) throw new Error('Failed to fetch games');
+    return res.json();
+  }, [ctx]);
+
+  // Two-phase load: first a cheap per-date summary (small payload, no full game docs)
+  // to figure out the default visible window, then fetch full game data only for that
+  // window instead of the whole season. "Show more" expands the loaded range on demand.
   const fetchGames = useCallback(async () => {
     try {
-      const [gamesRes, myLeaguesRes] = await Promise.all([
-        fetch(`/api/games?view=summary&${leagueSeasonQuery(ctx)}`),
+      const [datesRes, myLeaguesRes] = await Promise.all([
+        fetch(`/api/games?view=dates&${leagueSeasonQuery(ctx)}`),
         fetch('/api/auth/my-leagues').catch(() => null),
       ]);
-      if (!gamesRes.ok) throw new Error('Failed to fetch games');
-      setGames(await gamesRes.json());
+      if (!datesRes.ok) throw new Error('Failed to fetch games');
+      const dates: DateSummary[] = await datesRes.json();
+      setDateSummaries(dates);
+
+      const today = todayIso();
+      const pastDates = dates.filter((d) => d.date <= today).map((d) => d.date);
+      const futureDates = dates.filter((d) => d.date > today).map((d) => d.date);
+      const visible = [...pastDates.slice(-3), ...futureDates.slice(0, 3)];
+
+      if (visible.length > 0) {
+        const from = visible[0];
+        const to = visible[visible.length - 1];
+        const gamesData = await fetchGamesForRange(from, to);
+        setGames(gamesData);
+        setLoadedRange({ from, to });
+      } else {
+        setGames([]);
+        setLoadedRange(null);
+      }
 
       const myLeaguesData = myLeaguesRes?.ok ? await myLeaguesRes.json() : [];
       const myEntry = (Array.isArray(myLeaguesData) ? myLeaguesData : []).find(
@@ -92,7 +150,47 @@ export default function GamesPage() {
       setError('Failed to load games');
       console.error(err);
     }
-  }, [ctx, league, season]);
+  }, [ctx, league, season, fetchGamesForRange]);
+
+  const expandPast = useCallback(async () => {
+    if (!loadedRange || expandingPast) return;
+    const earliestDate = dateSummaries[0]?.date;
+    if (!earliestDate || earliestDate >= loadedRange.from) {
+      setShowAllPast(true);
+      return;
+    }
+    setExpandingPast(true);
+    try {
+      const extra = await fetchGamesForRange(earliestDate, addDaysIso(loadedRange.from, -1));
+      setGames((prev) => dedupeGamesById([...extra, ...prev]));
+      setLoadedRange((r) => (r ? { from: earliestDate, to: r.to } : r));
+      setShowAllPast(true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setExpandingPast(false);
+    }
+  }, [loadedRange, expandingPast, dateSummaries, fetchGamesForRange]);
+
+  const expandFuture = useCallback(async () => {
+    if (!loadedRange || expandingFuture) return;
+    const latestDate = dateSummaries[dateSummaries.length - 1]?.date;
+    if (!latestDate || latestDate <= loadedRange.to) {
+      setShowAllFuture(true);
+      return;
+    }
+    setExpandingFuture(true);
+    try {
+      const extra = await fetchGamesForRange(addDaysIso(loadedRange.to, 1), latestDate);
+      setGames((prev) => dedupeGamesById([...prev, ...extra]));
+      setLoadedRange((r) => (r ? { from: r.from, to: latestDate } : r));
+      setShowAllFuture(true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setExpandingFuture(false);
+    }
+  }, [loadedRange, expandingFuture, dateSummaries, fetchGamesForRange]);
 
   useEffect(() => {
     async function load() {
@@ -210,28 +308,28 @@ export default function GamesPage() {
     );
   }
 
-  // Group by date, sort dates ascending (earliest first)
+  // Group the currently-loaded games by date (gameDate is serialized as an ISO
+  // string, so the first 10 chars are the same UTC-day key the /view=dates summary
+  // used — keeps the two phases consistent).
   const gamesByDate = games.reduce((acc, game) => {
-    const date = new Date(game.gameDate).toLocaleDateString();
+    const date = game.gameDate.slice(0, 10);
     if (!acc[date]) acc[date] = [];
     acc[date].push(game);
     return acc;
   }, {} as Record<string, Game[]>);
 
-  const dates = Object.keys(gamesByDate).sort((a, b) =>
-    new Date(a).getTime() - new Date(b).getTime()
-  );
+  // Full date list (loaded or not) comes from the lightweight summary, so "N earlier
+  // dates" counts and window boundaries are always correct even before expanding.
+  const allDates = dateSummaries.map((d) => d.date);
+  const today = todayIso();
+  const pastDates = allDates.filter((d) => d <= today);
+  const futureDates = allDates.filter((d) => d > today);
 
-  // Split dates into past (≤ today) and future (> today)
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const pastDates = dates.filter(d => new Date(d).getTime() <= todayStart.getTime());
-  const futureDates = dates.filter(d => new Date(d).getTime() > todayStart.getTime());
-
-  // Most recent game date = latest past date with at least one game result
+  // Most recent game date = latest past date with at least one final result
   let mostRecentGameDate: string | null = null;
   for (let i = pastDates.length - 1; i >= 0; i--) {
-    if (gamesByDate[pastDates[i]].some(g => g.result?.winner != null)) {
+    const summary = dateSummaries.find((d) => d.date === pastDates[i]);
+    if (summary?.hasFinal) {
       mostRecentGameDate = pastDates[i];
       break;
     }
@@ -244,9 +342,10 @@ export default function GamesPage() {
   const hiddenPastCount = pastDates.length - visiblePastDates.length;
   const hiddenFutureCount = futureDates.length - visibleFutureDates.length;
   const visibleDates = [...visiblePastDates, ...visibleFutureDates];
+  const totalGames = dateSummaries.reduce((sum, d) => sum + d.count, 0);
 
   const expandBtnClass =
-    'text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2';
+    'text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2 disabled:opacity-50 disabled:cursor-wait';
 
   return (
     <div className="max-w-full mx-auto px-3 md:px-4 py-6 md:py-8">
@@ -257,7 +356,7 @@ export default function GamesPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-gray-900">ABL Games</h1>
-            <p className="text-gray-500 text-xs mt-0.5">{games.length} games total</p>
+            <p className="text-gray-500 text-xs mt-0.5">{totalGames} games total</p>
           </div>
           {loggedIn && (
             <div className="flex flex-col items-end gap-1 shrink-0">
@@ -295,16 +394,17 @@ export default function GamesPage() {
         {hiddenPastCount > 0 && (
           <div className="text-center">
             <button
-              onClick={() => setShowAllPast(true)}
+              onClick={expandPast}
+              disabled={expandingPast}
               className={expandBtnClass}
             >
-              ↑ Show {hiddenPastCount} earlier date{hiddenPastCount !== 1 ? 's' : ''}
+              {expandingPast ? 'Loading…' : `↑ Show ${hiddenPastCount} earlier date${hiddenPastCount !== 1 ? 's' : ''}`}
             </button>
           </div>
         )}
         {visibleDates.map(date => {
           // Sort: user's games first, then others
-          const sorted = [...gamesByDate[date]].sort((a, b) => {
+          const sorted = [...(gamesByDate[date] ?? [])].sort((a, b) => {
             const aIsMyGame = userTeamId && (a.awayTeam?._id === userTeamId || a.homeTeam?._id === userTeamId) ? -1 : 0;
             const bIsMyGame = userTeamId && (b.awayTeam?._id === userTeamId || b.homeTeam?._id === userTeamId) ? -1 : 0;
             return aIsMyGame - bIsMyGame;
@@ -322,7 +422,7 @@ export default function GamesPage() {
               }
             >
               <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2 px-1">
-                {date}
+                {formatDateHeading(date)}
                 {isMostRecent && (
                   <span className="ml-2 text-blue-600 dark:text-blue-400 normal-case tracking-normal font-medium">
                     Most Recent
@@ -398,16 +498,17 @@ export default function GamesPage() {
         {hiddenFutureCount > 0 && (
           <div className="text-center">
             <button
-              onClick={() => setShowAllFuture(true)}
+              onClick={expandFuture}
+              disabled={expandingFuture}
               className={expandBtnClass}
             >
-              ↓ Show {hiddenFutureCount} more upcoming date{hiddenFutureCount !== 1 ? 's' : ''}
+              {expandingFuture ? 'Loading…' : `↓ Show ${hiddenFutureCount} more upcoming date${hiddenFutureCount !== 1 ? 's' : ''}`}
             </button>
           </div>
         )}
       </div>
 
-      {games.length === 0 && (
+      {totalGames === 0 && (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
           <p className="text-gray-500 text-sm">No games found</p>
         </div>
