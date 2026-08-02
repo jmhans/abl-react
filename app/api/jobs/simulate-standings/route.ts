@@ -3,6 +3,10 @@ import { connectToDatabase } from '@/app/lib/mongodb';
 import { getAdminAuthState } from '@/app/lib/admin-auth';
 import { runSimulation } from '@/app/lib/simulate-standings';
 
+function getSnapshotDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
 async function isAuthorized(request: NextRequest): Promise<boolean> {
   const { isAdmin } = await getAdminAuthState();
   if (isAdmin) return true;
@@ -40,10 +44,11 @@ export async function GET(request: NextRequest) {
       if (!league) continue;
 
       const result = await runSimulation(db, season.leagueId, season._id, numScenarios);
+      const snapshotDate = getSnapshotDate(result.calculatedAt);
 
       await db.collection('simulation_results').updateOne(
-        { leagueId: season.leagueId, seasonId: season._id },
-        { $set: { ...result, leagueId: season.leagueId, seasonId: season._id } },
+        { leagueId: season.leagueId, seasonId: season._id, snapshotDate },
+        { $set: { ...result, leagueId: season.leagueId, seasonId: season._id, snapshotDate } },
         { upsert: true },
       );
 

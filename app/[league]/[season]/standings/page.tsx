@@ -56,6 +56,13 @@ interface SimulationResult {
   teamNames: Record<string, string>;
   teamOrder: string[];
   durationMs: number;
+  history?: SimulationHistoryEntry[];
+}
+
+interface SimulationHistoryEntry {
+  calculatedAt: string;
+  snapshotDate: string;
+  playoffProbabilities: Record<string, number>;
 }
 
 interface Game {
@@ -624,6 +631,165 @@ function probTextColor(p: number): string {
   return p >= 0.5 ? 'text-white' : 'text-gray-900';
 }
 
+function getPlayoffProbability(positionProbabilities: Record<string, number> | undefined, cutoff: number): number {
+  return Array.from({ length: cutoff }, (_, index) => positionProbabilities?.[String(index + 1)] ?? 0)
+    .reduce((sum, probability) => sum + probability, 0);
+}
+
+const CHART_TEAM_COLORS = [
+  '#2563eb',
+  '#dc2626',
+  '#16a34a',
+  '#d97706',
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#4f46e5',
+  '#65a30d',
+  '#ea580c',
+  '#0f766e',
+  '#be123c',
+];
+
+function PlayoffProbabilityHistoryChart({
+  history,
+  teamOrder,
+  teamNames,
+}: {
+  history: SimulationHistoryEntry[];
+  teamOrder: string[];
+  teamNames: Record<string, string>;
+}) {
+  const chartWidth = 960;
+  const chartHeight = 360;
+  const margin = { top: 20, right: 20, bottom: 42, left: 52 };
+  const innerWidth = chartWidth - margin.left - margin.right;
+  const innerHeight = chartHeight - margin.top - margin.bottom;
+  const chartHistory = history.filter((entry) => entry.snapshotDate);
+
+  if (chartHistory.length === 0) {
+    return null;
+  }
+
+  const xDenominator = Math.max(chartHistory.length - 1, 1);
+  const tickValues = [0, 0.25, 0.5, 0.75, 1];
+  const dateLabels = chartHistory.map((entry) => (
+    new Date(`${entry.snapshotDate}T00:00:00`).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    })
+  ));
+
+  return (
+    <div>
+      <h2 className="text-base font-semibold text-gray-800 mb-3">Playoff Probability Trend</h2>
+      <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" role="img" aria-label="Playoff probability history by team">
+          <rect x="0" y="0" width={chartWidth} height={chartHeight} fill="white" />
+
+          {tickValues.map((tick) => {
+            const y = margin.top + innerHeight - tick * innerHeight;
+            return (
+              <g key={tick}>
+                <line
+                  x1={margin.left}
+                  x2={margin.left + innerWidth}
+                  y1={y}
+                  y2={y}
+                  stroke="#e5e7eb"
+                  strokeDasharray="4 4"
+                />
+                <text x={margin.left - 10} y={y + 4} textAnchor="end" className="fill-gray-500 text-[11px]">
+                  {Math.round(tick * 100)}%
+                </text>
+              </g>
+            );
+          })}
+
+          <line x1={margin.left} x2={margin.left} y1={margin.top} y2={margin.top + innerHeight} stroke="#9ca3af" />
+          <line
+            x1={margin.left}
+            x2={margin.left + innerWidth}
+            y1={margin.top + innerHeight}
+            y2={margin.top + innerHeight}
+            stroke="#9ca3af"
+          />
+
+          {dateLabels.map((label, index) => {
+            const x = margin.left + (index / xDenominator) * innerWidth;
+            return (
+              <text
+                key={`${label}-${index}`}
+                x={x}
+                y={margin.top + innerHeight + 18}
+                textAnchor={index === 0 ? 'start' : index === dateLabels.length - 1 ? 'end' : 'middle'}
+                className="fill-gray-500 text-[11px]"
+              >
+                {label}
+              </text>
+            );
+          })}
+
+          {teamOrder.map((teamId, teamIndex) => {
+            const color = CHART_TEAM_COLORS[teamIndex % CHART_TEAM_COLORS.length];
+            const points = chartHistory.map((entry, index) => {
+              const x = margin.left + (index / xDenominator) * innerWidth;
+              const probability = Math.max(0, Math.min(1, entry.playoffProbabilities[teamId] ?? 0));
+              const y = margin.top + innerHeight - probability * innerHeight;
+              return { x, y };
+            });
+
+            const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+
+            return (
+              <g key={teamId}>
+                {points.length > 1 && (
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {points.map((point, index) => (
+                  <circle
+                    key={`${teamId}-${chartHistory[index].snapshotDate}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r="3"
+                    fill={color}
+                  />
+                ))}
+              </g>
+            );
+          })}
+        </svg>
+
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-700">
+          {teamOrder.map((teamId, teamIndex) => {
+            const latestProbability = chartHistory[chartHistory.length - 1]?.playoffProbabilities[teamId] ?? 0;
+            return (
+              <div key={teamId} className="flex items-center gap-2">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: CHART_TEAM_COLORS[teamIndex % CHART_TEAM_COLORS.length] }}
+                />
+                <span className="font-medium text-gray-900">{teamNames[teamId] ?? teamId}</span>
+                <span>{(latestProbability * 100).toFixed(1)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-gray-500">
+        Each point shows that day&apos;s simulated playoff probability, defined as the sum of 1st–4th place finish odds.
+      </p>
+    </div>
+  );
+}
+
 function SimulatedStandingsPanel({
   simResult,
   simLoading,
@@ -669,6 +835,8 @@ function SimulatedStandingsPanel({
   const { teamOrder, teamNames, teamStats, positionMatrix, projectedWins, numScenarios, calculatedAt } = simResult;
   const numTeams = teamOrder.length;
   const positions = Array.from({ length: numTeams }, (_, i) => i + 1);
+  const playoffCutoff = Math.min(4, numTeams);
+  const history = simResult.history ?? [];
 
   return (
     <div className="space-y-6">
@@ -685,6 +853,14 @@ function SimulatedStandingsPanel({
         </span>
       </div>
 
+      {history.length > 0 && (
+        <PlayoffProbabilityHistoryChart
+          history={history}
+          teamOrder={teamOrder}
+          teamNames={teamNames}
+        />
+      )}
+
       {/* Finish-position probability matrix */}
       <div>
         <h2 className="text-base font-semibold text-gray-800 mb-3">Finish Position Probabilities</h2>
@@ -697,6 +873,9 @@ function SimulatedStandingsPanel({
                 </th>
                 <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   Proj W
+                </th>
+                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                  Playoff %
                 </th>
                 {positions.map((pos) => (
                   <th
@@ -713,6 +892,7 @@ function SimulatedStandingsPanel({
                 const name = teamNames[teamId] ?? teamId;
                 const projW = projectedWins[teamId] ?? 0;
                 const probs = positionMatrix[teamId] ?? {};
+                const playoffProbability = getPlayoffProbability(probs, playoffCutoff);
                 return (
                   <tr key={teamId} className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900 sticky left-0 bg-white">
@@ -720,6 +900,9 @@ function SimulatedStandingsPanel({
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-center text-gray-700">
                       {projW.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-center font-semibold text-gray-900">
+                      {(playoffProbability * 100).toFixed(1)}%
                     </td>
                     {positions.map((pos) => {
                       const p = probs[String(pos)] ?? 0;
