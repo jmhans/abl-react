@@ -205,7 +205,7 @@ async function evaluateTiebreakGroups(db: Db, leagueId: ObjectId, seasonId: Obje
     const tiedClusters = clusters.filter((c) => c.length > 1);
     const newGroups: any[] = [];
     for (const [i, cluster] of tiedClusters.entries()) {
-      const ablDate = nextAblGameDay(today);
+      const ablDate = nextAblGameDay(today, { inclusive: true });
       const suffix = tiedClusters.length > 1 ? `-${i}` : '';
       const newGroupId = `${group.lineageId}-r${nextRound}${suffix}`;
       const gameIds = await createTiebreakGamesForGroup(
@@ -369,7 +369,9 @@ async function handleRegularSeasonEndCheck(db: Db, league: any, season: any, bra
   const today = deriveAblDate(new Date());
   const newTiebreaks: any[] = [];
   for (const group of contendingGroups) {
-    const ablDate = nextAblGameDay(today);
+    // inclusive: true — the cron runs well before that evening's games, so today is a
+    // legitimate first candidate, not just the day after.
+    const ablDate = nextAblGameDay(today, { inclusive: true });
     const groupId = `seed${group.startRank + 1}-r1`;
     const gameIds = await createTiebreakGamesForGroup(db, league._id, season._id, groupId, group.teamIds, ablDate);
     newTiebreaks.push({
@@ -425,7 +427,7 @@ async function handleTiebreakEvaluation(db: Db, league: any, season: any, bracke
 async function handleFirstRoundCreation(db: Db, league: any, season: any, bracket: any) {
   const bySeed = new Map<number, ObjectId>((bracket.seeds ?? []).map((s: any) => [s.seed, s.teamId]));
   const today = deriveAblDate(new Date());
-  const dates = nextAblGameDays(today, 7);
+  const dates = nextAblGameDays(today, 7, { inclusive: true });
 
   const defs = [
     { seriesId: 'R1-1v4', higherSeed: 1, lowerSeed: 4 },
@@ -484,7 +486,7 @@ async function handleSecondRoundCreation(db: Db, league: any, season: any, brack
   ].sort((a, b) => a.seed - b.seed);
 
   const today = deriveAblDate(new Date());
-  const dates = nextAblGameDays(today, 7);
+  const dates = nextAblGameDays(today, 7, { inclusive: true });
 
   const champGameIds = await createSeriesGamesOnDates(db, league._id, season._id, 'CHAMP', champCandidates[0].teamId, champCandidates[1].teamId, dates);
   const thirdGameIds = await createSeriesGamesOnDates(db, league._id, season._id, 'THIRD', thirdCandidates[0].teamId, thirdCandidates[1].teamId, dates);
