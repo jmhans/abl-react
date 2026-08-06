@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase } from '@/app/lib/mongodb';
 import { resolveLeagueContext } from '@/app/lib/league-context';
+import { deriveAblDate } from '@/app/lib/abl-date';
 
 // GET /api/playoffs/bracket?league=<slug>&season=<slug>
 // Public read (matches other read-only data routes like /api/games, /api/standings).
@@ -75,17 +76,25 @@ export async function GET(request: NextRequest) {
     const response = {
       status: bracket.status,
       seeds: (bracket.seeds ?? []).map((s: any) => ({ seed: s.seed, team: populateTeam(s.teamId) })),
-      tiebreaks: (bracket.tiebreaks ?? []).map((group: any) => ({
-        groupId: group.groupId,
-        lineageId: group.lineageId,
-        round: group.round,
-        seedTargets: group.seedTargets,
-        teams: (group.teamIds ?? []).map(populateTeam),
-        games: populateGames(group.gameIds),
-        ablDate: group.ablDate,
-        status: group.status,
-        resolvedOrder: group.resolvedOrder ? group.resolvedOrder.map(populateTeam) : null,
-      })),
+      tiebreaks: (bracket.tiebreaks ?? []).map((group: any) => {
+        const groupGames = populateGames(group.gameIds);
+        // Derive the displayed date from the actual game doc(s) rather than the
+        // ablDate stored on the group at creation time — that field is a point-in-time
+        // snapshot and goes stale if a game's gameDate is ever corrected after the
+        // fact (e.g. a manual DB fix), since nothing re-syncs it back onto the group.
+        const ablDate = groupGames[0]?.gameDate ? deriveAblDate(groupGames[0].gameDate) : group.ablDate;
+        return {
+          groupId: group.groupId,
+          lineageId: group.lineageId,
+          round: group.round,
+          seedTargets: group.seedTargets,
+          teams: (group.teamIds ?? []).map(populateTeam),
+          games: groupGames,
+          ablDate,
+          status: group.status,
+          resolvedOrder: group.resolvedOrder ? group.resolvedOrder.map(populateTeam) : null,
+        };
+      }),
       series: (bracket.series ?? []).map((s: any) => ({
         seriesId: s.seriesId,
         round: s.round,
