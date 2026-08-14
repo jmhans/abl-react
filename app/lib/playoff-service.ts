@@ -91,7 +91,13 @@ async function createTiebreakGamesForGroup(
   teamIds: string[],
   ablDate: string,
 ): Promise<ObjectId[]> {
-  const existing = await db.collection('games').find({ 'playoff.tiebreakGroupId': groupId }).toArray();
+  // Scoped by league+season, not just groupId — short labels like "seed3-r1" are
+  // reused across every league/season, so an unscoped match here would silently
+  // reuse a different league's games (confirmed in prod: ABML's tiebreak/series
+  // labels collided with ABL's and reused ABL's games/results).
+  const existing = await db.collection('games')
+    .find({ leagueId, seasonId, 'playoff.tiebreakGroupId': groupId })
+    .toArray();
   if (existing.length > 0) return existing.map((g: any) => g._id);
 
   const gameDate = gameDateFromAblDate(ablDate);
@@ -247,8 +253,9 @@ async function createSeriesGamesOnDates(
   lowerSeedTeamId: ObjectId,
   dates: string[],
 ): Promise<ObjectId[]> {
+  // Scoped by league+season — see the matching comment in createTiebreakGamesForGroup.
   const existing = await db.collection('games')
-    .find({ 'playoff.seriesId': seriesId })
+    .find({ leagueId, seasonId, 'playoff.seriesId': seriesId })
     .sort({ 'playoff.seriesGameNumber': 1 })
     .toArray();
   if (existing.length > 0) return existing.map((g: any) => g._id);
